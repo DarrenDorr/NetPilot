@@ -1,54 +1,110 @@
 # NetPilot
 
-**NetPilot** is an open-source network access manager designed around a simple principle: ordinary users should see whether their services work, while technical routing, engines and strategies stay in an optional advanced mode.
+**NetPilot** — открытый менеджер сетевого доступа, построенный вокруг простого принципа: обычный пользователь должен видеть прежде всего, работают ли нужные ему сервисы, а технические детали маршрутизации, движков и стратегий должны находиться в отдельном расширенном режиме.
 
-> Status: early architecture/bootstrap stage. No network-bypass engine is bundled or active yet.
+> Текущий статус: ранний этап архитектуры и базового каркаса. Сетевые движки пока не подключены и не активируются.
 
-## Goals
+## Основные цели
 
-- Simple default UI: service status first, technical details optional.
-- Separate engine model: Zapret, Telegram proxy and future engines remain isolated components.
-- Windows first, with the core designed for Linux and Android from day one.
-- No hidden telemetry and no automatic upload of logs or user data.
-- Updates only from explicitly trusted upstreams, with integrity verification before installation.
-- User strategies represented as structured data, not executable shell scripts.
-- Backup, restore, repair and factory-reset flows built into the architecture.
+- Простой основной интерфейс: статус сервисов на первом плане, технические детали — по желанию.
+- Раздельная архитектура движков: Zapret, Telegram-прокси и будущие движки работают как независимые компоненты.
+- Windows — первая рабочая платформа, при этом Core с самого начала проектируется для Linux и Android.
+- Никакой скрытой телеметрии и автоматической отправки журналов или пользовательских данных.
+- Обновления только из явно доверенных источников с обязательной проверкой целостности перед установкой.
+- Пользовательские стратегии хранятся как структурированные данные, а не как произвольные исполняемые shell-скрипты.
+- Резервное копирование, восстановление, ремонт компонентов и полный сброс предусматриваются на уровне архитектуры.
+- Обычный режим должен работать по принципу «установил и забыл», а лаборатория стратегий, диагностика и ручное управление доступны в расширенном режиме.
 
-## Planned platforms
+## Планируемые платформы
 
-1. Windows 10/11 x64
-2. Linux
-3. Android
+1. **Windows 10/11 x64** — первая рабочая версия.
+2. **Linux** — следующая целевая платформа.
+3. **Android** — мобильная версия с платформенно-специфичным сетевым движком.
 
-## Technology
+Архитектура не должна блокировать возможное добавление других платформ в будущем.
+
+## Технологии
 
 - C# / .NET 10 LTS
 - Avalonia 12.1.x
-- MVVM-oriented architecture
-- Platform adapters for privileged/network-specific operations
+- MVVM-ориентированная архитектура
+- Общий кроссплатформенный Core
+- Отдельные платформенные адаптеры для привилегированных и сетевых операций
 
-## Planned upstream integrations
+## Планируемые интеграции и используемые источники
 
-NetPilot is an independent project and is **not an official Flowseal product**.
+NetPilot является самостоятельным открытым проектом и **не является официальным продуктом Flowseal, bol-van или разработчиков WinDivert**.
 
-- Flowseal / zapret-discord-youtube: https://github.com/Flowseal/zapret-discord-youtube
-- Flowseal / tg-ws-proxy: https://github.com/Flowseal/tg-ws-proxy
-- bol-van / zapret: https://github.com/bol-van/zapret
-- WinDivert: https://github.com/basil00/WinDivert
+Основные внешние проекты, на которых будут основаны отдельные движки или компоненты:
 
-Licenses and attribution for bundled third-party components will be retained and surfaced in the application.
+- **Flowseal / zapret-discord-youtube**  
+  https://github.com/Flowseal/zapret-discord-youtube
 
-## Security principles
+- **Flowseal / tg-ws-proxy**  
+  https://github.com/Flowseal/tg-ws-proxy
 
-- UI runs without permanent administrator privileges.
-- Privileged operations are isolated behind a narrow platform service/API.
-- No API for arbitrary shell-command execution.
-- Update sources are allowlisted.
-- Backups exclude secrets by default.
-- Logs must not contain traffic content, credentials, tokens, cookies or browsing history.
+- **bol-van / zapret**  
+  https://github.com/bol-van/zapret
 
-See [docs/SECURITY-MODEL.md](docs/SECURITY-MODEL.md).
+- **WinDivert**  
+  https://github.com/basil00/WinDivert
 
-## License
+В программе будет отдельный раздел со сведениями обо всех используемых компонентах, их версиях, лицензиях и ссылках на исходные репозитории.
 
-NetPilot is licensed under the MIT License. See [LICENSE](LICENSE).
+## Основные принципы безопасности
+
+- Графический интерфейс не должен постоянно работать с правами администратора.
+- Привилегированные операции изолируются в отдельном системном компоненте с минимально необходимыми правами.
+- Не создаётся API для выполнения произвольных команд `cmd`, PowerShell, Bash или другого shell-кода.
+- Все привилегированные действия должны проходить через строго типизированный и ограниченный набор разрешённых операций.
+- Источники обновлений задаются через белый список доверенных репозиториев.
+- Перед установкой обновлений проверяется их происхождение и целостность.
+- Секретные параметры по умолчанию не включаются в переносимые резервные копии.
+- Журналы не должны содержать содержимое сетевого трафика, пароли, токены, cookie, историю посещений или другие пользовательские данные.
+- Никакие данные не отправляются автоматически. Передача диагностической информации возможна только по явному решению пользователя.
+- Импортированные конфигурации, стратегии и архивы должны проходить обязательную проверку до применения.
+
+Подробнее: [модель безопасности](docs/SECURITY-MODEL.md).
+
+## Пользовательский интерфейс
+
+Основной режим NetPilot должен оставаться максимально простым:
+
+- Discord — работает / не работает
+- YouTube — работает / не работает
+- Telegram — работает / не работает
+- добавленные пользователем ресурсы — работают / не работают
+
+Техническая информация — используемый движок, стратегия, результаты тестов, журналы, лаборатория и ручное управление — переносится в **расширенный режим**.
+
+Планируется подробная персонализация интерфейса:
+
+- светлая, тёмная и системная темы;
+- акцентные цвета;
+- системные шрифты;
+- размер шрифта и масштаб интерфейса;
+- плотность элементов;
+- скругления;
+- анимации;
+- уведомления;
+- готовые пресеты оформления;
+- кнопка сброса интерфейса к стандартным параметрам.
+
+## Резервное копирование и восстановление
+
+Планируется:
+
+- автоматические резервные копии перед обновлениями и важными изменениями;
+- хранение последних 10 локальных копий;
+- ручной экспорт и импорт конфигурации;
+- исключение секретных данных из экспорта по умолчанию;
+- зашифрованный экспорт секретных параметров только по решению пользователя;
+- мягкий сброс настроек;
+- полный заводской сброс;
+- отдельное восстановление или переустановка повреждённого движка без удаления всей программы.
+
+## Лицензия
+
+Сам NetPilot распространяется по лицензии **MIT**. См. файл [LICENSE](LICENSE).
+
+Лицензии и уведомления сторонних проектов будут храниться отдельно и отображаться в программе в соответствии с условиями соответствующих лицензий.
