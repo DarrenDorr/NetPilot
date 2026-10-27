@@ -1,47 +1,91 @@
-# NetPilot security model
+# Модель безопасности NetPilot
 
-Security is a release requirement, not a later feature.
+Безопасность является обязательным условием выпуска NetPilot, а не функцией, которую можно добавить после завершения основной разработки.
 
-## Primary threats
+## Основные угрозы
 
-1. **Update supply-chain compromise** — installing an unexpected or modified engine/update.
-2. **Privilege escalation through the UI** — untrusted UI/config input reaching an elevated service.
-3. **Command/argument injection** — a strategy or imported profile turning into arbitrary command execution.
-4. **IPC impersonation** — another local process issuing privileged NetPilot commands.
-5. **Path traversal / unsafe extraction** — crafted update or backup archives writing outside approved directories.
-6. **Secret leakage** — proxy secrets, credentials or user data appearing in logs/backups.
-7. **Malicious imports** — a `.npb`/`.npconfig` file abusing parsers or unsafe settings.
-8. **Rollback failure** — an update leaving the user without a working network configuration.
-9. **Dependency compromise** — unnecessary third-party packages increasing supply-chain surface.
-10. **Over-broad traffic interception** — applying an engine to resources/apps the user did not intend.
+1. **Компрометация цепочки обновлений** — установка неожиданного, подменённого или модифицированного движка либо обновления.
+2. **Повышение привилегий через интерфейс** — попадание недоверенных данных из UI или конфигурации в привилегированную системную службу.
+3. **Инъекция команд или аргументов** — превращение стратегии или импортированного профиля в возможность выполнить произвольную команду.
+4. **Подмена локального IPC-клиента** — отправка привилегированных команд NetPilot другим локальным процессом.
+5. **Path traversal и небезопасная распаковка** — запись файлов за пределами разрешённых каталогов через специально подготовленный архив обновления или резервной копии.
+6. **Утечка секретов** — попадание секретов прокси, паролей, токенов или иных пользовательских данных в журналы и резервные копии.
+7. **Вредоносный импорт** — использование файлов `.npb` или `.npconfig` для эксплуатации ошибок парсера или применения опасных настроек.
+8. **Ошибка отката** — ситуация, когда неудачное обновление оставляет пользователя без рабочей сетевой конфигурации.
+9. **Компрометация зависимостей** — увеличение поверхности атаки из-за ненужных сторонних библиотек или уязвимой зависимости.
+10. **Слишком широкая обработка трафика** — применение движка к ресурсам или приложениям, которые пользователь не выбирал.
+11. **Утечка через диагностику** — случайное включение чувствительных данных в отчёт, который пользователь решил отправить вручную.
+12. **Небезопасное восстановление** — восстановление повреждённой, устаревшей или подменённой резервной копии без предварительной проверки.
 
-## Required controls
+## Обязательные меры защиты
 
-- The desktop UI normally runs unelevated.
-- Privileged operations use explicit typed commands, not shell strings.
-- The privileged endpoint must authenticate/authorize the local caller and restrict its ACL/permissions.
-- Engine arguments are built from validated fields and allowlisted options.
-- User-created strategies cannot execute programs, PowerShell, cmd, bash or arbitrary scripts.
-- GitHub repositories used for automatic update discovery are explicitly allowlisted.
-- Downloaded releases are verified against upstream-provided integrity metadata when available; NetPilot releases should additionally be signed when signing infrastructure is introduced.
-- Archive extraction uses canonical-path checks and rejects links/path traversal.
-- Backup secrets are excluded by default. If included in a portable backup, authenticated encryption and a user password are mandatory.
-- Logs contain technical events only: version, engine state, strategy identifier, diagnostic code and timing. Never traffic payloads, cookies, tokens, credentials or browsing history.
-- Imported configuration is schema-versioned, size-limited and validated before it can affect engines.
-- Automatic backups are created before risky changes; the last 10 are retained by default.
-- Engine updates are staged and support rollback.
-- Resource health checks and strategy routing are separate concepts so a health-check URL cannot silently broaden traffic interception.
+- Графический интерфейс настольной версии в обычном режиме работает без повышенных привилегий.
+- Все привилегированные действия выполняются через отдельный системный компонент с минимально необходимыми правами.
+- Для привилегированных операций используются строго определённые типизированные команды, а не строки shell-команд.
+- Привилегированный IPC-канал обязан проверять и авторизовывать локального клиента и иметь ограниченные ACL/права доступа.
+- Аргументы сетевых движков формируются только из проверенных полей и разрешённого набора параметров.
+- Пользовательские стратегии не могут запускать программы, PowerShell, `cmd`, Bash или произвольные скрипты.
+- Репозитории GitHub, используемые для автоматического обнаружения обновлений, включаются в явный белый список.
+- Загруженные релизы проверяются по метаданным целостности, опубликованным исходным проектом, если такие данные доступны.
+- Релизы самого NetPilot в дальнейшем должны дополнительно получать цифровую подпись после внедрения инфраструктуры подписания.
+- Распаковка архивов выполняется только после проверки канонических путей. Ссылки и попытки выхода за пределы целевой директории отклоняются.
+- Секретные параметры исключаются из переносимых резервных копий по умолчанию.
+- Если пользователь явно включает секретные данные в переносимую копию, обязательны пароль и аутентифицированное шифрование.
+- Журналы содержат только технические события: версию, состояние движка, идентификатор стратегии, диагностический код и время выполнения.
+- В журналы запрещено записывать содержимое сетевого трафика, cookie, токены, пароли, учётные данные и историю посещений.
+- Импортируемая конфигурация имеет версию схемы, ограничение размера и полностью проверяется до того, как сможет повлиять на движок.
+- Перед потенциально опасными изменениями автоматически создаётся резервная копия; по умолчанию сохраняются последние 10 копий.
+- Обновления движков устанавливаются поэтапно и должны поддерживать откат.
+- Проверка доступности ресурса и область маршрутизации являются отдельными понятиями, поэтому URL проверки не может незаметно расширить область обработки трафика.
+- Никакая телеметрия и диагностическая информация не передаются автоматически.
+- Перед ручной отправкой отчёта пользователь должен иметь возможность просмотреть его содержимое.
 
-## Security review gates
+## Принцип минимальных прав
 
-Before the first public executable:
+Каждый компонент получает только те разрешения, которые необходимы для его конкретной задачи.
 
-- threat-model review;
-- static analysis with zero known critical/high findings;
-- dependency vulnerability audit;
-- archive/import fuzz tests for parsers;
-- IPC authorization tests;
-- update-integrity negative tests;
-- backup encryption tests;
-- logs reviewed for sensitive-data leakage;
-- uninstall/factory-reset tests.
+`NetPilot.App` не должен обладать постоянными административными правами. `NetPilot.Service` не должен предоставлять универсальный интерфейс запуска процессов. Сетевые движки не должны получать доступ к пользовательским данным, которые не требуются для их работы.
+
+## Граница доверия между интерфейсом и службой
+
+Графическое приложение считается менее доверенным компонентом по отношению к системной службе. Даже если запрос поступил от собственного UI NetPilot, служба обязана самостоятельно:
+
+- проверить тип операции;
+- проверить параметры;
+- убедиться, что операция входит в разрешённый набор;
+- отклонить неизвестные или некорректные поля;
+- проверить локального отправителя;
+- вести минимальный технический журнал результата операции без сохранения чувствительных данных.
+
+## Проверки перед первым публичным исполняемым релизом
+
+До публикации первой стабильной бинарной версии должны быть выполнены:
+
+- повторная проверка модели угроз;
+- статический анализ без известных критических и высоких уязвимостей;
+- аудит уязвимостей зависимостей;
+- fuzz-тестирование парсеров архивов и импортируемых конфигураций;
+- тесты авторизации IPC;
+- отрицательные тесты проверки целостности обновлений;
+- тесты шифрования и расшифровки резервных копий;
+- проверка журналов на отсутствие чувствительных данных;
+- тесты отката после неудачного обновления;
+- тесты удаления программы;
+- тесты мягкого и полного заводского сброса;
+- тесты восстановления отдельного движка;
+- проверка поведения при повреждённой или подменённой резервной копии.
+
+## Проверка безопасности в ходе разработки
+
+Безопасность должна пересматриваться при каждом существенном изменении следующих областей:
+
+- IPC и системные службы;
+- обновления;
+- импорт и экспорт;
+- резервное копирование;
+- пользовательские стратегии;
+- добавление нового сетевого движка;
+- изменение области обработки трафика;
+- добавление новой платформы.
+
+Если новое решение заметно расширяет поверхность атаки, оно не должно приниматься автоматически: сначала документируются риски, предлагаются более безопасные варианты и только после этого принимается архитектурное решение.
