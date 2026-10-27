@@ -1,58 +1,74 @@
-# NetPilot architecture (bootstrap)
+# Архитектура NetPilot
 
-## Product model
+## Модель продукта
 
-NetPilot has two user experiences:
+NetPilot предусматривает два уровня взаимодействия с пользователем:
 
-- **Simple mode**: status of Discord, YouTube, Telegram and user-added resources.
-- **Advanced mode**: engines, strategies, laboratory, diagnostics, logs, sources and update details.
+- **Обычный режим** — показывает состояние Discord, YouTube, Telegram и добавленных пользователем ресурсов.
+- **Расширенный режим** — предоставляет доступ к движкам, стратегиям, лаборатории, диагностике, журналам, источникам компонентов и подробностям обновлений.
 
-The simple mode must never require knowledge of WinDivert, winws, MTProto or strategy syntax.
+Обычный режим не должен требовать от пользователя знания WinDivert, `winws`, MTProto, синтаксиса стратегий или других внутренних технических деталей.
 
-## Layering
+## Основные уровни архитектуры
 
 ### NetPilot.App
-Cross-platform Avalonia UI. It must not perform privileged network/system changes directly.
+Кроссплатформенный интерфейс на Avalonia. Этот компонент не должен напрямую выполнять привилегированные сетевые или системные изменения.
 
 ### NetPilot.Core
-Platform-neutral models and orchestration: resources, health status, profiles and later strategy scoring.
+Независимые от платформы модели и оркестрация: ресурсы, состояние доступности, профили, правила автоматизации и в дальнейшем система оценки стратегий.
 
 ### NetPilot.Engine.Abstractions
-Common contract for network engines. Engine implementations must be replaceable without changing Core.
+Общий контракт сетевых движков. Реализации движков должны заменяться без изменения `NetPilot.Core`.
 
 ### NetPilot.Platform.Abstractions
-Capabilities supplied by Windows/Linux/Android adapters.
+Общие контракты возможностей, которые предоставляются платформенными адаптерами Windows, Linux и Android.
 
 ### NetPilot.Platform.Windows
-First platform adapter. Later Windows privileged operations will be moved behind a dedicated service boundary.
+Первый платформенный адаптер. Все привилегированные операции Windows должны выполняться через отдельную границу системной службы, а не непосредственно из графического приложения.
 
 ### NetPilot.Security
-Validation and authorization primitives. This layer intentionally exposes capabilities/structured operations instead of arbitrary process or shell execution.
+Проверка входных данных, авторизация и ограничения привилегированных действий. Этот слой предоставляет только строго определённые возможности и структурированные операции и не допускает произвольного запуска процессов или shell-команд.
 
 ### NetPilot.Backup
-Backup manifest, import/export and later authenticated encryption for secret-containing portable backups.
+Резервное копирование, манифест копии, импорт и экспорт конфигурации, а в дальнейшем — аутентифицированное шифрование переносимых резервных копий, содержащих секретные параметры.
 
 ### NetPilot.Updater
-Trusted upstream definitions, release metadata verification and staged/rollback updates.
+Описание доверенных источников, проверка метаданных релизов, контроль целостности, поэтапная установка обновлений и возможность отката.
 
-## Planned platform architecture
+## Планируемая архитектура по платформам
 
-Windows:
+### Windows
 
-NetPilot.App -> authenticated local IPC -> NetPilot.Service -> Windows engine adapters
+`NetPilot.App → защищённый локальный IPC → NetPilot.Service → адаптеры сетевых движков Windows`
 
-Linux:
+Графическое приложение работает без постоянных прав администратора. Привилегированная служба принимает только разрешённый набор типизированных операций.
 
-NetPilot.App -> authenticated local IPC -> NetPilot daemon/systemd -> Linux engine adapters
+### Linux
 
-Android:
+`NetPilot.App → защищённый локальный IPC → демон NetPilot / systemd → адаптеры сетевых движков Linux`
 
-NetPilot.App -> Android foreground service / VpnService where required -> Android engine adapters
+Общий Core и пользовательская логика сохраняются, а системные операции реализуются отдельным Linux-адаптером.
 
-## Strategy model
+### Android
 
-Official upstream BAT/shell files may be parsed as an input source, but NetPilot's internal strategy representation must be structured data. User strategies must never become arbitrary executable scripts.
+`NetPilot.App → foreground service / VpnService при необходимости → адаптеры сетевых движков Android`
 
-## Data privacy
+Android-версия использует общую модель ресурсов и автоматизации, но сетевой слой реализуется с учётом модели безопасности и ограничений Android.
 
-All configuration, strategy history, health results and backups are local by default. No telemetry or diagnostic upload occurs without explicit user action.
+## Модель стратегий
+
+Официальные BAT- или shell-файлы внешних проектов могут использоваться как входной источник при импорте или разборе стратегии, однако внутренняя модель стратегии NetPilot должна состоять из структурированных данных.
+
+Пользовательская стратегия не должна превращаться в произвольный исполняемый скрипт. Запрещается хранить или передавать через стратегию произвольные команды `cmd`, PowerShell, Bash или другого интерпретатора команд.
+
+## Разделение ресурсов и маршрутизации
+
+Проверка доступности ресурса и правила обработки его трафика являются разными сущностями. Добавление URL для проверки состояния не должно автоматически расширять область сетевой обработки.
+
+Это особенно важно для пользовательских ресурсов: пользователь отдельно определяет, что проверять, и отдельно — к каким доменам или приложениям разрешено применять конкретный движок.
+
+## Конфиденциальность данных
+
+Настройки, история стратегий, результаты проверок, профили и резервные копии по умолчанию хранятся только локально.
+
+NetPilot не отправляет телеметрию, журналы или диагностические данные автоматически. Любая внешняя передача информации возможна только после явного действия пользователя и должна позволять заранее просмотреть передаваемые сведения.
