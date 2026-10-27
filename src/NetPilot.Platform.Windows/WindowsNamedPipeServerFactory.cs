@@ -41,8 +41,6 @@ public sealed class WindowsNamedPipeServerFactory
             PipeOptions.Asynchronous | PipeOptions.WriteThrough,
             inBufferSize: IpcProtocol.MaxMessageBytes,
             outBufferSize: IpcProtocol.MaxMessageBytes,
-            security,
-            HandleInheritability.None,
-            PipeAccessRights.None);
+            security);
     }
 }
