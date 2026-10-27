@@ -4,6 +4,10 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="System.IO.Pipes.AccessControl" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../NetPilot.Ipc/NetPilot.Ipc.csproj" />
     <ProjectReference Include="../NetPilot.Platform.Abstractions/NetPilot.Platform.Abstractions.csproj" />
     <ProjectReference Include="../NetPilot.Security/NetPilot.Security.csproj" />
   </ItemGroup>
