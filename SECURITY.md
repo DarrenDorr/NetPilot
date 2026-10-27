@@ -1,7 +1,11 @@
-# Security policy
+# Политика безопасности
 
-NetPilot is not yet production-ready.
+NetPilot пока находится на раннем этапе разработки и не готов к использованию как стабильный производственный продукт.
 
-If you discover a security issue during development, do not include secrets, access tokens, credentials, private logs or traffic captures in a public report. Provide the smallest reproducible technical description possible.
+Если во время разработки вы обнаружили уязвимость или другую проблему безопасности, не публикуйте в открытом отчёте секреты, токены доступа, пароли, учётные данные, приватные журналы, содержимое сетевого трафика или иные чувствительные сведения.
 
-A private vulnerability-reporting channel will be configured before the first public binary release.
+В открытом сообщении следует указывать только минимально необходимое техническое описание, позволяющее воспроизвести проблему без раскрытия пользовательских данных.
+
+До выпуска первой публичной бинарной версии NetPilot будет настроен отдельный приватный канал для ответственного сообщения об уязвимостях.
+
+Подробные принципы проектирования безопасности описаны в документе [docs/SECURITY-MODEL.md](docs/SECURITY-MODEL.md).
