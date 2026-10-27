@@ -1,6 +1,8 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:NetPilot.App.ViewModels"
         x:Class="NetPilot.App.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
         Title="{Binding Title}"
         Width="860"
         Height="620"
@@ -9,7 +11,7 @@
   <Grid RowDefinitions="Auto,*" Margin="28">
     <StackPanel Spacing="6">
       <TextBlock Text="NetPilot" FontSize="30" FontWeight="SemiBold" />
-      <TextBlock Text="Open-source network access manager" Opacity="0.66" />
+      <TextBlock Text="Открытый менеджер сетевого доступа" Opacity="0.66" />
     </StackPanel>
 
     <StackPanel Grid.Row="1" Margin="0,34,0,0" Spacing="16">
