@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../NetPilot.Core/NetPilot.Core.csproj" />
+    <ProjectReference Include="../NetPilot.Security/NetPilot.Security.csproj" />
+  </ItemGroup>
+</Project>

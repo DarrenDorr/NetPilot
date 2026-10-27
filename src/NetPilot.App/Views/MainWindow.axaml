@@ -1,0 +1,26 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="NetPilot.App.Views.MainWindow"
+        Title="{Binding Title}"
+        Width="860"
+        Height="620"
+        MinWidth="720"
+        MinHeight="520">
+  <Grid RowDefinitions="Auto,*" Margin="28">
+    <StackPanel Spacing="6">
+      <TextBlock Text="NetPilot" FontSize="30" FontWeight="SemiBold" />
+      <TextBlock Text="Open-source network access manager" Opacity="0.66" />
+    </StackPanel>
+
+    <StackPanel Grid.Row="1" Margin="0,34,0,0" Spacing="16">
+      <Border Padding="20" CornerRadius="14" BorderThickness="1">
+        <StackPanel Spacing="8">
+          <TextBlock Text="Общее состояние" FontSize="16" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding OverallStatus}" FontSize="22" />
+        </StackPanel>
+      </Border>
+
+      <TextBlock Text="Первый каркас. Сетевые движки ещё не подключены." Opacity="0.66" />
+    </StackPanel>
+  </Grid>
+</Window>
