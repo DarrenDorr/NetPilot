@@ -1,0 +1,191 @@
+name: Native Candidate Windows Compile Smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/native-candidate-windows-compile-smoke.yml"
+      - "security/native-admission/patches/zapret2-r28/**"
+      - "docs/ZAPRET2-*.md"
+
+permissions:
+  contents: read
+
+jobs:
+  zapret2-windows-x64-compile-smoke:
+    name: Compile patched winws2 x64 without execution
+    runs-on: windows-2025
+    timeout-minutes: 25
+
+    steps:
+      - name: Configure Git line endings
+        shell: pwsh
+        run: git config --global core.autocrlf input
+
+      - name: Checkout NetPilot without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: netpilot
+          persist-credentials: false
+
+      - name: Checkout exact zapret2 UAF-fix source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: bol-van/zapret2
+          ref: 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d
+          fetch-depth: 2
+          path: zapret2
+          persist-credentials: false
+
+      - name: Checkout exact LuaJIT source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: openresty/luajit2
+          ref: dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc
+          fetch-depth: 1
+          path: luajit2
+          persist-credentials: false
+
+      - name: Verify anchors and apply reviewed NetPilot patches
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C zapret2 rev-parse HEAD).Trim() -ne '4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d') { throw 'Unexpected zapret2 commit' }
+          if ((git -C zapret2 rev-parse HEAD^).Trim() -ne '221d7dff24bfec0cd5ac0a5070b8acef2008af3d') { throw 'Unexpected zapret2 parent' }
+          if ((git -C luajit2 rev-parse HEAD).Trim() -ne 'dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc') { throw 'Unexpected LuaJIT commit' }
+
+          $patches = @(
+            '0001-explicit-conntrack-feed-result.patch',
+            '0002-bounded-conntrack-resource-result.patch',
+            '0003-bounded-delayed-queue-bytes.patch'
+          )
+          foreach ($patch in $patches) {
+            $path = Join-Path $PWD "netpilot\security\native-admission\patches\zapret2-r28\$patch"
+            git -C zapret2 apply --check $path
+            if ($LASTEXITCODE -ne 0) { throw "Patch check failed: $patch" }
+            git -C zapret2 apply $path
+            if ($LASTEXITCODE -ne 0) { throw "Patch apply failed: $patch" }
+          }
+
+      - name: Install signed Cygwin compiler dependencies
+        uses: cygwin/cygwin-install-action@006ad0b0946ca6d0a3ea2d4437677fa767392401 # v4 exact commit
+        with:
+          platform: x86_64
+          check-sig: 'true'
+          add-to-path: false
+          packages: >-
+            gcc-core
+            make
+            zlib-devel
+
+      - name: Build exact LuaJIT to isolated staging directory
+        id: luajit_build
+        continue-on-error: true
+        shell: C:\cygwin\bin\bash.exe -eo pipefail '{0}'
+        run: >-
+          export CYGWIN_NOWINPATH=1 &&
+          export WORK="$(cygpath -u "$GITHUB_WORKSPACE")" &&
+          export DEPS="$WORK/deps" &&
+          mkdir -p "$WORK/evidence" "$DEPS" &&
+          cd "$WORK/luajit2" &&
+          make clean 2>&1 | tee "$WORK/evidence/luajit-clean.log" &&
+          make BUILDMODE=static XCFLAGS="-DLUAJIT_USE_SYSMALLOC -DLUAJIT_DISABLE_FFI -ffat-lto-objects" TARGET_CFLAGS="-Os -flto=auto -ffunction-sections -fdata-sections" TARGET_LDFLAGS="-Wl,--gc-sections -flto=auto" 2>&1 | tee "$WORK/evidence/luajit-build.log" &&
+          make install PREFIX=/usr/local DESTDIR="$DEPS" 2>&1 | tee "$WORK/evidence/luajit-install.log" &&
+          test -f "$DEPS/usr/local/lib/libluajit-5.1.a"
+
+      - name: Build patched winws2 without running it
+        id: winws_build
+        if: steps.luajit_build.outcome == 'success'
+        continue-on-error: true
+        shell: C:\cygwin\bin\bash.exe -eo pipefail '{0}'
+        run: >-
+          export CYGWIN_NOWINPATH=1 &&
+          export WORK="$(cygpath -u "$GITHUB_WORKSPACE")" &&
+          export DEPS="$WORK/deps/usr/local" &&
+          mkdir -p "$WORK/evidence" &&
+          cd "$WORK/zapret2" &&
+          export CFLAGS="-DZAPRET_GH_VER=netpilot-r28-windows-compile-smoke -DZAPRET_GH_HASH=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d" &&
+          make -C nfq2 clean 2>&1 | tee "$WORK/evidence/winws-clean.log" &&
+          make -C nfq2 cygwin LUA_JIT=1 LUA_CFLAGS="-I$DEPS/include/luajit-2.1" LUA_LIB="-L$DEPS/lib -lluajit-5.1" 2>&1 | tee "$WORK/evidence/winws-build.log" &&
+          test -f nfq2/winws2.exe
+
+      - name: Inventory result and remove candidate binary
+        if: always()
+        shell: pwsh
+        env:
+          LUAJIT_BUILD_OUTCOME: ${{ steps.luajit_build.outcome }}
+          WINWS_BUILD_OUTCOME: ${{ steps.winws_build.outcome }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path evidence | Out-Null
+
+          $exe = Join-Path $PWD 'zapret2\nfq2\winws2.exe'
+          $exeHash = 'not-produced'
+          $exeSize = 0
+          $fileVersion = ''
+          $productVersion = ''
+          $signatureStatus = 'not-produced'
+          $signer = ''
+          if (Test-Path $exe) {
+            $exeHash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLowerInvariant()
+            $exeSize = (Get-Item $exe).Length
+            $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
+            $fileVersion = $info.FileVersion
+            $productVersion = $info.ProductVersion
+            $sig = Get-AuthenticodeSignature -FilePath $exe
+            $signatureStatus = $sig.Status.ToString()
+            if ($sig.SignerCertificate) { $signer = $sig.SignerCertificate.Subject }
+          }
+
+          $cygwinDll = 'C:\cygwin\bin\cygwin1.dll'
+          $cygwinHash = if (Test-Path $cygwinDll) { (Get-FileHash -Algorithm SHA256 $cygwinDll).Hash.ToLowerInvariant() } else { 'missing' }
+          $cygwinSize = if (Test-Path $cygwinDll) { (Get-Item $cygwinDll).Length } else { 0 }
+
+          @(
+            'schema_version=1'
+            'scope=windows-x64-compile-smoke-only'
+            'candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0003'
+            "luajit_build_outcome=$env:LUAJIT_BUILD_OUTCOME"
+            "winws_build_outcome=$env:WINWS_BUILD_OUTCOME"
+            'zapret2_commit=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d'
+            'luajit_commit=dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc'
+            'runner=windows-2025'
+            "winws2_sha256=$exeHash"
+            "winws2_size=$exeSize"
+            "winws2_file_version=$fileVersion"
+            "winws2_product_version=$productVersion"
+            "winws2_authenticode_status=$signatureStatus"
+            "winws2_signer=$signer"
+            "cygwin1_dll_sha256=$cygwinHash"
+            "cygwin1_dll_size=$cygwinSize"
+            'winws2_executed=false'
+            'windivert_present=false'
+            'windivert_driver_installed=false'
+          ) | Out-File -FilePath evidence\windows-x64-compile-smoke.txt -Encoding ascii
+
+          if (Test-Path $exe) { Remove-Item -Force $exe }
+          if (Test-Path $exe) { throw 'Candidate binary was not removed' }
+
+          Get-ChildItem evidence -File | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          } | Out-File -FilePath evidence\SHA256SUMS.txt -Encoding ascii
+
+      - name: Upload text evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zapret2-r28-windows-x64-compile-smoke-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce build success after evidence upload
+        if: always()
+        shell: pwsh
+        env:
+          LUAJIT_BUILD_OUTCOME: ${{ steps.luajit_build.outcome }}
+          WINWS_BUILD_OUTCOME: ${{ steps.winws_build.outcome }}
+        run: |
+          if ($env:LUAJIT_BUILD_OUTCOME -ne 'success') { throw 'LuaJIT build did not succeed' }
+          if ($env:WINWS_BUILD_OUTCOME -ne 'success') { throw 'winws2 build did not succeed' }
