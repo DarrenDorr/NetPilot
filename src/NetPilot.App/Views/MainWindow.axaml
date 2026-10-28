@@ -45,7 +45,7 @@
                     Command="{Binding CheckCommand}"
                     Padding="18,10"
                     HorizontalAlignment="Stretch" />
-            <Button Content="Подобрать стратегию"
+            <Button Content="Подобрать профиль"
                     Command="{Binding FindStrategyCommand}"
                     Padding="18,10"
                     HorizontalAlignment="Stretch" />
