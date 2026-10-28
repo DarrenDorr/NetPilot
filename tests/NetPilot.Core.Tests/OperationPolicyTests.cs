@@ -5,9 +5,13 @@ namespace NetPilot.Core.Tests;
 public sealed class OperationPolicyTests
 {
     [Fact]
-    public void Known_privileged_operation_is_explicitly_allowed()
+    public void All_privileged_operations_are_denied_by_default()
     {
         var policy = new OperationPolicy();
-        Assert.True(policy.IsAllowed(PrivilegedOperation.EngineStart));
+
+        foreach (var operation in Enum.GetValues<PrivilegedOperation>())
+        {
+            Assert.False(policy.IsAllowed(operation));
+        }
     }
 }
