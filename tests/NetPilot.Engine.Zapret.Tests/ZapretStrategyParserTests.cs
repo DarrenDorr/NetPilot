@@ -23,7 +23,7 @@ public sealed class ZapretStrategyParserTests
 
         Assert.Equal("ALT11", strategy.Id);
         Assert.Equal("general (ALT11).bat", strategy.SourceFileName);
-        Assert.Equal(7, strategy.Arguments.Count);
+        Assert.Equal(8, strategy.Arguments.Count);
         Assert.Contains("${GameFilterTcp}", strategy.Arguments[0].ToDisplayString());
         Assert.Contains("${Lists}", strategy.Arguments[2].ToDisplayString());
         Assert.Contains("${EngineBin}", strategy.Arguments[4].ToDisplayString());
