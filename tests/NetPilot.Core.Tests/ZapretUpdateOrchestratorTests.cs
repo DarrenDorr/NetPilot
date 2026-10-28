@@ -90,7 +90,7 @@ public sealed class ZapretUpdateOrchestratorTests
         var exception = await Assert.ThrowsAsync<UpdateSecurityException>(
             () => fixture.Orchestrator.ApplyLatestAsync(TestContext.Current.CancellationToken));
 
-        Assert.Equal("Sha256Mismatch", exception.Code);
+        Assert.Equal("DigestMismatch", exception.Code);
         Assert.Equal(0, fixture.RuntimeGate.StopCalls);
         Assert.False(Directory.Exists(Path.Combine(fixture.EngineRoot, "current")));
     }
