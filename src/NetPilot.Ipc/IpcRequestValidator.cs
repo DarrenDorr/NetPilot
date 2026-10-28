@@ -32,11 +32,15 @@ public static class IpcRequestValidator
             IpcCommand.ZapretListStrategies when request.StrategyId is null => IpcValidationResult.Valid(),
             IpcCommand.ZapretGetStatus when request.StrategyId is null => IpcValidationResult.Valid(),
             IpcCommand.ZapretStop when request.StrategyId is null => IpcValidationResult.Valid(),
+            IpcCommand.ZapretGetInstallationStatus when request.StrategyId is null => IpcValidationResult.Valid(),
+            IpcCommand.ZapretInstallOrUpdateOfficialLatest when request.StrategyId is null => IpcValidationResult.Valid(),
             IpcCommand.ZapretStartStrategy => ValidateStrategyId(request.StrategyId),
             IpcCommand.Ping => UnexpectedStrategyId(),
             IpcCommand.ZapretListStrategies => UnexpectedStrategyId(),
             IpcCommand.ZapretGetStatus => UnexpectedStrategyId(),
             IpcCommand.ZapretStop => UnexpectedStrategyId(),
+            IpcCommand.ZapretGetInstallationStatus => UnexpectedStrategyId(),
+            IpcCommand.ZapretInstallOrUpdateOfficialLatest => UnexpectedStrategyId(),
             _ => IpcValidationResult.Invalid(
                 "UnknownCommand",
                 "Указана неизвестная IPC-команда.")
@@ -83,6 +87,8 @@ public interface IPrivilegedServiceClient
     Task<IpcResponse> PingAsync(CancellationToken cancellationToken = default);
     Task<IpcResponse> ListZapretStrategiesAsync(CancellationToken cancellationToken = default);
     Task<IpcResponse> GetZapretStatusAsync(CancellationToken cancellationToken = default);
+    Task<IpcResponse> GetZapretInstallationStatusAsync(CancellationToken cancellationToken = default);
+    Task<IpcResponse> InstallOrUpdateOfficialZapretLatestAsync(CancellationToken cancellationToken = default);
     Task<IpcResponse> StartZapretStrategyAsync(
         string strategyId,
         CancellationToken cancellationToken = default);
