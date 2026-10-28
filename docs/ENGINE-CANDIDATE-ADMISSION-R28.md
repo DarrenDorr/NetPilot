@@ -130,15 +130,32 @@ DPIBreak v0.6.2 имеет сильные признаки release provenance:
 
 **Не форкать сейчас.** Отслеживать upstream как secondary HTTPS/YouTube fallback; выполнять controlled admission точного tagged release.
 
-## R28.2 — следующий gate: controlled build evidence
+## R28.2 — controlled provenance/build gate
 
-R28.2 начинается с zapret2, потому что именно он выбран первичным fork-кандидатом.
+Документ: `docs/ZAPRET2-CONTROLLED-BUILD-R28.2.md`.
 
-Нужно:
+Первый R28.2 gate уже добавлен как:
+
+`.github/workflows/native-candidate-provenance.yml`.
+
+Он **не компилирует и не запускает native code**. Его задача — доказать exact zapret2 source anchor до применения собственных patch'ей:
+
+- HEAD = `4a330554...`;
+- parent = `221d7dff...`;
+- tree = `5c2a7778...`;
+- delta содержит ровно `nfq2/desync.c`;
+- присутствуют ожидаемые строки UAF fix;
+- создаётся evidence artifact с SHA-256.
+
+Workflow имеет только `contents: read`, checkout выполняется без сохранения credentials, actions pin'нуты по full commit SHA, runner — `ubuntu-24.04`.
+
+### Следующий R28.2 patch gate
+
+После source provenance:
 
 1. сформировать exact source tree `v1.0.6 + 4a330554...`;
-2. реализовать минимальный resource-hardening patchset;
-3. pin GitHub Actions по immutable full SHA;
+2. подготовить минимальный resource-hardening patchset;
+3. `git apply --check` и source assertions выполнять до компиляции;
 4. pin exact compiler/Cygwin/Lua/LuaJIT/WinDivert inputs и SHA-256 до использования;
 5. собрать Windows x64 candidate в controlled CI;
 6. сформировать build manifest/SBOM и SHA-256 каждого EXE/DLL/SYS;
@@ -197,4 +214,4 @@ ByeDPI controlled patchset/build идёт вторым потоком после
 
 R28.1 static decision зафиксирован для всех трёх кандидатов. Все они остаются `REVIEW / gate BLOCK` и **не исполняются NetPilot**.
 
-Следующий рабочий этап — **R28.2: controlled zapret2 fork build + resource hardening evidence**.
+R28.2 начат с отдельного immutable source-provenance gate для zapret2. Следующий шаг — подтверждённый CI evidence этого gate и минимальный resource-hardening patch series.
