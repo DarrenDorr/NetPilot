@@ -47,12 +47,12 @@ public sealed class ZapretUpdateOrchestrator
         var downloadRoot = Path.Combine(_stagingBaseRoot, $"txn-{transactionId}-download");
         var extractRoot = Path.Combine(_stagingBaseRoot, $"txn-{transactionId}-extract");
 
-        CreateTransactionRoot(downloadRoot);
-        CreateTransactionRoot(extractRoot);
-
         ZapretInstallResult installResult;
         try
         {
+            CreateTransactionRoot(downloadRoot);
+            CreateTransactionRoot(extractRoot);
+
             var downloadedPath = await _releaseSource.DownloadVerifiedAssetAsync(
                 release,
                 downloadRoot,
