@@ -1,0 +1,44 @@
+schema_version: 1
+component_set: zapret2-v1.0.6-candidate
+admission_status: REVIEW
+release_gate: BLOCK
+reviewed_at: 2026-10-28
+
+upstream:
+  repository: https://github.com/bol-van/zapret2
+  release_tag: v1.0.6
+  release_published_at: 2026-10-21T09:38:28Z
+  release_immutable: false
+  archive:
+    name: zapret2-v1.0.6.zip
+    sha256: e141b51b60c895fe9548f4d644365461dcad8155e068d284a9aae1724504237d
+    size_bytes: 9970350
+    source: https://github.com/bol-van/zapret2/releases/download/v1.0.6/zapret2-v1.0.6.zip
+
+policy:
+  candidate_only: true
+  may_execute: false
+  may_integrate: false
+  activation_requires_admit: true
+  unknown_is_pass: false
+  executable_from_user_writable_path_allowed: false
+  version_drift_requires_readmission: true
+
+checks_required:
+  - Verify exact release archive SHA-256 and size.
+  - Reject unsafe ZIP entry paths and symlink/reparse-like entries.
+  - Enumerate every EXE/DLL/SYS file in the archive.
+  - Record component SHA-256, PE version metadata and Authenticode status without executing any downloaded file.
+  - Identify the Windows x64 packet-processing executable and all native runtime/driver dependencies.
+  - Establish authoritative upstream provenance for each privileged/native executable component.
+  - Review current upstream issues, advisories, CVE/NVD/OSV/CISA KEV applicability.
+  - Compare command-line/config surface against NetPilot strategy allowlist; do not expose arbitrary upstream command language.
+  - Review cleanup/rollback behavior for crash, stop and uninstall.
+  - Only after all checks may admission_status become ADMIT.
+
+evidence:
+  - Official GitHub release API identifies v1.0.6 as published 2026-10-21 and reports zapret2-v1.0.6.zip SHA-256 e141b51b60c895fe9548f4d644365461dcad8155e068d284a9aae1724504237d.
+
+notes:
+  - This candidate was opened because the existing zapret1 v72.9 component set is BLOCKED and zapret1 is EOL.
+  - This file does not approve installation, execution, bundling or activation of zapret2.
