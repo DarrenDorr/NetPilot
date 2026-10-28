@@ -46,7 +46,7 @@ jobs:
           echo "af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff  $patch_dir/0001-explicit-conntrack-feed-result.patch" | sha256sum -c -
           echo "a3531211626ce602a3b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783  $patch_dir/0002-bounded-conntrack-resource-result.patch" | sha256sum -c -
           echo "33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68  $patch_dir/0003-bounded-delayed-queue-bytes.patch" | sha256sum -c -
-          echo "dd22de05235807f1b2c1400774f6e4605c96c0ebc07b5e5ac4aa56efefd4849c  $patch_dir/0004-explicit-daemon-stdio-redirection.patch" | sha256sum -c -
+          echo "df4bef5487febac8c4b3a55c85e939fdd6f57fb7b481d80bcc7962498303e4d0  $patch_dir/0004-explicit-daemon-stdio-redirection.patch" | sha256sum -c -
 
           for patch in \
             0001-explicit-conntrack-feed-result.patch \
@@ -132,7 +132,7 @@ jobs:
             echo 'candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0004'
             echo 'source_commit=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d'
             echo 'source_parent=221d7dff24bfec0cd5ac0a5070b8acef2008af3d'
-            echo 'patch_0004_sha256=dd22de05235807f1b2c1400774f6e4605c96c0ebc07b5e5ac4aa56efefd4849c'
+            echo 'patch_0004_sha256=df4bef5487febac8c4b3a55c85e939fdd6f57fb7b481d80bcc7962498303e4d0'
             echo "analyzer_outcome=$ANALYZER_OUTCOME"
             echo "sanitizer_compile_outcome=$SANITIZER_COMPILE_OUTCOME"
             echo "compiler=$(gcc --version | head -n1)"
