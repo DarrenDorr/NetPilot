@@ -54,6 +54,14 @@ public static partial class ZapretStrategyCatalog
             throw new DirectoryNotFoundException("Каталог движка Zapret не найден.");
         }
 
+        var rootAttributes = File.GetAttributes(root);
+        if ((rootAttributes & FileAttributes.ReparsePoint) != 0)
+        {
+            throw new ZapretStrategyParseException(
+                "UnsafeEngineRoot",
+                "Корневой каталог движка не может быть символической ссылкой или reparse-point.");
+        }
+
         var result = new List<string>();
 
         foreach (var path in Directory.EnumerateFiles(root, "general*.bat", SearchOption.TopDirectoryOnly))
