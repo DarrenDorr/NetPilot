@@ -6,10 +6,14 @@ public sealed record ZapretInstallResult(
 
 public sealed class ZapretTransactionalInstaller
 {
+    private const string UpdateLockFileName = ".netpilot-update.lock";
+
     private readonly string _baseRoot;
     private readonly string _currentRoot;
     private readonly string _previousRoot;
     private readonly string _rollbackPendingRoot;
+    private readonly string _stagingBaseRoot;
+    private readonly string _updateLockPath;
 
     public ZapretTransactionalInstaller(string engineBaseRoot)
     {
@@ -20,6 +24,8 @@ public sealed class ZapretTransactionalInstaller
         _currentRoot = Path.Combine(_baseRoot, "current");
         _previousRoot = Path.Combine(_baseRoot, "previous");
         _rollbackPendingRoot = Path.Combine(_baseRoot, ".rollback-pending");
+        _stagingBaseRoot = Path.Combine(_baseRoot, ".staging");
+        _updateLockPath = Path.Combine(_baseRoot, UpdateLockFileName);
     }
 
     public async Task<ZapretInstallResult> ApplyAsync(
@@ -31,9 +37,15 @@ public sealed class ZapretTransactionalInstaller
         ArgumentException.ThrowIfNullOrWhiteSpace(extractedStagingRoot);
 
         EnsureDeploymentRoot();
-        RecoverPendingTransaction();
+        using var updateLock = AcquireUpdateLock();
+        RecoverPendingTransactionCore();
 
-        var packageRoot = ZapretPackageLayoutValidator.ResolvePackageRoot(extractedStagingRoot);
+        var stagingRoot = Path.GetFullPath(extractedStagingRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        EnsureProtectedStagingRoot(stagingRoot);
+
+        var packageRoot = ZapretPackageLayoutValidator.ResolvePackageRoot(stagingRoot);
+        EnsurePackageIsInsideProtectedStaging(stagingRoot, packageRoot);
         EnsureSameVolume(packageRoot, _baseRoot);
         EnsurePackageIsOutsideActiveSlots(packageRoot);
 
@@ -115,7 +127,8 @@ public sealed class ZapretTransactionalInstaller
         CancellationToken cancellationToken = default)
     {
         EnsureDeploymentRoot();
-        RecoverPendingTransaction();
+        using var updateLock = AcquireUpdateLock();
+        RecoverPendingTransactionCore();
 
         if (!Directory.Exists(_currentRoot) || !Directory.Exists(_previousRoot))
         {
@@ -165,6 +178,13 @@ public sealed class ZapretTransactionalInstaller
 
     public void RecoverPendingTransaction()
     {
+        EnsureDeploymentRoot();
+        using var updateLock = AcquireUpdateLock();
+        RecoverPendingTransactionCore();
+    }
+
+    private void RecoverPendingTransactionCore()
+    {
         if (!Directory.Exists(_rollbackPendingRoot))
         {
             RecoverPreviousWhenCurrentIsMissing();
@@ -208,6 +228,67 @@ public sealed class ZapretTransactionalInstaller
     {
         Directory.CreateDirectory(_baseRoot);
         RejectReparsePoint(_baseRoot);
+
+        Directory.CreateDirectory(_stagingBaseRoot);
+        RejectReparsePoint(_stagingBaseRoot);
+    }
+
+    private FileStream AcquireUpdateLock()
+    {
+        if (File.Exists(_updateLockPath))
+        {
+            RejectReparsePoint(_updateLockPath);
+        }
+
+        try
+        {
+            return new FileStream(
+                _updateLockPath,
+                FileMode.OpenOrCreate,
+                FileAccess.ReadWrite,
+                FileShare.None,
+                bufferSize: 1,
+                FileOptions.None);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            throw new UpdateSecurityException(
+                "UpdateBusy",
+                "Другая операция установки, восстановления или отката Zapret уже выполняется либо lock-файл недоступен.",
+                exception);
+        }
+    }
+
+    private void EnsureProtectedStagingRoot(string stagingRoot)
+    {
+        var parent = Path.GetDirectoryName(stagingRoot);
+        if (parent is null
+            || !string.Equals(
+                Path.GetFullPath(parent)
+                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                _stagingBaseRoot,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new UpdateSecurityException(
+                "UntrustedStagingRoot",
+                "Пакет обновления должен находиться в отдельном каталоге внутри защищённого .staging NetPilot.");
+        }
+
+        RejectReparsePoint(stagingRoot);
+    }
+
+    private void EnsurePackageIsInsideProtectedStaging(string stagingRoot, string packageRoot)
+    {
+        var fullPackageRoot = Path.GetFullPath(packageRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        if (!IsSameOrChild(fullPackageRoot, stagingRoot)
+            || !IsSameOrChild(fullPackageRoot, _stagingBaseRoot))
+        {
+            throw new UpdateSecurityException(
+                "UntrustedStagingPackage",
+                "Распакованный пакет вышел за пределы защищённого staging-каталога NetPilot.");
+        }
     }
 
     private void ReplacePreviousSlotFromPending()
