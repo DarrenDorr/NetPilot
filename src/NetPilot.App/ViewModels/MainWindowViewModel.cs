@@ -16,6 +16,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly AsyncCommand _checkCommand;
     private readonly AsyncCommand _findStrategyCommand;
     private readonly AsyncCommand _installEngineCommand;
+    private readonly AsyncCommand _clearDiagnosticHistoryCommand;
 
     private string _overallStatus = "Готов к проверке";
     private string _overallDetails = "Проверьте доступность сервисов одной кнопкой.";
@@ -58,6 +59,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             InstallEngineAsync,
             () => !IsBusy && CanInstallEngine,
             HandleUnexpectedError);
+
+        _clearDiagnosticHistoryCommand = new AsyncCommand(
+            ClearDiagnosticHistoryAsync,
+            () => !IsBusy && DiagnosticHistory.Count > 0,
+            HandleUnexpectedError);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -68,6 +74,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public ObservableCollection<ResourceStatusViewModel> Resources { get; }
     public ResourceStatusViewModel Telegram { get; }
     public ObservableCollection<DiagnosticHistoryItemViewModel> DiagnosticHistory { get; } = [];
+    public string DiagnosticHistorySummary => $"Записей в памяти: {_healthHistory.Snapshot().Count}";
 
     public string OverallStatus
     {
@@ -103,6 +110,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 _checkCommand.RaiseCanExecuteChanged();
                 _findStrategyCommand.RaiseCanExecuteChanged();
                 _installEngineCommand.RaiseCanExecuteChanged();
+                _clearDiagnosticHistoryCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -146,6 +154,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public ICommand CheckCommand => _checkCommand;
     public ICommand FindStrategyCommand => _findStrategyCommand;
     public ICommand InstallEngineCommand => _installEngineCommand;
+    public ICommand ClearDiagnosticHistoryCommand => _clearDiagnosticHistoryCommand;
 
     public async Task InitializeAsync()
     {
@@ -169,6 +178,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _healthHistory.Clear();
         DiagnosticHistory.Clear();
         _dashboardService.Dispose();
+    }
+
+    private Task ClearDiagnosticHistoryAsync()
+    {
+        ThrowIfDisposed();
+        _healthHistory.Clear();
+        DiagnosticHistory.Clear();
+        NotifyDiagnosticHistoryChanged();
+        LastAction = "Локальная история диагностики очищена.";
+        return Task.CompletedTask;
     }
 
     private async Task InstallEngineAsync()
@@ -334,6 +353,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             DiagnosticHistory.Add(
                 DiagnosticHistoryItemViewModel.Create(entry, resourceName));
         }
+
+        NotifyDiagnosticHistoryChanged();
+    }
+
+    private void NotifyDiagnosticHistoryChanged()
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DiagnosticHistorySummary)));
+        _clearDiagnosticHistoryCommand.RaiseCanExecuteChanged();
     }
 
     private void ApplyStrategySelectionResult(StrategySelectionResult result)

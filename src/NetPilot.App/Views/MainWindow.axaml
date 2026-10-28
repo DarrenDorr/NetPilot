@@ -117,13 +117,25 @@
               BorderThickness="1"
               BorderBrush="#33808080">
         <StackPanel Spacing="10">
-          <StackPanel Spacing="2">
-            <TextBlock Text="История диагностики" FontSize="16" FontWeight="SemiBold" />
-            <TextBlock Text="Только в памяти · показываются последние 12 записей · URL, IP и содержимое трафика не сохраняются"
-                       FontSize="12"
-                       Opacity="0.58"
-                       TextWrapping="Wrap" />
-          </StackPanel>
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Spacing="2">
+              <TextBlock Text="История диагностики" FontSize="16" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding DiagnosticHistorySummary}"
+                         FontSize="12"
+                         Opacity="0.66" />
+              <TextBlock Text="Только в памяти · показываются последние 12 записей · URL, IP и содержимое трафика не сохраняются"
+                         FontSize="12"
+                         Opacity="0.58"
+                         TextWrapping="Wrap" />
+            </StackPanel>
+
+            <Button Grid.Column="1"
+                    Content="Очистить историю"
+                    Command="{Binding ClearDiagnosticHistoryCommand}"
+                    Margin="16,0,0,0"
+                    Padding="14,8"
+                    VerticalAlignment="Top" />
+          </Grid>
 
           <ItemsControl ItemsSource="{Binding DiagnosticHistory}">
             <ItemsControl.ItemTemplate>
