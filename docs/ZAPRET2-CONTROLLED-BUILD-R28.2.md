@@ -44,9 +44,11 @@ Git commit object подтверждает, что UAF fix имеет ровно
    - переход на `reasm_cancel_rediscover`;
    - восстановление `rdata_payload` на текущий packet;
    - восстановление `rlen_payload` на текущий packet.
-8. Формируется text evidence с source/tree/parent/changed-file/hash metadata.
-9. Формируется exact upstream UAF patch для evidence.
-10. Evidence files получают SHA-256 и загружаются как CI artifact.
+8. Проверяется `git apply --check` первого NetPilot patch к exact tree.
+9. Проверяется, что patch 0001 затрагивает только allowlist файлов `conntrack.c`, `conntrack.h`, `desync.c`, `lua.c`.
+10. Формируется text evidence с source/tree/parent/patch/hash metadata.
+11. Формируются exact upstream UAF patch и копия NetPilot patch 0001 для evidence.
+12. Evidence files получают SHA-256 и загружаются как CI artifact.
 
 Workflow **не запускает zapret2**, не устанавливает WinDivert, не загружает release binary и не меняет network state.
 
@@ -79,18 +81,52 @@ Runner фиксирован как `ubuntu-24.04`, а не `ubuntu-latest`.
 
 Нельзя создавать fork от current `master` и затем пытаться доказать, какие изменения туда попали.
 
+## Conntrack saturation semantics
+
+Отдельный анализ зафиксирован в `docs/ZAPRET2-CONNTRACK-SATURATION-R28.2.md`.
+
+Ключевой вывод: `ConntrackPoolFeed()==false` в текущем main packet path **не означает pass-through**. `play_prolog()` может продолжить без conntrack, подобрать профиль через `dp_find()` и применить stateless desync.
+
+Поэтому простой ресурсный cap, который лишь заставляет `ConntrackPoolFeed()` вернуть `false`, отклонён.
+
+Целевая patch series:
+
+1. patch 0001 — behavior-preserving explicit feed result (`NONE/OK`), без лимита;
+2. patch 0002 — отдельное состояние `RESOURCE_EXHAUSTED` + aggregate conntrack budget;
+3. patch 0003 — delayed queue byte budget.
+
+Только `RESOURCE_EXHAUSTED` должен переводить main path в fail-safe `VERDICT_PASS` до `dp_find()`/desync processing. Обычный `NONE` сохраняет существующую stateless semantics.
+
+## Patch 0001
+
+Путь:
+
+`security/native-admission/patches/zapret2-r28/0001-explicit-conntrack-feed-result.patch`.
+
+Patch 0001:
+
+- не задаёт resource limits;
+- не должен менять packet policy;
+- заменяет неоднозначный `bool` return внутренним `t_conntrack_feed_result`;
+- вводит только `CTRACK_FEED_NONE` и `CTRACK_FEED_OK`;
+- обновляет два известных callers — `desync.c` и `lua.c`;
+- является подготовительным behavior-preserving refactor перед saturation state.
+
+До успешного provenance run его статус — **APPLY_CHECK_REQUIRED**, а не PASS.
+
 ## Следующий patch gate
 
-Первый NetPilot-specific source patch должен решать **bounded resource behavior**, описанный в `docs/ZAPRET2-RESOURCE-HARDENING-R28.1.md`.
+Первый NetPilot-specific resource patch должен решать **bounded resource behavior**, описанный в `docs/ZAPRET2-RESOURCE-HARDENING-R28.1.md`, уже поверх проверенного explicit-result API.
 
-Перед написанием production patch требуется закрепить механизмы отдельно от числовых production thresholds:
+Перед production build требуется:
 
 1. aggregate conntrack entry budget;
-2. delayed packet queue byte accounting;
-3. overflow-safe size checks до allocation/copy;
-4. безопасное поведение при достижении budget: сеть не должна оставаться в зависшем или частично перехваченном состоянии; конкретный `pass-through` для нового flow допускается только после проверки точной семантики всех вызовов `ConntrackPoolFeed`;
-5. отсутствие произвольного LRU eviction активных tracks;
-6. metrics/tests для saturation path.
+2. explicit resource-exhaustion result;
+3. безопасное поведение main path при saturation — `VERDICT_PASS` до profile/desync для нового flow;
+4. отсутствие произвольного LRU eviction активных tracks;
+5. delayed packet queue byte accounting;
+6. overflow-safe size checks до allocation/copy;
+7. metrics/tests для saturation path без IP/hostname/payload logging.
 
 Числовые production limits не выбираются «на глаз». Сначала механизмы должны пройти controlled tests на browser/YouTube/Discord/combined/burst/hostile workloads.
 
@@ -147,12 +183,13 @@ Build не должен доверять:
 
 ## Следующие действия R28.2
 
-1. Получить CI evidence от `Native Candidate Provenance`.
-2. Зафиксировать его run/artifact identity.
-3. Проверить точную семантику всех `ConntrackPoolFeed` call sites и только после этого подготовить bounded-resource patch как отдельный минимальный patch series.
-4. Добавить `git apply --check`/source assertions к exact tree до компиляции.
-5. Зафиксировать controlled Windows build inputs и hashes.
-6. Собрать candidate без его запуска.
-7. Провести native inventory и only-after-build security review.
+1. Получить CI evidence от `Native Candidate Provenance` для exact source + patch 0001.
+2. Зафиксировать run/artifact identity.
+3. После успешного apply-check подготовить patch 0002 с отдельным resource-exhaustion result и aggregate conntrack budget.
+4. Подготовить patch 0003 с delayed queue byte accounting.
+5. Добавить source assertions/tests к patch series до компиляции.
+6. Зафиксировать controlled Windows build inputs и hashes.
+7. Собрать candidate без его запуска.
+8. Провести native inventory и only-after-build security review.
 
 Только после этого можно переходить к sanitizer/fuzz и isolated runtime R28.3.
