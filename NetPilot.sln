@@ -8,6 +8,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetPilot.Core", "src\NetPil
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetPilot.Engine.Abstractions", "src\NetPilot.Engine.Abstractions\NetPilot.Engine.Abstractions.csproj", "{235E224B-2B17-589D-9779-E11BC868A26D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetPilot.Engine.Zapret", "src\NetPilot.Engine.Zapret\NetPilot.Engine.Zapret.csproj", "{C8A9D662-5E2A-4D58-8D6F-3D3B7A15D105}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetPilot.Platform.Abstractions", "src\NetPilot.Platform.Abstractions\NetPilot.Platform.Abstractions.csproj", "{62EDB085-AAED-5CD2-81CA-3A1899342DBE}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetPilot.Platform.Windows", "src\NetPilot.Platform.Windows\NetPilot.Platform.Windows.csproj", "{F57D0A77-9413-5797-8831-5EC0BB927A7C}"
@@ -19,6 +21,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetPilot.Updater", "src\NetPilot.Updater\NetPilot.Updater.csproj", "{CFD3EE54-8696-5E98-AEA5-1E11B96B0B29}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetPilot.Core.Tests", "tests\NetPilot.Core.Tests\NetPilot.Core.Tests.csproj", "{D8847BE1-AD90-587D-9E6E-3365E6214798}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetPilot.Engine.Zapret.Tests", "tests\NetPilot.Engine.Zapret.Tests\NetPilot.Engine.Zapret.Tests.csproj", "{F2C61F31-3E9A-4F83-9B7B-85D7C86AC921}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetPilot.Ipc", "src\NetPilot.Ipc\NetPilot.Ipc.csproj", "{3F480754-93D1-477F-8D51-5DBA1FEE24C8}"
 EndProject
@@ -44,6 +48,10 @@ Global
 		{235E224B-2B17-589D-9779-E11BC868A26D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{235E224B-2B17-589D-9779-E11BC868A26D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{235E224B-2B17-589D-9779-E11BC868A26D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C8A9D662-5E2A-4D58-8D6F-3D3B7A15D105}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C8A9D662-5E2A-4D58-8D6F-3D3B7A15D105}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C8A9D662-5E2A-4D58-8D6F-3D3B7A15D105}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C8A9D662-5E2A-4D58-8D6F-3D3B7A15D105}.Release|Any CPU.Build.0 = Release|Any CPU
 		{62EDB085-AAED-5CD2-81CA-3A1899342DBE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{62EDB085-AAED-5CD2-81CA-3A1899342DBE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{62EDB085-AAED-5CD2-81CA-3A1899342DBE}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -68,6 +76,10 @@ Global
 		{D8847BE1-AD90-587D-9E6E-3365E6214798}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D8847BE1-AD90-587D-9E6E-3365E6214798}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D8847BE1-AD90-587D-9E6E-3365E6214798}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F2C61F31-3E9A-4F83-9B7B-85D7C86AC921}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F2C61F31-3E9A-4F83-9B7B-85D7C86AC921}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F2C61F31-3E9A-4F83-9B7B-85D7C86AC921}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F2C61F31-3E9A-4F83-9B7B-85D7C86AC921}.Release|Any CPU.Build.0 = Release|Any CPU
 		{3F480754-93D1-477F-8D51-5DBA1FEE24C8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{3F480754-93D1-477F-8D51-5DBA1FEE24C8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3F480754-93D1-477F-8D51-5DBA1FEE24C8}.Release|Any CPU.ActiveCfg = Release|Any CPU
