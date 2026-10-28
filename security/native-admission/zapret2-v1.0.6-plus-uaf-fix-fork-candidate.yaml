@@ -38,6 +38,13 @@ policy:
   upstream_master_auto_merge_allowed: false
   automatic_runtime_update_from_upstream_allowed: false
 
+static_review:
+  source_review_document: docs/ZAPRET2-STATIC-ADMISSION-R28.1.md
+  resource_hardening_document: docs/ZAPRET2-RESOURCE-HARDENING-R28.1.md
+  fork_strategy: OWNED_MINIMAL_HARDENED_FORK_CANDIDATE
+  full_upstream_master_as_base: REJECT
+  next_gate: R28.2_CONTROLLED_BUILD_AND_PATCH_EVIDENCE
+
 verified_delta:
   - id: Z2-FORK-BASE-001
     status: PASS_FOR_RELATIONSHIP_ONLY
@@ -51,19 +58,25 @@ verified_delta:
 residual_review_blockers:
   - id: Z2-STATE-001
     title: Нет продуктового агрегатного лимита conntrack/ipcache.
-    required_action: Определить безопасные лимиты, таймауты и поведение при насыщении для NetPilot либо исключить опасные режимы.
-  - id: Z2-HOSTNAME-002
+    required_action: Реализовать и измерить bounded-resource policy; при насыщении новый flow должен fail-open/pass-through, без произвольного вытеснения активных tracks.
+  - id: Z2-DELAYED-QUEUE-002
+    title: Delayed raw packet queue имеет packet-count bound, но нужен отдельный byte budget.
+    required_action: Добавить overflow-safe accounting queued bytes и тесты saturated/failure paths до ADMIT.
+  - id: Z2-HOSTNAME-003
     title: Packet-derived hostname не должен становиться доверенным постоянным содержимым auto-hostlist/log.
-    required_action: Отключить persistent auto-hostlist либо добавить отдельную валидацию, квоты и безопасное восстановление.
-  - id: Z2-DNSCACHE-003
+    required_action: Persistent auto-hostlist выключен в первом production profile; не включать без отдельной валидации/квот/recovery review.
+  - id: Z2-DNSCACHE-004
     title: Экспериментальный ipcache-hostname не имеет достаточной корреляции DNS-ответов.
-    required_action: Не включать эту возможность в NetPilot без отдельного review.
-  - id: Z2-LUA-004
+    required_action: Функция выключена в первом production profile и не допускается без отдельного review.
+  - id: Z2-LUA-005
     title: Upstream имеет мощную Lua/CLI поверхность.
-    required_action: Допускать только project-owned hash-pinned Lua и типизированный компилятор профилей; пользовательский Lua/raw CLI запрещены.
-  - id: Z2-DEPS-005
+    required_action: Пользовательский Lua/raw CLI запрещены; project-owned Lua допустим только при hash pinning и отдельном admission, если вообще понадобится.
+  - id: Z2-DEPS-006
     title: WinDivert, Cygwin и итоговые Windows-бинарники ещё не переинвентаризированы для patched build.
-    required_action: Собрать кандидат из исходников, зафиксировать полный native inventory, SHA-256, подписи и происхождение.
+    required_action: Controlled build, полный native inventory, SHA-256, PE/signatures и provenance.
+  - id: Z2-SUPPLY-007
+    title: Upstream Windows build recipe не соответствует строгому immutable pinning NetPilot.
+    required_action: Pin full action SHAs, exact Cygwin/toolchain, Lua/LuaJIT и WinDivert inputs with expected hashes before use; emit build manifest/SBOM.
 
 fork_rules:
   - Ветвить только от exact v1.0.6 commit 221d7dff24bfec0cd5ac0a5070b8acef2008af3d.
@@ -71,17 +84,18 @@ fork_rules:
   - Не сливать текущий upstream master автоматически.
   - Каждый дополнительный upstream commit проходит отдельный diff review и CI до включения.
   - Поддерживать минимальный NetPilot patchset и журнал происхождения каждого патча.
+  - Не patch'ить необязательные опасные функции только ради их сохранения: auto-hostlist/ipcache-hostname/raw Lua могут оставаться недоступными.
   - Собственная версия не должна выдаваться за официальный zapret2; пример схемы версии: 1.0.6-np.1.
   - Release asset форка должен иметь immutable identity, SHA-256 и воспроизводимое происхождение сборки, где это возможно.
   - Runtime получает только фиксированный executable и валидированный ArgumentList из allowlist.
 
 required_before_admit:
-  - Полный статический аудит exact source tree после UAF fix.
-  - Решение по resource bounds, auto-hostlist и DNS ipcache.
-  - Сборка из исходников в контролируемом CI без скачивания исполняемых зависимостей на этапе runtime.
+  - Реализовать и проверить resource hardening из docs/ZAPRET2-RESOURCE-HARDENING-R28.1.md.
+  - Controlled source build с pinned immutable actions/toolchain/dependency hashes.
   - Полный Windows x64 inventory EXE/DLL/SYS с SHA-256 и проверкой подписей.
   - Sanitizer/static-analysis tests для доступных платформ и parser fuzz regression tests.
   - Изолированные runtime tests: start, stop, crash, cleanup, HTTPS, Discord TCP/UDP, повторный запуск.
+  - Измерить resource caps на browser/YouTube/Discord/combined/burst/hostile workload до фиксации production значений.
   - Повторный review WinDivert/Cygwin и актуальных advisory/CVE/KEV для exact component set.
   - Только после всех проверок новый manifest может получить admission_status: ADMIT.
 
