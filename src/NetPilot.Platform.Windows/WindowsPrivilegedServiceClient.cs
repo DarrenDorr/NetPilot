@@ -19,6 +19,12 @@ public sealed class WindowsPrivilegedServiceClient : IPrivilegedServiceClient
             IpcProtocol.RequestTimeoutMilliseconds,
             cancellationToken);
 
+    public Task<IpcResponse> GetZapretInstallationStatusAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(
+            IpcRequest.CreateZapretGetInstallationStatus(),
+            IpcProtocol.RequestTimeoutMilliseconds,
+            cancellationToken);
+
     public Task<IpcResponse> ListZapretStrategiesAsync(CancellationToken cancellationToken = default) =>
         SendAsync(
             IpcRequest.CreateZapretListStrategies(),
