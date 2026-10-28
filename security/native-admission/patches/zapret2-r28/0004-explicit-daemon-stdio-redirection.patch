@@ -1,7 +1,7 @@
 diff --git a/nfq2/sec.c b/nfq2/sec.c
 --- a/nfq2/sec.c
 +++ b/nfq2/sec.c
-@@ -372,25 +372,31 @@ void daemonize(void)
+@@ -372,24 +372,30 @@ void daemonize(void)
  	}
  	/* redirect fd's 0,1,2 to /dev/null */
  	/* stdin */
