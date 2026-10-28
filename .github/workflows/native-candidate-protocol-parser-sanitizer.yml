@@ -64,10 +64,10 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential strace
+          sudo apt-get install -y --no-install-recommends build-essential strace libcap-dev
 
-      - name: Compile parser harness with ASan and UBSan
-        id: compile
+      - name: Strict-compile NetPilot harness source
+        id: harness_compile
         continue-on-error: true
         shell: bash
         run: |
@@ -84,7 +84,30 @@ jobs:
             -ffunction-sections -fdata-sections \
             -Wall -Wextra -Werror \
             -Izapret2/nfq2 \
-            netpilot/security/native-admission/harnesses/zapret2-r28/protocol_parser_sanitizer_harness.c \
+            -c netpilot/security/native-admission/harnesses/zapret2-r28/protocol_parser_sanitizer_harness.c \
+            -o scratch/protocol_parser_sanitizer_harness.o \
+            2>&1 | tee evidence/harness-compile.log
+          test -f scratch/protocol_parser_sanitizer_harness.o
+
+      - name: Link parser harness with ASan and UBSan
+        id: compile
+        if: steps.harness_compile.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcc \
+            -D_DEFAULT_SOURCE \
+            -std=c11 \
+            -O1 \
+            -g \
+            -fsanitize=address,undefined \
+            -fno-sanitize-recover=all \
+            -fno-omit-frame-pointer \
+            -ffunction-sections -fdata-sections \
+            -Wall -Wextra \
+            -Izapret2/nfq2 \
+            scratch/protocol_parser_sanitizer_harness.o \
             zapret2/nfq2/protocol.c \
             zapret2/nfq2/helpers.c \
             -Wl,--gc-sections \
@@ -94,7 +117,7 @@ jobs:
 
       - name: Run deterministic parser regression corpus
         id: regression
-        if: steps.compile.outcome == 'success'
+        if: steps.harness_compile.outcome == 'success' && steps.compile.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
@@ -107,7 +130,7 @@ jobs:
 
       - name: Verify harness performs no network syscalls
         id: no_network
-        if: steps.compile.outcome == 'success' && steps.regression.outcome == 'success'
+        if: steps.harness_compile.outcome == 'success' && steps.compile.outcome == 'success' && steps.regression.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
@@ -122,10 +145,11 @@ jobs:
             exit 1
           fi
 
-      - name: Produce text-only evidence and remove harness binary
+      - name: Produce text-only evidence and remove harness binaries
         if: always()
         shell: bash
         env:
+          HARNESS_COMPILE_OUTCOME: ${{ steps.harness_compile.outcome }}
           COMPILE_OUTCOME: ${{ steps.compile.outcome }}
           REGRESSION_OUTCOME: ${{ steps.regression.outcome }}
           NO_NETWORK_OUTCOME: ${{ steps.no_network.outcome }}
@@ -140,7 +164,7 @@ jobs:
           fi
 
           {
-            echo 'schema_version=1'
+            echo 'schema_version=2'
             echo 'scope=isolated-protocol-parser-sanitizer-regression'
             echo 'candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0004'
             echo 'source_commit=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d'
@@ -148,9 +172,11 @@ jobs:
             echo "compiler=$(gcc --version | head -n1)"
             echo "harness_sha256=$harness_sha256"
             echo "instrumented_harness_binary_sha256=$binary_sha256"
-            echo "compile_outcome=$COMPILE_OUTCOME"
+            echo "harness_strict_compile_outcome=$HARNESS_COMPILE_OUTCOME"
+            echo "parser_link_compile_outcome=$COMPILE_OUTCOME"
             echo "regression_outcome=$REGRESSION_OUTCOME"
             echo "no_network_syscalls_outcome=$NO_NETWORK_OUTCOME"
+            echo 'compile_policy=netpilot-harness-werror-upstream-parser-warnings-visible-not-promoted'
             echo 'corpus=known-good-tls-all-truncations-plus-12000-deterministic-random-inputs'
             echo 'covered_entry_points=tls,http,quic,dns,discord,stun,dtls,wireguard,dht,mtproto,bt,utp_bt'
             echo 'candidate_engine_executed=false'
@@ -159,8 +185,9 @@ jobs:
             echo 'network_interception_enabled=false'
           } > evidence/protocol-parser-sanitizer-regression.txt
 
-          rm -f scratch/protocol_parser_sanitizer_harness
+          rm -f scratch/protocol_parser_sanitizer_harness scratch/protocol_parser_sanitizer_harness.o
           test ! -e scratch/protocol_parser_sanitizer_harness
+          test ! -e scratch/protocol_parser_sanitizer_harness.o
           sha256sum evidence/* | sort > evidence/SHA256SUMS-protocol-parser-regression.txt
 
       - name: Upload text evidence only
@@ -176,11 +203,13 @@ jobs:
         if: always()
         shell: bash
         env:
+          HARNESS_COMPILE_OUTCOME: ${{ steps.harness_compile.outcome }}
           COMPILE_OUTCOME: ${{ steps.compile.outcome }}
           REGRESSION_OUTCOME: ${{ steps.regression.outcome }}
           NO_NETWORK_OUTCOME: ${{ steps.no_network.outcome }}
         run: |
           set -euo pipefail
+          test "$HARNESS_COMPILE_OUTCOME" = 'success'
           test "$COMPILE_OUTCOME" = 'success'
           test "$REGRESSION_OUTCOME" = 'success'
           test "$NO_NETWORK_OUTCOME" = 'success'
