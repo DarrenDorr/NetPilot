@@ -245,8 +245,7 @@ public static partial class ZapretStrategyParser
                 "После winws разрешены только отдельные параметры, начинающиеся с '--'.");
         }
 
-        if (argument.Contains('"', StringComparison.Ordinal)
-            || argument.Contains(''', StringComparison.Ordinal))
+        if (argument.Contains('"') || argument.Contains('\''))
         {
             throw new ZapretStrategyParseException(
                 "UnexpectedQuote",
@@ -295,8 +294,8 @@ public static partial class ZapretStrategyParser
                 argument[position..]));
         }
 
-        if (argument[position..].Contains('%', StringComparison.Ordinal)
-            || (parts.Count == 0 && argument.Contains('%', StringComparison.Ordinal)))
+        if (argument[position..].Contains('%')
+            || (parts.Count == 0 && argument.Contains('%')))
         {
             throw new ZapretStrategyParseException(
                 "MalformedVariable",
@@ -334,7 +333,7 @@ public static partial class ZapretStrategyParser
             if (string.IsNullOrWhiteSpace(relativePath)
                 || relativePath.StartsWith('/')
                 || relativePath.StartsWith('\\')
-                || relativePath.Contains(':', StringComparison.Ordinal)
+                || relativePath.Contains(':')
                 || relativePath.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries)
                     .Any(static segment => segment is "." or ".."))
             {
