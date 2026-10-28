@@ -79,6 +79,68 @@ if [[ -f "$app_windows_program" ]] && grep -qF 'new WindowsZapretStrategyRuntime
   fail=1
 fi
 
+# R26: первичная Windows-установка не должна делать службу auto-start до успешного
+# enrollment исходного не-elevated пользователя. Ошибочный enrollment обязан
+# отключать/останавливать/удалять службу и очищать свежие enrollment artifacts.
+installer_script='installer/NetPilot.iss'
+uac_workflow='.github/workflows/windows-uac-security.yml'
+elevation_helper='src/NetPilot.Platform.Windows/WindowsProcessElevation.cs'
+
+if [[ ! -f "$installer_script" ]]; then
+  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: installer/NetPilot.iss отсутствует."
+  fail=1
+else
+  if grep -qF 'RemoveServiceBestEffort' "$installer_script"; then
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: best-effort удаление службы запрещено; cleanup должен быть проверяемым fail-safe."
+    fail=1
+  fi
+
+  for required_installer_marker in \
+    'function DisableAndRemoveService: Boolean;' \
+    'start= disabled' \
+    'function RemoveFreshEnrollmentArtifacts: Boolean;' \
+    'procedure ConfigureAndStartService(const EnrollmentRequired: Boolean);' \
+    "StartMode := 'demand'" \
+    'function FinalizeServiceRuntimePolicy: Boolean;' \
+    'EnrollmentRequired and (not CompleteOriginalUserEnrollment)' \
+    'ArtifactCleanupSucceeded := RemoveFreshEnrollmentArtifacts'; do
+    if ! grep -qF "$required_installer_marker" "$installer_script"; then
+      echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: отсутствует обязательный R26 installer marker: $required_installer_marker"
+      fail=1
+    fi
+  done
+
+  if grep -qF 'start= auto obj= LocalSystem' "$installer_script"; then
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: первичная регистрация службы не должна жёстко включать auto-start до enrollment."
+    fail=1
+  fi
+fi
+
+if [[ ! -f "$app_windows_program" ]] \
+  || ! grep -qF 'WindowsProcessElevation.GetCurrentState()' "$app_windows_program" \
+  || ! grep -qF 'WindowsInstallerEnrollmentPolicy.MayCompleteEnrollment' "$app_windows_program"; then
+  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: installer enrollment helper обязан проверять non-elevated Windows token fail-closed."
+  fail=1
+fi
+
+if [[ ! -f "$elevation_helper" ]] \
+  || ! grep -qF 'elevationState == WindowsProcessElevationState.NotElevated' "$elevation_helper"; then
+  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: enrollment policy должна разрешать только явно NotElevated token."
+  fail=1
+fi
+
+if [[ ! -f "$uac_workflow" ]]; then
+  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: self-hosted Windows UAC security workflow отсутствует."
+  fail=1
+else
+  forbidden_uac_launch="$(grep -nE 'Start-Process[^#\n]*-Verb[[:space:]]+RunAs' "$uac_workflow" || true)"
+  if [[ -n "$forbidden_uac_launch" ]]; then
+    printf '%s\n' "$forbidden_uac_launch"
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: UAC evidence workflow не должен pre-elevate Setup через PowerShell -Verb RunAs; elevation обязан инициировать Inno Setup."
+    fail=1
+  fi
+fi
+
 # Реальный Process.Start разрешён только в одной отдельно проверяемой точке исходного кода.
 # Наличие audited launcher в репозитории не означает, что production DI имеет право его получать.
 allowed_process_launcher='src/NetPilot.Engine.Zapret.Windows/SystemZapretProcessLauncher.cs'
