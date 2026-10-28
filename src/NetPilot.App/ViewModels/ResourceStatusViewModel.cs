@@ -68,6 +68,8 @@ public sealed class ResourceStatusViewModel : INotifyPropertyChanged
         var latencyText = health.Latency is { } latency
             ? $"{Math.Max(1, (int)Math.Round(latency.TotalMilliseconds))} мс"
             : string.Empty;
+        var diagnosticText = GetDiagnosticText(health.DiagnosticCode);
+        var detailsText = CombineDetails(diagnosticText, latencyText);
 
         switch (health.State)
         {
@@ -80,14 +82,14 @@ public sealed class ResourceStatusViewModel : INotifyPropertyChanged
 
             case ResourceHealthState.Degraded:
                 StatusText = "Есть ограничения";
-                DetailsText = latencyText;
+                DetailsText = detailsText;
                 StatusBrush = Brushes.DarkOrange;
                 StatusGlyph = "●";
                 break;
 
             case ResourceHealthState.Unavailable:
                 StatusText = "Недоступно";
-                DetailsText = string.Empty;
+                DetailsText = detailsText;
                 StatusBrush = Brushes.IndianRed;
                 StatusGlyph = "●";
                 break;
@@ -98,7 +100,7 @@ public sealed class ResourceStatusViewModel : INotifyPropertyChanged
 
             default:
                 StatusText = "Не проверено";
-                DetailsText = string.Empty;
+                DetailsText = diagnosticText;
                 StatusBrush = Brushes.Gray;
                 StatusGlyph = "●";
                 break;
@@ -111,6 +113,55 @@ public sealed class ResourceStatusViewModel : INotifyPropertyChanged
         DetailsText = details;
         StatusBrush = Brushes.Gray;
         StatusGlyph = "○";
+    }
+
+    private static string GetDiagnosticText(string? diagnosticCode)
+    {
+        if (string.IsNullOrWhiteSpace(diagnosticCode))
+        {
+            return string.Empty;
+        }
+
+        return diagnosticCode switch
+        {
+            "DnsResolutionFailed" => "Проблема с разрешением DNS-имени.",
+            "TcpConnectFailed" => "Не удалось установить сетевое соединение.",
+            "TlsHandshakeFailed" => "Не удалось установить защищённое HTTPS-соединение.",
+            "Timeout" => "Превышено время ожидания ответа.",
+            "EndpointRejected" => "Адрес проверки отклонён политикой безопасности NetPilot.",
+            "NoHealthEndpoints" => "Для сервиса не настроена безопасная проверка.",
+            "TooManyRedirects" => "Сервис вернул слишком много перенаправлений.",
+            "RedirectWithoutLocation" => "Сервис вернул некорректное перенаправление.",
+            "NetworkError" => "Ошибка сетевого соединения.",
+            "HealthCheckFailed" => "Проверка доступности не завершена.",
+            _ when TryGetHttpStatusCode(diagnosticCode, out var statusCode) =>
+                $"Сервис ответил HTTP {statusCode}.",
+            _ => "Доступность сервиса не подтверждена."
+        };
+    }
+
+    private static bool TryGetHttpStatusCode(string diagnosticCode, out int statusCode)
+    {
+        statusCode = 0;
+        return diagnosticCode.Length == 7
+            && diagnosticCode.StartsWith("Http", StringComparison.Ordinal)
+            && int.TryParse(diagnosticCode.AsSpan(4), out statusCode)
+            && statusCode is >= 100 and <= 599;
+    }
+
+    private static string CombineDetails(string diagnosticText, string latencyText)
+    {
+        if (string.IsNullOrEmpty(diagnosticText))
+        {
+            return latencyText;
+        }
+
+        if (string.IsNullOrEmpty(latencyText))
+        {
+            return diagnosticText;
+        }
+
+        return $"{diagnosticText} · {latencyText}";
     }
 
     private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
