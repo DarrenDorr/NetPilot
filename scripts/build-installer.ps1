@@ -12,6 +12,12 @@ if ([string]::IsNullOrWhiteSpace($OutputDir)) {
     $OutputDir = Join-Path $repoRoot "artifacts\installer"
 }
 
+$versionParts = $VersionInfoVersion.Split('.')
+if ($versionParts.Length -lt 3 -or $versionParts.Length -gt 4 -or $versionParts | Where-Object { $_ -notmatch '^\d+$' }) {
+    throw "VersionInfoVersion должен иметь вид 0.1.0.0."
+}
+$packageVersion = ($versionParts[0..2] -join '.')
+
 $appPublishDir = Join-Path $repoRoot "artifacts\publish\app-win-x64"
 $servicePublishDir = Join-Path $repoRoot "artifacts\publish\service-win-x64"
 $toolsDir = Join-Path $repoRoot "artifacts\tools"
@@ -22,8 +28,15 @@ $innoSha256 = "0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f"
 
 New-Item -ItemType Directory -Force -Path $appPublishDir, $servicePublishDir, $toolsDir, $OutputDir | Out-Null
 
+$publishVersionArgs = @(
+    "-p:Version=$packageVersion",
+    "-p:FileVersion=$VersionInfoVersion",
+    "-p:AssemblyVersion=$VersionInfoVersion",
+    "-p:InformationalVersion=$Version"
+)
+
 Write-Host "Публикация NetPilot.App.Windows (self-contained win-x64)..."
-dotnet publish (Join-Path $repoRoot "src\NetPilot.App.Windows\NetPilot.App.Windows.csproj") `
+& dotnet publish (Join-Path $repoRoot "src\NetPilot.App.Windows\NetPilot.App.Windows.csproj") `
     --configuration Release `
     --runtime win-x64 `
     --self-contained true `
@@ -31,14 +44,14 @@ dotnet publish (Join-Path $repoRoot "src\NetPilot.App.Windows\NetPilot.App.Windo
     -p:DebugType=None `
     -p:DebugSymbols=false `
     -p:PublishSingleFile=false `
-    -p:Version=$VersionInfoVersion
+    @publishVersionArgs
 
 if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish NetPilot.App.Windows завершился с ошибкой."
 }
 
 Write-Host "Публикация NetPilot.Service (self-contained win-x64)..."
-dotnet publish (Join-Path $repoRoot "src\NetPilot.Service\NetPilot.Service.csproj") `
+& dotnet publish (Join-Path $repoRoot "src\NetPilot.Service\NetPilot.Service.csproj") `
     --configuration Release `
     --runtime win-x64 `
     --self-contained true `
@@ -46,7 +59,7 @@ dotnet publish (Join-Path $repoRoot "src\NetPilot.Service\NetPilot.Service.cspro
     -p:DebugType=None `
     -p:DebugSymbols=false `
     -p:PublishSingleFile=false `
-    -p:Version=$VersionInfoVersion
+    @publishVersionArgs
 
 if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish NetPilot.Service завершился с ошибкой."
