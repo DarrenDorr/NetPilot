@@ -9,28 +9,55 @@ public sealed class WindowsPrivilegedServiceClient : IPrivilegedServiceClient
     private static readonly WindowsNamedPipePeerAuthenticator PeerAuthenticator = new();
 
     public Task<IpcResponse> PingAsync(CancellationToken cancellationToken = default) =>
-        SendAsync(IpcRequest.CreatePing(), cancellationToken);
+        SendAsync(IpcRequest.CreatePing(), IpcProtocol.RequestTimeoutMilliseconds, cancellationToken);
+
+    public Task<IpcResponse> EnrollAuthorizedUserAsync(
+        string enrollmentNonce,
+        CancellationToken cancellationToken = default) =>
+        SendAsync(
+            IpcRequest.CreateEnrollment(enrollmentNonce),
+            IpcProtocol.RequestTimeoutMilliseconds,
+            cancellationToken);
 
     public Task<IpcResponse> ListZapretStrategiesAsync(CancellationToken cancellationToken = default) =>
-        SendAsync(IpcRequest.CreateZapretListStrategies(), cancellationToken);
+        SendAsync(
+            IpcRequest.CreateZapretListStrategies(),
+            IpcProtocol.RequestTimeoutMilliseconds,
+            cancellationToken);
 
     public Task<IpcResponse> GetZapretStatusAsync(CancellationToken cancellationToken = default) =>
-        SendAsync(IpcRequest.CreateZapretGetStatus(), cancellationToken);
+        SendAsync(
+            IpcRequest.CreateZapretGetStatus(),
+            IpcProtocol.RequestTimeoutMilliseconds,
+            cancellationToken);
 
     public Task<IpcResponse> StartZapretStrategyAsync(
         string strategyId,
         CancellationToken cancellationToken = default) =>
-        SendAsync(IpcRequest.CreateZapretStartStrategy(strategyId), cancellationToken);
+        SendAsync(
+            IpcRequest.CreateZapretStartStrategy(strategyId),
+            IpcProtocol.RequestTimeoutMilliseconds,
+            cancellationToken);
 
     public Task<IpcResponse> StopZapretAsync(CancellationToken cancellationToken = default) =>
-        SendAsync(IpcRequest.CreateZapretStop(), cancellationToken);
+        SendAsync(
+            IpcRequest.CreateZapretStop(),
+            IpcProtocol.RequestTimeoutMilliseconds,
+            cancellationToken);
+
+    public Task<IpcResponse> InstallLatestZapretAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(
+            IpcRequest.CreateZapretInstallLatest(),
+            IpcProtocol.EngineInstallTimeoutMilliseconds,
+            cancellationToken);
 
     private static async Task<IpcResponse> SendAsync(
         IpcRequest request,
+        int timeoutMilliseconds,
         CancellationToken cancellationToken)
     {
         using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        requestTimeout.CancelAfter(IpcProtocol.RequestTimeoutMilliseconds);
+        requestTimeout.CancelAfter(timeoutMilliseconds);
         var requestToken = requestTimeout.Token;
 
         using var pipe = new NamedPipeClientStream(
