@@ -153,6 +153,38 @@ public sealed class ZapretTransactionalInstallerTests
     }
 
     [Fact]
+    public async Task Valid_previous_is_restored_when_current_is_missing_before_update()
+    {
+        using var fixture = new DeploymentFixture();
+        var installer = new ZapretTransactionalInstaller(fixture.EngineRoot);
+
+        await installer.ApplyAsync(
+            CreateRelease("1.10.3", 'a'),
+            fixture.CreatePackage("staging-old"),
+            TestContext.Current.CancellationToken);
+        await installer.ApplyAsync(
+            CreateRelease("1.10.4", 'b'),
+            fixture.CreatePackage("staging-new"),
+            TestContext.Current.CancellationToken);
+
+        Directory.Delete(Path.Combine(fixture.EngineRoot, "current"), recursive: true);
+
+        var exception = await Assert.ThrowsAsync<UpdateSecurityException>(
+            () => installer.ApplyAsync(
+                CreateRelease("1.10.2", 'c'),
+                fixture.CreatePackage("staging-downgrade"),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal("DowngradeRejected", exception.Code);
+        Assert.Equal(
+            "1.10.3",
+            (await EngineInstallationManifest.ReadAsync(
+                Path.Combine(fixture.EngineRoot, "current"),
+                TestContext.Current.CancellationToken)).Version);
+        Assert.False(Directory.Exists(Path.Combine(fixture.EngineRoot, "previous")));
+    }
+
+    [Fact]
     public async Task Manifest_collision_in_incoming_package_is_rejected()
     {
         using var fixture = new DeploymentFixture();
