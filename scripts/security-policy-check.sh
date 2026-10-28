@@ -77,13 +77,31 @@ else
   fi
 fi
 
+# Privileged updater не может напрямую доверять upstream latest.
+# Service обязан ставить transport за admission-wrapper, а не регистрировать
+# GithubZapretReleaseClient как IZapretReleaseSource напрямую.
+service_program='src/NetPilot.Service/Program.cs'
+admission_dir='security/native-admission'
+
+if [[ ! -f "$service_program" ]]; then
+  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: Program.cs службы NetPilot отсутствует."
+  fail=1
+else
+  if grep -qE 'AddSingleton<IZapretReleaseSource,[[:space:]]*GithubZapretReleaseClient>' "$service_program"; then
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: GitHub transport нельзя регистрировать напрямую как доверенный release source."
+    fail=1
+  fi
+
+  if ! grep -qF 'new AdmittedZapretReleaseSource(' "$service_program"; then
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: privileged updater обязан проходить через AdmittedZapretReleaseSource."
+    fail=1
+  fi
+fi
+
 # Native admission должен реально влиять на runtime, а не существовать только как документация.
 # Пока нет ни одного component set со статусом ADMIT, службе запрещено выдавать capabilities
 # установки и запуска движка. EngineStop остаётся доступным через специальный fail-closed профиль,
 # чтобы можно было остановить уже существующий legacy-процесс.
-service_program='src/NetPilot.Service/Program.cs'
-admission_dir='security/native-admission'
-
 if [[ ! -d "$admission_dir" ]]; then
   echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: каталог native admission отсутствует."
   fail=1
@@ -97,6 +115,11 @@ else
     else
       if ! grep -qF 'OperationPolicy.CreateNoAdmittedEnginePolicy()' "$service_program"; then
         echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: без ADMIT служба обязана использовать fail-closed OperationPolicy."
+        fail=1
+      fi
+
+      if ! grep -qF 'NoAdmittedZapretReleaseCatalog.Instance' "$service_program"; then
+        echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: без ADMIT updater обязан использовать пустой admission catalog."
         fail=1
       fi
 

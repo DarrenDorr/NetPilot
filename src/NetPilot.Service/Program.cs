@@ -32,7 +32,18 @@ builder.Services.AddSingleton(serviceProvider =>
         WindowsZapretEngineLocation.GetDefaultEngineRoot(),
         serviceProvider.GetRequiredService<ZapretProcessRunner>()));
 builder.Services.AddSingleton<IZapretUpdateRuntimeGate, WindowsZapretUpdateRuntimeGate>();
-builder.Services.AddSingleton<IZapretReleaseSource, GithubZapretReleaseClient>();
+
+// R17: upstream GitHub является только transport. Решение о том, какой exact release
+// можно установить, принимает локальный admission catalog. Пока ADMIT отсутствует,
+// каталог пуст и updater отказывает до любого metadata/download запроса к GitHub.
+builder.Services.AddSingleton<GithubZapretReleaseClient>();
+builder.Services.AddSingleton<IZapretReleaseAdmissionCatalog>(
+    NoAdmittedZapretReleaseCatalog.Instance);
+builder.Services.AddSingleton<IZapretReleaseSource>(serviceProvider =>
+    new AdmittedZapretReleaseSource(
+        serviceProvider.GetRequiredService<GithubZapretReleaseClient>(),
+        serviceProvider.GetRequiredService<IZapretReleaseAdmissionCatalog>()));
+
 builder.Services.AddSingleton(serviceProvider =>
     new ZapretUpdateOrchestrator(
         WindowsZapretEngineLocation.GetDefaultEngineBaseRoot(),
