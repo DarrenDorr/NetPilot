@@ -38,7 +38,7 @@ jobs:
 
           if ($identity.IsSystem) { throw 'Runner must not execute as LocalSystem.' }
           if ($sessionId -eq 0) { throw 'Runner must execute in an interactive desktop session, not Session 0.' }
-          if ($isAdmin) { throw 'Runner must start from a standard-user token. UAC elevation must happen only for Setup.' }
+          if ($isAdmin) { throw 'Runner must start from a standard-user token. UAC elevation must happen only inside Inno Setup.' }
           if ($uac.EnableLUA -ne 1) { throw 'Windows UAC (EnableLUA) must be enabled.' }
 
       - name: Setup .NET 10
@@ -60,7 +60,7 @@ jobs:
         shell: pwsh
         run: pwsh -NoLogo -NoProfile -File scripts/build-installer.ps1 -Version 0.1.0-alpha-uac -VersionInfoVersion 0.1.0.0
 
-      - name: Standard user to UAC to owner SID binding
+      - name: Standard user to Inno UAC to owner SID binding
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -69,13 +69,15 @@ jobs:
           $setupLog = Join-Path $env:RUNNER_TEMP 'netpilot-uac-setup.log'
 
           Write-Host 'A real Windows UAC consent/credential prompt is expected on the VM secure desktop.'
+          Write-Host 'Setup is intentionally launched WITHOUT PowerShell -Verb RunAs.'
+          Write-Host 'Inno Setup itself must request elevation so ExecAsOriginalUser retains the original standard-user identity.'
           Write-Host 'Do not disable UAC and do not use a test-only SID/elevation bypass.'
 
           $arguments = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/LOG=$setupLog")
-          $process = Start-Process -FilePath $setup -ArgumentList $arguments -Verb RunAs -Wait -PassThru
+          $process = Start-Process -FilePath $setup -ArgumentList $arguments -Wait -PassThru
           if ($process.ExitCode -ne 0) {
             if (Test-Path $setupLog) { Get-Content $setupLog -Encoding Unicode -ErrorAction SilentlyContinue }
-            throw "Elevated Setup failed with exit code $($process.ExitCode)."
+            throw "Setup failed with exit code $($process.ExitCode)."
           }
 
           $root = "$env:ProgramFiles\NetPilot"
@@ -86,6 +88,7 @@ jobs:
           $service = Get-CimInstance Win32_Service -Filter "Name='NetPilot.Service'"
           if ($null -eq $service) { throw 'NetPilot.Service was not registered.' }
           if ($service.StartName -ne 'LocalSystem') { throw "Unexpected service account: $($service.StartName)" }
+          if ($service.StartMode -ne 'Auto') { throw "Unexpected service start mode after successful enrollment: $($service.StartMode)" }
           if ($service.State -ne 'Running') { throw "Service is not running: $($service.State)" }
 
           if (-not (Test-Path $sidPath)) { throw 'authorized-user.sid was not created.' }
@@ -96,7 +99,7 @@ jobs:
           if (Test-Path $noncePath) { throw 'Enrollment nonce remained after binding.' }
           if (Test-Path $sessionPath) { throw 'Enrollment session marker remained after binding.' }
 
-          Write-Host "PASS: standard-user SID $expectedSid survived the real UAC installer boundary and owns the NetPilot installation."
+          Write-Host "PASS: standard-user SID $expectedSid survived the real Inno UAC boundary and owns the NetPilot installation."
 
       - name: Uninstall through real UAC boundary
         if: always()
@@ -106,7 +109,8 @@ jobs:
           $uninstaller = "$env:ProgramFiles\NetPilot\unins000.exe"
           if (Test-Path $uninstaller) {
             Write-Host 'A real Windows UAC consent/credential prompt may be required for uninstall.'
-            $process = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Verb RunAs -Wait -PassThru
+            Write-Host 'Uninstaller is launched without PowerShell -Verb RunAs; Inno must request its own required elevation.'
+            $process = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
             if ($process.ExitCode -ne 0) { throw "Uninstall failed with exit code $($process.ExitCode)." }
           }
 
@@ -121,5 +125,6 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          Write-Host 'This workflow provides evidence for: interactive standard-user start, UAC enabled, elevated installer boundary, LocalSystem service account, SID binding and cleanup.'
+          Write-Host 'This workflow provides evidence for: interactive standard-user start, UAC enabled, Inno-initiated elevation, LocalSystem service account, SID binding and cleanup.'
+          Write-Host 'Launching Setup with PowerShell -Verb RunAs is intentionally forbidden here because it destroys the original-user evidence required by ExecAsOriginalUser.'
           Write-Host 'A dedicated live cross-user IPC integration harness is still required before claiming full IPC authorization PASS.'
