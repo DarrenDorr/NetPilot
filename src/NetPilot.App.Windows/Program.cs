@@ -55,7 +55,13 @@ internal static class Program
     {
         var healthChecker = new PublicHttpsHealthChecker();
         var serviceClient = new WindowsPrivilegedServiceClient();
-        var strategyRuntime = new WindowsZapretStrategyRuntime(serviceClient);
+
+        // Пока native admission не содержит ADMIT, GUI/Automation вообще не получают
+        // legacy Zapret runtime. Даже ошибочный вызов selector не сможет активировать
+        // native-код: profile runtime физически fail-closed.
+        var profileRuntime = new NoAdmittedEngineProfileRuntime();
+        var strategyRuntime = new EngineProfileStrategyRuntimeAdapter(profileRuntime);
+
         var healthProbe = new PublicResourceHealthProbe(healthChecker);
         var selectionEngine = new StrategySelectionEngine(strategyRuntime, healthProbe);
         var provisioningService = new WindowsEngineProvisioningService(serviceClient);

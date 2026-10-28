@@ -54,6 +54,14 @@ if [[ -n "$app_ipc_matches" ]]; then
   fail=1
 fi
 
+# GUI host не должен возвращаться к legacy Zapret strategy runtime.
+# Новый admitted engine обязан подключаться через engine-neutral profile runtime.
+app_windows_program='src/NetPilot.App.Windows/Program.cs'
+if [[ -f "$app_windows_program" ]] && grep -qF 'new WindowsZapretStrategyRuntime(' "$app_windows_program"; then
+  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: GUI не должен создавать legacy WindowsZapretStrategyRuntime."
+  fail=1
+fi
+
 # Реальный Process.Start разрешён только в одной отдельно проверяемой точке.
 allowed_process_launcher='src/NetPilot.Engine.Zapret.Windows/SystemZapretProcessLauncher.cs'
 process_pattern='Process[[:space:]]*\.Start[[:space:]]*\('
@@ -130,6 +138,11 @@ else
 
       if ! grep -qF 'NoAdmittedZapretReleaseCatalog.Instance' "$service_program"; then
         echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: без ADMIT updater обязан использовать пустой admission catalog."
+        fail=1
+      fi
+
+      if [[ ! -f "$app_windows_program" ]] || ! grep -qF 'new NoAdmittedEngineProfileRuntime()' "$app_windows_program"; then
+        echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: без ADMIT GUI обязан использовать NoAdmittedEngineProfileRuntime."
         fail=1
       fi
 
