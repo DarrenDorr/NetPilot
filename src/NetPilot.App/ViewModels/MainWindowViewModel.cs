@@ -5,6 +5,7 @@ using System.Windows.Input;
 using NetPilot.App.Services;
 using NetPilot.Automation;
 using NetPilot.Core.Models;
+using NetPilot.Engine.Abstractions;
 
 namespace NetPilot.App.ViewModels;
 
@@ -45,6 +46,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             .Where(resource => !string.Equals(resource.Id, "telegram", StringComparison.Ordinal))
             .ToDictionary(resource => resource.Id, StringComparer.Ordinal);
 
+        EngineProfiles = new ObservableCollection<EngineProfileViewModel>(
+            BuiltInEngineProfileCatalog.All.Select(profile =>
+                new EngineProfileViewModel(profile.Id.Value, profile.DisplayName)));
+
         _checkCommand = new AsyncCommand(
             CheckNowAsync,
             () => !IsBusy,
@@ -73,6 +78,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public ObservableCollection<ResourceStatusViewModel> Resources { get; }
     public ResourceStatusViewModel Telegram { get; }
+    public ObservableCollection<EngineProfileViewModel> EngineProfiles { get; }
     public ObservableCollection<DiagnosticHistoryItemViewModel> DiagnosticHistory { get; } = [];
     public string DiagnosticHistorySummary => $"Записей в памяти: {_healthHistory.Snapshot().Count}";
 
@@ -421,6 +427,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             IsEngineInstalled = state.IsInstalled;
             CanInstallEngine = !state.IsInstalled && state.CanInstall;
             CanUseEngine = state.IsInstalled && state.CanStart;
+            UpdateProfileAvailability(CanUseEngine);
 
             if (!state.IsInstalled)
             {
@@ -448,6 +455,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             IsEngineInstalled = false;
             CanInstallEngine = false;
             CanUseEngine = false;
+            UpdateProfileAvailability(canUseEngine: false);
             EngineStatus = "Служба NetPilot недоступна или пользователь Windows не авторизован.";
         }
     }
@@ -457,13 +465,32 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             var state = await _dashboardService.GetStrategyRuntimeStateAsync(cancellationToken);
+            var activeProfileId = state.IsRunning ? state.StrategyId : null;
+            UpdateProfileAvailability(canUseEngine: true, activeProfileId);
             EngineStatus = state.IsRunning && !string.IsNullOrWhiteSpace(state.StrategyId)
                 ? $"Сетевой движок: запущен · профиль {state.StrategyId}"
                 : "Сетевой движок: установлен · остановлен";
         }
         catch (Exception exception) when (IsExpectedOperationalException(exception))
         {
+            UpdateProfileAvailability(canUseEngine: false);
             EngineStatus = "Служба NetPilot недоступна или пользователь Windows не авторизован.";
+        }
+    }
+
+    private void UpdateProfileAvailability(bool canUseEngine, string? activeProfileId = null)
+    {
+        foreach (var profile in EngineProfiles)
+        {
+            if (!canUseEngine)
+            {
+                profile.SetUnavailable();
+                continue;
+            }
+
+            profile.SetAvailable(
+                !string.IsNullOrWhiteSpace(activeProfileId)
+                && string.Equals(profile.Id, activeProfileId, StringComparison.Ordinal));
         }
     }
 
