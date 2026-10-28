@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   zapret2-source-anchor:
-    name: Verify zapret2 exact source anchor
+    name: Verify zapret2 exact source anchor and patch series
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
@@ -59,8 +59,9 @@ jobs:
           grep -Fq 'goto reasm_cancel_rediscover;' nfq2/desync.c
           grep -Fq 'rdata_payload = dis->data_payload;' nfq2/desync.c
           grep -Fq 'rlen_payload = dis->len_payload;' nfq2/desync.c
+          test -z "$(git status --porcelain)"
 
-      - name: Verify NetPilot patch 0001 applies only to expected files
+      - name: Verify and apply NetPilot patch 0001
         shell: bash
         working-directory: zapret2
         run: |
@@ -77,13 +78,44 @@ jobs:
             "nfq2/desync.c"
             "nfq2/lua.c"
           )
-
           test "${#patched_files[@]}" -eq "${#expected_files[@]}"
           for i in "${!expected_files[@]}"; do
             test "${patched_files[$i]}" = "${expected_files[$i]}"
           done
 
-          test -z "$(git status --porcelain)"
+          git apply "$patch_file"
+          grep -Fq 'CTRACK_FEED_NONE = 0' nfq2/conntrack.h
+          grep -Fq 'CTRACK_FEED_OK = 1' nfq2/conntrack.h
+
+      - name: Verify and apply NetPilot patch 0002
+        shell: bash
+        working-directory: zapret2
+        run: |
+          set -euo pipefail
+
+          patch_file="../netpilot/security/native-admission/patches/zapret2-r28/0002-bounded-conntrack-resource-result.patch"
+          test -f "$patch_file"
+          git apply --check "$patch_file"
+
+          mapfile -t patched_files < <(git apply --numstat "$patch_file" | awk '{print $3}' | sort)
+          expected_files=(
+            "nfq2/conntrack.c"
+            "nfq2/conntrack.h"
+            "nfq2/desync.c"
+          )
+          test "${#patched_files[@]}" -eq "${#expected_files[@]}"
+          for i in "${!expected_files[@]}"; do
+            test "${patched_files[$i]}" = "${expected_files[$i]}"
+          done
+
+          git apply "$patch_file"
+
+          grep -Fq 'CTRACK_FEED_RESOURCE_EXHAUSTED = 2' nfq2/conntrack.h
+          grep -Fq 'ConntrackPoolSetMaxEntries' nfq2/conntrack.h
+          grep -Fq 'HASH_COUNT(*pp) >= max_entries' nfq2/conntrack.c
+          grep -Fq 'return CTRACK_FEED_RESOURCE_EXHAUSTED;' nfq2/conntrack.c
+          grep -Fq 'feed_result == CTRACK_FEED_RESOURCE_EXHAUSTED' nfq2/desync.c
+          grep -Fq 'ps->verdict = VERDICT_PASS;' nfq2/desync.c
 
       - name: Produce provenance evidence
         shell: bash
@@ -92,25 +124,32 @@ jobs:
           set -euo pipefail
           mkdir -p ../evidence
 
-          patch_file="../netpilot/security/native-admission/patches/zapret2-r28/0001-explicit-conntrack-feed-result.patch"
+          patch_0001="../netpilot/security/native-admission/patches/zapret2-r28/0001-explicit-conntrack-feed-result.patch"
+          patch_0002="../netpilot/security/native-admission/patches/zapret2-r28/0002-bounded-conntrack-resource-result.patch"
 
           {
-            echo "schema_version=1"
+            echo "schema_version=2"
             echo "candidate=zapret2-v1.0.6-plus-uaf-fix"
             echo "repository=https://github.com/bol-van/zapret2"
             echo "head_commit=$(git rev-parse HEAD)"
             echo "parent_commit=$(git rev-parse HEAD^)"
             echo "tree=$(git rev-parse 'HEAD^{tree}')"
             echo "commit_message=$(git log -1 --pretty=%s)"
-            echo "changed_files_begin"
+            echo "upstream_changed_files_begin"
             git diff --name-only HEAD^ HEAD
-            echo "changed_files_end"
-            echo "desync_c_sha256=$(sha256sum nfq2/desync.c | awk '{print $1}')"
-            echo "netpilot_patch_0001_sha256=$(sha256sum "$patch_file" | awk '{print $1}')"
+            echo "upstream_changed_files_end"
+            echo "desync_c_upstream_sha256=54e3c9d03f62a844ee549e2ddc036c0253147c9aae67d937da8cc29c67a026bd"
+            echo "netpilot_patch_0001_sha256=$(sha256sum "$patch_0001" | awk '{print $1}')"
+            echo "netpilot_patch_0002_sha256=$(sha256sum "$patch_0002" | awk '{print $1}')"
+            echo "patched_worktree_files_begin"
+            git diff --name-only HEAD | sort
+            echo "patched_worktree_files_end"
           } > ../evidence/zapret2-source-anchor.txt
 
           git diff --binary HEAD^ HEAD -- nfq2/desync.c > ../evidence/zapret2-uaf-fix.patch
-          cp "$patch_file" ../evidence/netpilot-0001-explicit-conntrack-feed-result.patch
+          cp "$patch_0001" ../evidence/netpilot-0001-explicit-conntrack-feed-result.patch
+          cp "$patch_0002" ../evidence/netpilot-0002-bounded-conntrack-resource-result.patch
+          git diff --binary HEAD > ../evidence/netpilot-patched-worktree.diff
           sha256sum ../evidence/* | sort > ../evidence/SHA256SUMS.txt
 
       - name: Upload provenance evidence only
