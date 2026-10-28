@@ -1,0 +1,137 @@
+name: Native Candidate ByeDPI Compile Smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/native-candidate-byedpi-compile-smoke.yml"
+      - "security/native-admission/patches/byedpi-r28/**"
+      - "security/native-admission/byedpi-v0.17.3-fork-candidate.yaml"
+      - "docs/BYEDPI-*.md"
+
+permissions:
+  contents: read
+
+jobs:
+  byedpi-compile-smoke:
+    name: Apply loopback hardening and compile Linux/Windows without execution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout NetPilot without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: netpilot
+          persist-credentials: false
+
+      - name: Checkout exact ByeDPI v0.17.3 source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: hufrea/byedpi
+          ref: 7efde1b1296eaaa187b70e951894dde17527489c
+          fetch-depth: 1
+          path: byedpi
+          persist-credentials: false
+
+      - name: Verify source identity and apply reviewed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C byedpi rev-parse HEAD)" = "7efde1b1296eaaa187b70e951894dde17527489c"
+          test "$(git -C byedpi rev-parse 'HEAD^{tree}')" = "8d13f6f5939190cd27ee68696247073a00b3e7dc"
+
+          patch_file="$PWD/netpilot/security/native-admission/patches/byedpi-r28/0001-loopback-only-listener.patch"
+          echo "1b3dfe6659dc39c706a626aaeaf597671ce0ab1b686a7f1898bca9e2a08b1251  $patch_file" | sha256sum -c -
+          git -C byedpi apply --check "$patch_file"
+          git -C byedpi apply "$patch_file"
+
+          grep -Fq 'Listening IP, loopback only; default 127.0.0.1' byedpi/main.c
+          grep -Fq 'netpilot_is_loopback_addr' byedpi/main.c
+          grep -Fq 'get_addr("127.0.0.1", &params.laddr)' byedpi/main.c
+
+      - name: Install compile-only toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential mingw-w64 file
+
+      - name: Compile Linux candidate without execution
+        id: linux_compile
+        continue-on-error: true
+        shell: bash
+        working-directory: byedpi
+        run: |
+          set -euo pipefail
+          mkdir -p ../evidence
+          make clean >/dev/null
+          make CC=gcc 2>&1 | tee ../evidence/linux-build.log
+          test -f ciadpi
+          file ciadpi | tee ../evidence/linux-file.txt
+          sha256sum ciadpi | awk '{print $1}' > ../evidence/linux-binary.sha256
+          rm -f ciadpi
+          make clean >/dev/null
+          test ! -e ciadpi
+
+      - name: Cross-compile Windows x64 candidate without execution
+        id: windows_compile
+        continue-on-error: true
+        shell: bash
+        working-directory: byedpi
+        run: |
+          set -euo pipefail
+          mkdir -p ../evidence
+          make clean >/dev/null
+          make windows CC=x86_64-w64-mingw32-gcc 2>&1 | tee ../evidence/windows-build.log
+          test -f ciadpi.exe
+          file ciadpi.exe | tee ../evidence/windows-file.txt
+          sha256sum ciadpi.exe | awk '{print $1}' > ../evidence/windows-binary.sha256
+          rm -f ciadpi.exe
+          make clean >/dev/null
+          test ! -e ciadpi.exe
+
+      - name: Produce text-only evidence
+        if: always()
+        shell: bash
+        env:
+          LINUX_OUTCOME: ${{ steps.linux_compile.outcome }}
+          WINDOWS_OUTCOME: ${{ steps.windows_compile.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          {
+            echo 'schema_version=1'
+            echo 'scope=byedpi-v0.17.3-loopback-hardening-compile-only'
+            echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
+            echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
+            echo 'patch_0001_sha256=1b3dfe6659dc39c706a626aaeaf597671ce0ab1b686a7f1898bca9e2a08b1251'
+            echo "linux_compile_outcome=$LINUX_OUTCOME"
+            echo "windows_x64_cross_compile_outcome=$WINDOWS_OUTCOME"
+            echo "linux_compiler=$(gcc --version | head -n1)"
+            echo "windows_compiler=$(x86_64-w64-mingw32-gcc --version | head -n1)"
+            echo 'candidate_binary_executed=false'
+            echo 'listener_opened=false'
+            echo 'routing_changed=false'
+          } > evidence/byedpi-compile-smoke.txt
+          sha256sum evidence/* | sort > evidence/SHA256SUMS-byedpi-compile-smoke.txt
+
+      - name: Upload text evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: byedpi-r28-compile-smoke-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce compile-only gate
+        if: always()
+        shell: bash
+        env:
+          LINUX_OUTCOME: ${{ steps.linux_compile.outcome }}
+          WINDOWS_OUTCOME: ${{ steps.windows_compile.outcome }}
+        run: |
+          set -euo pipefail
+          test "$LINUX_OUTCOME" = 'success'
+          test "$WINDOWS_OUTCOME" = 'success'
