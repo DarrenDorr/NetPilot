@@ -1,6 +1,32 @@
 namespace NetPilot.Updater;
 
-public sealed record TrustedUpstream(string Id, Uri RepositoryUri);
+public sealed record TrustedUpstream
+{
+    internal TrustedUpstream(string id, Uri repositoryUri)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        ArgumentNullException.ThrowIfNull(repositoryUri);
+
+        if (!repositoryUri.IsAbsoluteUri
+            || !string.Equals(repositoryUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(repositoryUri.Host, "github.com", StringComparison.OrdinalIgnoreCase)
+            || !repositoryUri.IsDefaultPort
+            || !string.IsNullOrEmpty(repositoryUri.UserInfo)
+            || !string.IsNullOrEmpty(repositoryUri.Query)
+            || !string.IsNullOrEmpty(repositoryUri.Fragment))
+        {
+            throw new ArgumentException(
+                "Доверенный upstream должен быть чистым HTTPS-адресом репозитория github.com.",
+                nameof(repositoryUri));
+        }
+
+        Id = id;
+        RepositoryUri = repositoryUri;
+    }
+
+    public string Id { get; }
+    public Uri RepositoryUri { get; }
+}
 
 public static class TrustedUpstreams
 {
