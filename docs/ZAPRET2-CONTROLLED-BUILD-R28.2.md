@@ -88,7 +88,7 @@ Runner фиксирован как `ubuntu-24.04`, а не `ubuntu-latest`.
 1. aggregate conntrack entry budget;
 2. delayed packet queue byte accounting;
 3. overflow-safe size checks до allocation/copy;
-4. fail-safe/fail-open behavior при достижении budget;
+4. безопасное поведение при достижении budget: сеть не должна оставаться в зависшем или частично перехваченном состоянии; конкретный `pass-through` для нового flow допускается только после проверки точной семантики всех вызовов `ConntrackPoolFeed`;
 5. отсутствие произвольного LRU eviction активных tracks;
 6. metrics/tests для saturation path.
 
@@ -149,7 +149,7 @@ Build не должен доверять:
 
 1. Получить CI evidence от `Native Candidate Provenance`.
 2. Зафиксировать его run/artifact identity.
-3. Подготовить bounded-resource patch как отдельный минимальный patch series.
+3. Проверить точную семантику всех `ConntrackPoolFeed` call sites и только после этого подготовить bounded-resource patch как отдельный минимальный patch series.
 4. Добавить `git apply --check`/source assertions к exact tree до компиляции.
 5. Зафиксировать controlled Windows build inputs и hashes.
 6. Собрать candidate без его запуска.
