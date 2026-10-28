@@ -1,0 +1,94 @@
+diff --git a/nfq2/conntrack.h b/nfq2/conntrack.h
+--- a/nfq2/conntrack.h
++++ b/nfq2/conntrack.h
+@@ -99,18 +99,21 @@ typedef struct
+ 	// inactivity time to purge an entry in each connection state
+ 	uint32_t timeout_syn,timeout_established,timeout_fin,timeout_udp;
+ 	time_t t_purge_interval, t_last_purge;
+ 	t_conntrack_pool *pool;
++	size_t max_entries;
+ } t_conntrack;
+ 
+ typedef enum
+ {
+ 	CTRACK_FEED_NONE = 0,
+-	CTRACK_FEED_OK = 1
++	CTRACK_FEED_OK = 1,
++	CTRACK_FEED_RESOURCE_EXHAUSTED = 2
+ } t_conntrack_feed_result;
+ 
+ void ConntrackPoolInit(t_conntrack *p, time_t purge_interval, uint32_t timeout_syn, uint32_t timeout_established, uint32_t timeout_fin, uint32_t timeout_udp);
++void ConntrackPoolSetMaxEntries(t_conntrack *p, size_t max_entries);
+ void ConntrackPoolDestroy(t_conntrack *p);
+ t_conntrack_feed_result ConntrackPoolFeed(t_conntrack *p, const struct dissect *dis, t_ctrack **ctrack, bool *bReverse);
+ // do not create, do not update. only find existing
+diff --git a/nfq2/conntrack.c b/nfq2/conntrack.c
+--- a/nfq2/conntrack.c
++++ b/nfq2/conntrack.c
+@@ -62,8 +62,13 @@ void ConntrackPoolInit(t_conntrack *p, time_t purge_interval, uint32_t timeout_s
+ 	p->t_purge_interval = purge_interval;
+ 	p->t_last_purge = boottime();
+ 	p->pool = NULL;
++	p->max_entries = 0;
+ }
+ 
++void ConntrackPoolSetMaxEntries(t_conntrack *p, size_t max_entries)
++{
++	p->max_entries = max_entries;
++}
++
+ bool ConntrackExtractConn(t_conn *c, bool bReverse, const struct dissect *dis)
+ {
+ 	memset(c, 0, sizeof(*c));
+@@ -250,7 +255,7 @@ bool ConntrackPoolDoubleSearch(t_conntrack *p, const struct dissect *dis, t_ctra
+ 	return ConntrackPoolDoubleSearchPool(&p->pool, dis, ctrack, bReverse);
+ }
+ 
+-static t_conntrack_feed_result ConntrackPoolFeedPool(t_conntrack_pool **pp, const struct dissect *dis, t_ctrack **ctrack, bool *bReverse)
++static t_conntrack_feed_result ConntrackPoolFeedPool(t_conntrack_pool **pp, size_t max_entries, const struct dissect *dis, t_ctrack **ctrack, bool *bReverse)
+ {
+ 	t_conn conn, connswp;
+ 	t_conntrack_pool *ctr;
+@@ -274,18 +279,23 @@ static t_conntrack_feed_result ConntrackPoolFeedPool(t_conntrack_pool **pp, cons
+ 	b_rev = dis->tcp && tcp_synack_segment(dis->tcp);
+ 	if ((dis->tcp && tcp_syn_segment(dis->tcp)) || b_rev || dis->udp)
+ 	{
++		if (max_entries && HASH_COUNT(*pp) >= max_entries)
++			return CTRACK_FEED_RESOURCE_EXHAUSTED;
+ 		if ((ctr = ConntrackNew(pp, b_rev ? &connswp : &conn)))
+ 		{
+ 			ConntrackFeedPacket(&ctr->track, b_rev, dis);
+ 			goto ok;
+ 		}
++		return CTRACK_FEED_RESOURCE_EXHAUSTED;
+ 	}
+ 	return CTRACK_FEED_NONE;
+ ok:
+ 	ctr->track.pos.ipproto = proto;
+ 	if (ctrack) *ctrack = &ctr->track;
+ 	if (bReverse) *bReverse = b_rev;
+ 	return CTRACK_FEED_OK;
+ }
+ t_conntrack_feed_result ConntrackPoolFeed(t_conntrack *p, const struct dissect *dis, t_ctrack **ctrack, bool *bReverse)
+ {
+-	return ConntrackPoolFeedPool(&p->pool, dis, ctrack, bReverse);
++	return ConntrackPoolFeedPool(&p->pool, p->max_entries, dis, ctrack, bReverse);
+ }
+diff --git a/nfq2/desync.c b/nfq2/desync.c
+--- a/nfq2/desync.c
++++ b/nfq2/desync.c
+@@ -1280,8 +1280,14 @@ static bool play_prolog(
+ 		if (!params.ctrack_disable)
+ 		{
+ 			ConntrackPoolPurge(&params.conntrack);
+-			if (ConntrackPoolFeed(&params.conntrack, dis, &ps->ctrack, &ps->bReverse) == CTRACK_FEED_OK)
++			t_conntrack_feed_result feed_result = ConntrackPoolFeed(&params.conntrack, dis, &ps->ctrack, &ps->bReverse);
++			if (feed_result == CTRACK_FEED_RESOURCE_EXHAUSTED)
++			{
++				ps->verdict = VERDICT_PASS;
++				return false;
++			}
++			if (feed_result == CTRACK_FEED_OK)
+ 			{
+ 				ps->dp = ps->ctrack->dp;
+ 				ps->ctrack_replay = ps->ctrack;
