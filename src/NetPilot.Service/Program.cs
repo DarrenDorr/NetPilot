@@ -18,6 +18,7 @@ builder.Services.AddSingleton(new OperationPolicy(
     PrivilegedOperation.EngineStop
 ]));
 
+builder.Services.AddSingleton<UserResourceOwnership>();
 builder.Services.AddSingleton<WindowsNamedPipeServerFactory>();
 builder.Services.AddSingleton<WindowsNamedPipePeerAuthenticator>();
 builder.Services.AddSingleton<IZapretProcessLauncher, SystemZapretProcessLauncher>();
