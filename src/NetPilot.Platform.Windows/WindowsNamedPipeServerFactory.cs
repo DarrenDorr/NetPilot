@@ -28,8 +28,11 @@ public sealed class WindowsNamedPipeServerFactory
             PipeAccessRights.FullControl,
             AccessControlType.Allow));
 
+        // IPC предназначен только для процессов реальной интерактивной сессии Windows.
+        // Authenticated Users здесь намеренно не используется: сервисные, пакетные и
+        // прочие неинтерактивные учётные записи не должны даже открывать канал.
         security.AddAccessRule(new PipeAccessRule(
-            new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
+            new SecurityIdentifier(WellKnownSidType.InteractiveSid, null),
             PipeAccessRights.ReadWrite | PipeAccessRights.ReadPermissions,
             AccessControlType.Allow));
 
