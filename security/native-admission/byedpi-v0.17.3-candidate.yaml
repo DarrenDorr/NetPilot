@@ -5,7 +5,7 @@ release_gate: BLOCK
 reviewed_at: 2026-10-28
 
 candidate:
-  kind: upstream-release-and-post-release-delta-review
+  kind: upstream-release-with-curated-backports
   preferred_role: android-secondary-cross-platform-engine
   may_execute: false
   may_integrate: false
@@ -22,7 +22,7 @@ upstream:
     size_bytes: 69809
     sha256: 70d2c94147193cb915f9c6eb5144b8d404dacbcfa90bda2383b6b211afafa456
   reviewed_post_release_head: ba532298de7b28cfe854aea83d061369d13ca290
-  commits_after_tag_to_review: 38
+  commits_after_tag_reviewed_as_delta: 38
 
 policy:
   candidate_only: true
@@ -39,11 +39,17 @@ policy:
   automatic_runtime_update_from_upstream_allowed: false
   typed_allowlisted_profile_required: true
 
+static_review:
+  document: docs/BYEDPI-STATIC-ADMISSION-R28.1.md
+  baseline_decision: exact-v0.17.3
+  full_post_release_head_as_fork_base: REJECT
+  reason: 38 post-release commits include substantial feature and architecture expansion in addition to fixes; first NetPilot candidate must keep a minimal reviewed delta.
+
 architecture_findings:
   - id: BYEDPI-LISTENER-001
     severity: BLOCK_FOR_UNCHANGED_INTEGRATION
     title: Upstream SOCKS listener по умолчанию привязан к 0.0.0.0:1080.
-    evidence: README v0.17.3 документирует --ip default 0.0.0.0 и --port default 1080.
+    evidence: Exact v0.17.3 main.c documents --ip default 0.0.0.0 and --port default 1080.
     required_action: NetPilot должен принудительно использовать только loopback и не предоставлять UI/API для открытия прокси в LAN/WAN.
   - id: BYEDPI-PROXY-002
     severity: ARCHITECTURE_REVIEW
@@ -56,34 +62,50 @@ architecture_findings:
     required_action: NetPilot не передаёт пользовательские пути/файлы/raw CLI; только внутренние typed values и project-owned immutable data.
   - id: BYEDPI-RESOURCES-004
     severity: REVIEW
-    title: Upstream default max connections равен 512.
-    required_action: Установить продуктовые bounded limits и безопасное поведение при насыщении до admission.
+    title: Upstream connection count уже bounded: default max_open=512; parser требует >0 и <0xffff/2.
+    required_action: Выбрать и проверить собственный product resource budget; пользователь не управляет raw --max-conn.
 
 post_release_delta:
-  status: REVIEW_REQUIRED
-  summary: Tagged v0.17.3 отстаёт от 38 последующих upstream commits до выбранной точки ba532298de7b28cfe854aea83d061369d13ca290.
-  notable_changes:
+  status: CURATED_BACKPORT_REVIEW
+  summary: Полный диапазон v0.17.3..ba532298 содержит 38 commits и не принимается целиком как fork base.
+  architecture_expansion_observed:
+    - External socks
+    - cache file loading and per-group cache changes
+    - Shadowsocks plugin
+    - reconnect/group behavior changes
+    - raw proxy mode
+  backport_candidates:
     - commit: 57f9606feba6e06f9974e8502a21ce6672251548
       title: Fix fatal UDP tunnel closures caused by ICMP errors
       relevance: UDP reliability
+      decision: HIGH_PRIORITY_REVIEW
+      note: Exact v0.17.3 has the older on_udp_tunnel failure path; backport or minimal equivalent requires platform regression tests.
+    - commit: 4ce80972fafe055cd64b857a6a48333179636ae9
+      title: Dont ignore write result, check that the split position is a number
+      relevance: input validation and error handling
+      decision: REVIEW_FOR_MINIMAL_BACKPORT
     - commit: a5df2608ab99cac9d5b21d57d08e674af7852726
       title: Handle send error
-      relevance: error handling
+      relevance: TCP error handling
+      decision: REVIEW_OR_REIMPLEMENT
+      note: Patch is based on later architecture and must not be blindly cherry-picked onto v0.17.3.
     - commit: ba532298de7b28cfe854aea83d061369d13ca290
       title: Save pointer to free before exit
-      relevance: memory/resource cleanup
-    - title: Dont ignore write result, check that the split position is a number
-      relevance: input validation and error handling
-  decision: Stock v0.17.3 не может получить ADMIT, пока не решено, какие post-release fixes обязательны и какая exact source point станет fork base.
+      relevance: memory/resource cleanup for later post-release path
+      decision: REVIEW_ONLY_IF_RELEVANT_PATH_INCLUDED
+  decision: Exact v0.17.3 remains baseline; only individually reviewed fixes may be backported or minimally reimplemented. Full post-release head is not accepted.
 
 fork_rules:
-  - Сначала провести diff review v0.17.3..ba532298de7b28cfe854aea83d061369d13ca290 и выбрать exact anchor.
-  - Не брать latest/master автоматически.
-  - Принудительно loopback-only listener; запрет 0.0.0.0 и внешних интерфейсов в production NetPilot.
-  - Запрет пользовательских file/path/raw-data arguments.
-  - Ограничить число соединений, буферы, таймауты и UDP state.
-  - Каждый upstream sync оформлять отдельным reviewed delta.
-  - Сохранять MIT notice и собственную версию форка, не выдавая её за официальный ByeDPI.
+  - Baseline only on exact v0.17.3 release commit unless a separately admitted tagged successor is selected.
+  - Do not merge latest/master automatically.
+  - Do not cherry-pick post-release commits blindly; review patch dependencies and reimplement minimal equivalent when needed.
+  - Force loopback-only listener; reject 0.0.0.0, :: and external interface bind in production NetPilot.
+  - Do not expose listener bind address to GUI/IPC/config.
+  - Prohibit user file/path/raw-data arguments.
+  - Keep connection/buffer/timeout/UDP state bounded by an internal typed product policy.
+  - Treat Windows transparent routing and Android VpnService/TUN as separate admission components.
+  - Every upstream sync is a reviewed delta with new exact identity and tests.
+  - Preserve MIT notice and use a distinct NetPilot fork version; never present the build as official ByeDPI.
 
 platform_position:
   windows: secondary; requires separately reviewed transparent-routing layer for system-wide use
@@ -91,14 +113,15 @@ platform_position:
   android: strong candidate through platform VpnService/TUN architecture, subject to separate Android admission
 
 required_before_admit:
-  - Полный static review выбранного exact source anchor.
-  - Проверка release/source provenance и воспроизводимой сборки Windows x64.
-  - Native inventory и SHA-256 итогового бинарника.
-  - Loopback-only regression test и тест отсутствия внешнего listener.
-  - Fuzz/sanitizer tests parser/strategy input, UDP and SOCKS state where feasible.
-  - Изолированные tests connection limits, shutdown, crash and cleanup.
-  - Отдельный review transparent routing для Windows и VpnService/TUN для Android.
-  - Только новый exact component set после всех проверок может получить ADMIT.
+  - Finalize curated backport set against exact v0.17.3 and review every resulting patch.
+  - Controlled source build with pinned toolchain and dependency/build inventory.
+  - Native inventory and SHA-256 of final Windows/Linux/Android artifacts as applicable.
+  - Loopback-only regression test and proof no external listener opens.
+  - Fuzz/sanitizer tests for parser/strategy input, UDP and SOCKS state where feasible.
+  - Load tests for connection/UDP state and product resource limits.
+  - Shutdown/crash/cleanup tests.
+  - Separate admission for Windows transparent routing and Android VpnService/TUN.
+  - Only a new exact component set after all evidence can receive ADMIT.
 
 notes:
   - Отсутствие опубликованных security advisories не считается доказательством безопасности.
