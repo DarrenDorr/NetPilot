@@ -32,5 +32,27 @@ jobs:
       - name: Build
         run: dotnet build NetPilot.sln --configuration Release --no-restore
 
-      - name: Test
-        run: dotnet test NetPilot.sln --configuration Release --no-build
+      - name: Кроссплатформенные тесты
+        run: dotnet test tests/NetPilot.Core.Tests/NetPilot.Core.Tests.csproj --configuration Release --no-build
+
+  windows-security-test:
+    runs-on: windows-2025
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore Windows security tests
+        run: dotnet restore tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj
+
+      - name: Build Windows security tests
+        run: dotnet build tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj --configuration Release --no-restore
+
+      - name: Windows IPC security tests
+        run: dotnet test tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj --configuration Release --no-build

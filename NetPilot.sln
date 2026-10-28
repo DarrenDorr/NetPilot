@@ -24,6 +24,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetPilot.Ipc", "src\NetPilo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetPilot.Service", "src\NetPilot.Service\NetPilot.Service.csproj", "{9A407140-728B-4239-9CAA-31CDA9C44C4D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetPilot.Platform.Windows.Tests", "tests\NetPilot.Platform.Windows.Tests\NetPilot.Platform.Windows.Tests.csproj", "{B7D8B122-3136-4F7B-A2D9-6717A4359A42}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -74,5 +76,9 @@ Global
 		{9A407140-728B-4239-9CAA-31CDA9C44C4D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9A407140-728B-4239-9CAA-31CDA9C44C4D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9A407140-728B-4239-9CAA-31CDA9C44C4D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B7D8B122-3136-4F7B-A2D9-6717A4359A42}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B7D8B122-3136-4F7B-A2D9-6717A4359A42}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B7D8B122-3136-4F7B-A2D9-6717A4359A42}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B7D8B122-3136-4F7B-A2D9-6717A4359A42}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

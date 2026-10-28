@@ -9,6 +9,7 @@ namespace NetPilot.Service;
 
 public sealed class PrivilegedIpcWorker(
     WindowsNamedPipeServerFactory pipeFactory,
+    WindowsNamedPipePeerAuthenticator peerAuthenticator,
     OperationPolicy operationPolicy,
     ILogger<PrivilegedIpcWorker> logger) : BackgroundService
 {
@@ -43,11 +44,20 @@ public sealed class PrivilegedIpcWorker(
         NamedPipeServerStream pipe,
         CancellationToken cancellationToken)
     {
-        if (!IsIdentifiedLocalClient(pipe))
+        var clientAuthentication = peerAuthenticator.AuthenticateClient(pipe);
+        if (!clientAuthentication.IsAuthenticated || clientAuthentication.Identity is null)
         {
-            logger.LogWarning("IPC-соединение отклонено: клиент не прошёл локальную идентификацию.");
+            logger.LogWarning(
+                "IPC-соединение отклонено: клиент не прошёл авторизацию. Код: {Code}.",
+                clientAuthentication.Code);
             return;
         }
+
+        var clientIdentity = clientAuthentication.Identity;
+        logger.LogDebug(
+            "IPC-клиент авторизован. PID: {ProcessId}; Session: {SessionId}.",
+            clientIdentity.ProcessId,
+            clientIdentity.SessionId);
 
         using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         requestTimeout.CancelAfter(IpcProtocol.RequestTimeoutMilliseconds);
@@ -95,7 +105,7 @@ public sealed class PrivilegedIpcWorker(
                     request.RequestId,
                     true,
                     "Ok",
-                    "Служба NetPilot доступна."),
+                    "Служба NetPilot доступна и IPC-клиент авторизован."),
                 requestToken);
             return;
         }
@@ -114,7 +124,8 @@ public sealed class PrivilegedIpcWorker(
             return;
         }
 
-        // Привилегированные действия намеренно не выполняются до завершения следующего этапа авторизации.
+        // В R2 идентичность клиента уже установлена из Windows-токена и не берётся из JSON.
+        // Реальные привилегированные обработчики остаются отключены до отдельного аудита каждой операции.
         await SendResponseAsync(
             pipe,
             new IpcResponse(
@@ -124,26 +135,6 @@ public sealed class PrivilegedIpcWorker(
                 "OperationNotEnabled",
                 "Привилегированные операции будут подключаться только после отдельного аудита каждой операции."),
             requestToken);
-    }
-
-    private static bool IsIdentifiedLocalClient(NamedPipeServerStream pipe)
-    {
-        try
-        {
-            var identity = pipe.GetImpersonationUserName();
-            return !string.IsNullOrWhiteSpace(identity)
-                && !identity.EndsWith(
-                    "\\ANONYMOUS LOGON",
-                    StringComparison.OrdinalIgnoreCase);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return false;
-        }
-        catch (InvalidOperationException)
-        {
-            return false;
-        }
     }
 
     private static Task SendResponseAsync(
