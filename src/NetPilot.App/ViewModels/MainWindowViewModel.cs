@@ -3,7 +3,6 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using NetPilot.App.Services;
-using NetPilot.Automation;
 using NetPilot.Core.Models;
 using NetPilot.Engine.Abstractions;
 
@@ -15,7 +14,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly Dictionary<string, ResourceStatusViewModel> _resourceById;
     private readonly ResourceHealthHistory _healthHistory = new();
     private readonly AsyncCommand _checkCommand;
-    private readonly AsyncCommand _findStrategyCommand;
+    private readonly AsyncCommand _findProfileCommand;
     private readonly AsyncCommand _installEngineCommand;
     private readonly AsyncCommand _clearDiagnosticHistoryCommand;
 
@@ -55,8 +54,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             () => !IsBusy,
             HandleUnexpectedError);
 
-        _findStrategyCommand = new AsyncCommand(
-            FindStrategyAsync,
+        _findProfileCommand = new AsyncCommand(
+            FindProfileAsync,
             () => !IsBusy && CanUseEngine,
             HandleUnexpectedError);
 
@@ -114,7 +113,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             if (SetField(ref _isBusy, value))
             {
                 _checkCommand.RaiseCanExecuteChanged();
-                _findStrategyCommand.RaiseCanExecuteChanged();
+                _findProfileCommand.RaiseCanExecuteChanged();
                 _installEngineCommand.RaiseCanExecuteChanged();
                 _clearDiagnosticHistoryCommand.RaiseCanExecuteChanged();
             }
@@ -152,13 +151,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             if (SetField(ref _canUseEngine, value))
             {
-                _findStrategyCommand.RaiseCanExecuteChanged();
+                _findProfileCommand.RaiseCanExecuteChanged();
             }
         }
     }
 
     public ICommand CheckCommand => _checkCommand;
-    public ICommand FindStrategyCommand => _findStrategyCommand;
+    public ICommand FindProfileCommand => _findProfileCommand;
     public ICommand InstallEngineCommand => _installEngineCommand;
     public ICommand ClearDiagnosticHistoryCommand => _clearDiagnosticHistoryCommand;
 
@@ -261,7 +260,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private async Task FindStrategyAsync()
+    private async Task FindProfileAsync()
     {
         ThrowIfDisposed();
         IsBusy = true;
@@ -275,8 +274,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            var result = await _dashboardService.FindWorkingStrategyAsync();
-            ApplyStrategySelectionResult(result);
+            var result = await _dashboardService.FindWorkingProfileAsync();
+            ApplyProfileSelectionResult(result);
 
             var health = await _dashboardService.CheckResourcesAsync();
             ApplyHealthResults(health, preserveActionText: true);
@@ -369,19 +368,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _clearDiagnosticHistoryCommand.RaiseCanExecuteChanged();
     }
 
-    private void ApplyStrategySelectionResult(StrategySelectionResult result)
+    private void ApplyProfileSelectionResult(ProfileSelectionResult result)
     {
         switch (result.Status)
         {
-            case StrategySelectionStatus.CurrentHealthy:
+            case ProfileSelectionStatus.CurrentHealthy:
                 LastAction = "Текущий профиль уже работает. Переключение не выполнялось.";
                 break;
 
-            case StrategySelectionStatus.TransientFailure:
+            case ProfileSelectionStatus.TransientFailure:
                 LastAction = "Обнаружен кратковременный сбой. Текущий профиль сохранён.";
                 break;
 
-            case StrategySelectionStatus.RecoveryNotApplicable:
+            case ProfileSelectionStatus.RecoveryNotApplicable:
                 LastAction = result.DiagnosticCode switch
                 {
                     "RecoverySuppressedDnsFailure" =>
@@ -397,17 +396,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 };
                 break;
 
-            case StrategySelectionStatus.Switched:
+            case ProfileSelectionStatus.Switched:
                 LastAction = "NetPilot подтвердил рабочую альтернативу и переключил профиль.";
                 break;
 
-            case StrategySelectionStatus.NotRunning:
+            case ProfileSelectionStatus.NotRunning:
                 LastAction = "Сетевой движок сейчас не запущен. Автоматический запуск не выполнялся.";
                 OverallStatus = "Сетевой движок не запущен";
                 OverallDetails = "Первичный запуск профиля выполняется только отдельным явным действием.";
                 break;
 
-            case StrategySelectionStatus.OriginalRestoreFailed:
+            case ProfileSelectionStatus.OriginalRestoreFailed:
                 LastAction = "Не удалось вернуть исходный профиль после неудачного подбора.";
                 OverallStatus = "Требуется внимание";
                 OverallDetails = "NetPilot остановил автоматизацию. Проверьте движок в расширенном режиме.";
@@ -464,11 +463,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         try
         {
-            var state = await _dashboardService.GetStrategyRuntimeStateAsync(cancellationToken);
-            var activeProfileId = state.IsRunning ? state.StrategyId : null;
+            var state = await _dashboardService.GetProfileRuntimeStateAsync(cancellationToken);
+            var activeProfileId = state.IsRunning ? state.ProfileId : null;
             UpdateProfileAvailability(canUseEngine: true, activeProfileId);
-            EngineStatus = state.IsRunning && !string.IsNullOrWhiteSpace(state.StrategyId)
-                ? $"Сетевой движок: запущен · профиль {state.StrategyId}"
+            EngineStatus = state.IsRunning && !string.IsNullOrWhiteSpace(state.ProfileId)
+                ? $"Сетевой движок: запущен · профиль {state.ProfileId}"
                 : "Сетевой движок: установлен · остановлен";
         }
         catch (Exception exception) when (IsExpectedOperationalException(exception))
@@ -506,7 +505,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private static bool IsExpectedOperationalException(Exception exception) =>
         exception is EngineProvisioningException
-            or StrategyRuntimeException
+            or ProfileOperationException
             or HttpRequestException
             or OperationCanceledException
             or InvalidOperationException;
@@ -520,7 +519,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 "Установка NetPilot не завершила безопасную привязку пользователя. Выполните восстановление установки.",
             EngineProvisioningException =>
                 "Не удалось связаться со службой NetPilot или выполнить защищённую операцию.",
-            StrategyRuntimeException => "Служба не смогла выполнить операцию с сетевым профилем.",
+            ProfileOperationException => "Служба не смогла выполнить операцию с сетевым профилем.",
             HttpRequestException => "Не удалось проверить доступность сети.",
             OperationCanceledException => "Операция была отменена.",
             _ => "Не удалось завершить операцию."

@@ -46,7 +46,7 @@
                     Padding="18,10"
                     HorizontalAlignment="Stretch" />
             <Button Content="Подобрать профиль"
-                    Command="{Binding FindStrategyCommand}"
+                    Command="{Binding FindProfileCommand}"
                     Padding="18,10"
                     HorizontalAlignment="Stretch" />
           </StackPanel>

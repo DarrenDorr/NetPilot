@@ -11,10 +11,10 @@ public interface IDashboardService : IDisposable
     Task<IReadOnlyList<ResourceHealth>> CheckResourcesAsync(
         CancellationToken cancellationToken = default);
 
-    Task<StrategySelectionResult> FindWorkingStrategyAsync(
+    Task<ProfileSelectionResult> FindWorkingProfileAsync(
         CancellationToken cancellationToken = default);
 
-    Task<StrategyRuntimeState> GetStrategyRuntimeStateAsync(
+    Task<ProfileRuntimeState> GetProfileRuntimeStateAsync(
         CancellationToken cancellationToken = default);
 
     Task<EngineInstallationState> GetEngineInstallationStateAsync(
@@ -61,18 +61,46 @@ public sealed class DashboardService : IDashboardService
         return results;
     }
 
-    public Task<StrategySelectionResult> FindWorkingStrategyAsync(
+    public async Task<ProfileSelectionResult> FindWorkingProfileAsync(
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        return _selectionEngine.EvaluateAndRecoverAsync(Resources, cancellationToken);
+
+        try
+        {
+            var result = await _selectionEngine.EvaluateAndRecoverAsync(
+                Resources,
+                cancellationToken);
+            return ToProfileSelectionResult(result);
+        }
+        catch (StrategyRuntimeException exception)
+        {
+            throw new ProfileOperationException(
+                exception.Code,
+                exception.Message,
+                exception);
+        }
     }
 
-    public Task<StrategyRuntimeState> GetStrategyRuntimeStateAsync(
+    public async Task<ProfileRuntimeState> GetProfileRuntimeStateAsync(
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        return _strategyRuntime.GetStateAsync(cancellationToken);
+
+        try
+        {
+            var state = await _strategyRuntime.GetStateAsync(cancellationToken);
+            return state.IsRunning && !string.IsNullOrWhiteSpace(state.StrategyId)
+                ? ProfileRuntimeState.Running(state.StrategyId)
+                : ProfileRuntimeState.Stopped;
+        }
+        catch (StrategyRuntimeException exception)
+        {
+            throw new ProfileOperationException(
+                exception.Code,
+                exception.Message,
+                exception);
+        }
     }
 
     public Task<EngineInstallationState> GetEngineInstallationStateAsync(
@@ -99,6 +127,26 @@ public sealed class DashboardService : IDashboardService
         _disposed = true;
         _healthChecker.Dispose();
     }
+
+    private static ProfileSelectionResult ToProfileSelectionResult(
+        StrategySelectionResult result) =>
+        new(
+            result.Status switch
+            {
+                StrategySelectionStatus.NotRunning => ProfileSelectionStatus.NotRunning,
+                StrategySelectionStatus.CurrentHealthy => ProfileSelectionStatus.CurrentHealthy,
+                StrategySelectionStatus.TransientFailure => ProfileSelectionStatus.TransientFailure,
+                StrategySelectionStatus.RecoveryNotApplicable => ProfileSelectionStatus.RecoveryNotApplicable,
+                StrategySelectionStatus.Switched => ProfileSelectionStatus.Switched,
+                StrategySelectionStatus.NoWorkingAlternative => ProfileSelectionStatus.NoWorkingAlternative,
+                StrategySelectionStatus.OriginalRestoreFailed => ProfileSelectionStatus.OriginalRestoreFailed,
+                _ => throw new ProfileOperationException(
+                    "UnknownProfileSelectionStatus",
+                    "Automation вернула неизвестный статус выбора профиля.")
+            },
+            result.OriginalStrategyId,
+            result.SelectedStrategyId,
+            result.DiagnosticCode);
 
     private void ThrowIfDisposed() =>
         ObjectDisposedException.ThrowIf(_disposed, this);
