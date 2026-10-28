@@ -52,8 +52,8 @@ patch_series:
   - sequence: 1
     path: security/native-admission/patches/byedpi-r28/0001-loopback-only-listener.patch
     purpose: make loopback the default listener and reject non-loopback --ip values as defense in depth
-    git_blob_sha1: 7c72a0ca63b04d61a3e0ae7bd45e30f030d3f4a6
-    sha256: aa571be24686188140c4522fc7bd0a2bfa172984d17c48b677cc9454353c499c
+    git_blob_sha1: fa9ba3349792d66f40d925bc612310e8d18aae8a
+    sha256: 3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068
     status: REVIEW_PENDING_COMPILE_GATE
     expected_files:
       - main.c
