@@ -98,105 +98,128 @@ public sealed class StrategySelectionEngine
         var viableCandidates = new List<StrategyEvaluation>();
         string? activeStrategyId = originalStrategyId;
 
-        foreach (var candidate in candidates)
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
+            foreach (var candidate in candidates)
             {
-                await _runtime.ActivateAsync(candidate.Id, cancellationToken);
-                activeStrategyId = candidate.Id;
-            }
-            catch (StrategyRuntimeException exception)
-            {
-                evaluations.Add(new StrategyEvaluation(
-                    candidate.Id,
-                    0,
-                    false,
-                    null,
-                    [],
-                    $"Activation:{exception.Code}"));
-                continue;
-            }
+                cancellationToken.ThrowIfCancellationRequested();
 
-            await DelayAsync(_options.PostSwitchSettleDelay, cancellationToken);
-
-            var evaluation = await EvaluateStrategyAsync(
-                candidate.Id,
-                resources,
-                cancellationToken);
-            evaluations.Add(evaluation);
-
-            if (evaluation.IsViable)
-            {
-                viableCandidates.Add(evaluation);
-            }
-        }
-
-        foreach (var candidate in viableCandidates
-                     .OrderByDescending(static candidate => candidate.Score)
-                     .ThenBy(static candidate => candidate.AverageLatency)
-                     .ThenBy(static candidate => candidate.StrategyId, StringComparer.Ordinal))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                if (!string.Equals(activeStrategyId, candidate.StrategyId, StringComparison.Ordinal))
+                try
                 {
-                    await _runtime.ActivateAsync(candidate.StrategyId, cancellationToken);
-                    activeStrategyId = candidate.StrategyId;
-                    await DelayAsync(_options.PostSwitchSettleDelay, cancellationToken);
+                    await _runtime.ActivateAsync(candidate.Id, cancellationToken);
+                    activeStrategyId = candidate.Id;
+                }
+                catch (StrategyRuntimeException exception)
+                {
+                    evaluations.Add(new StrategyEvaluation(
+                        candidate.Id,
+                        0,
+                        false,
+                        null,
+                        [],
+                        $"Activation:{exception.Code}"));
+                    continue;
+                }
+
+                await DelayAsync(_options.PostSwitchSettleDelay, cancellationToken);
+
+                var evaluation = await EvaluateStrategyAsync(
+                    candidate.Id,
+                    resources,
+                    cancellationToken);
+                evaluations.Add(evaluation);
+
+                if (evaluation.IsViable)
+                {
+                    viableCandidates.Add(evaluation);
                 }
             }
+
+            foreach (var candidate in viableCandidates
+                         .OrderByDescending(static candidate => candidate.Score)
+                         .ThenBy(static candidate => candidate.AverageLatency ?? TimeSpan.MaxValue)
+                         .ThenBy(static candidate => candidate.StrategyId, StringComparer.Ordinal))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    if (!string.Equals(activeStrategyId, candidate.StrategyId, StringComparison.Ordinal))
+                    {
+                        await _runtime.ActivateAsync(candidate.StrategyId, cancellationToken);
+                        activeStrategyId = candidate.StrategyId;
+                        await DelayAsync(_options.PostSwitchSettleDelay, cancellationToken);
+                    }
+                }
+                catch (StrategyRuntimeException exception)
+                {
+                    evaluations.Add(candidate with
+                    {
+                        IsViable = false,
+                        DiagnosticCode = $"FinalActivation:{exception.Code}"
+                    });
+                    continue;
+                }
+
+                var confirmation = await EvaluateStrategyAsync(
+                    candidate.StrategyId,
+                    resources,
+                    cancellationToken);
+                evaluations.Add(confirmation);
+
+                if (confirmation.IsViable)
+                {
+                    return new StrategySelectionResult(
+                        StrategySelectionStatus.Switched,
+                        originalStrategyId,
+                        candidate.StrategyId,
+                        evaluations);
+                }
+            }
+
+            try
+            {
+                if (!string.Equals(activeStrategyId, originalStrategyId, StringComparison.Ordinal))
+                {
+                    await _runtime.ActivateAsync(originalStrategyId, cancellationToken);
+                    activeStrategyId = originalStrategyId;
+                }
+
+                return new StrategySelectionResult(
+                    StrategySelectionStatus.NoWorkingAlternative,
+                    originalStrategyId,
+                    originalStrategyId,
+                    evaluations,
+                    "NoConfirmedHealthyAlternative");
+            }
             catch (StrategyRuntimeException exception)
             {
-                evaluations.Add(candidate with
-                {
-                    IsViable = false,
-                    DiagnosticCode = $"FinalActivation:{exception.Code}"
-                });
-                continue;
-            }
-
-            var confirmation = await EvaluateStrategyAsync(
-                candidate.StrategyId,
-                resources,
-                cancellationToken);
-            evaluations.Add(confirmation);
-
-            if (confirmation.IsViable)
-            {
                 return new StrategySelectionResult(
-                    StrategySelectionStatus.Switched,
+                    StrategySelectionStatus.OriginalRestoreFailed,
                     originalStrategyId,
-                    candidate.StrategyId,
-                    evaluations);
+                    activeStrategyId,
+                    evaluations,
+                    $"Restore:{exception.Code}");
             }
         }
-
-        try
+        catch (Exception originalException)
         {
             if (!string.Equals(activeStrategyId, originalStrategyId, StringComparison.Ordinal))
             {
-                await _runtime.ActivateAsync(originalStrategyId, cancellationToken);
+                try
+                {
+                    await _runtime.ActivateAsync(originalStrategyId, CancellationToken.None);
+                }
+                catch (Exception restoreException)
+                {
+                    throw new StrategyRuntimeException(
+                        "AbortRestoreFailed",
+                        "Автоматический подбор был прерван, и исходную стратегию восстановить не удалось.",
+                        new AggregateException(originalException, restoreException));
+                }
             }
 
-            return new StrategySelectionResult(
-                StrategySelectionStatus.NoWorkingAlternative,
-                originalStrategyId,
-                originalStrategyId,
-                evaluations,
-                "NoConfirmedHealthyAlternative");
-        }
-        catch (StrategyRuntimeException exception)
-        {
-            return new StrategySelectionResult(
-                StrategySelectionStatus.OriginalRestoreFailed,
-                originalStrategyId,
-                activeStrategyId,
-                evaluations,
-                $"Restore:{exception.Code}");
+            throw;
         }
     }
 
