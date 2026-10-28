@@ -1,0 +1,142 @@
+name: Native Candidate Windows Dependency Intake
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/native-candidate-windows-dependency-intake.yml"
+      - "security/native-admission/**"
+      - "docs/ZAPRET2-*.md"
+
+permissions:
+  contents: read
+
+jobs:
+  zapret2-windows-dependency-intake:
+    name: Inventory Windows build dependencies without engine execution
+    runs-on: windows-2025
+    timeout-minutes: 20
+
+    steps:
+      - name: Configure Git line endings
+        shell: pwsh
+        run: git config --global core.autocrlf input
+
+      - name: Checkout NetPilot without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: netpilot
+          persist-credentials: false
+
+      - name: Checkout exact zapret2 UAF-fix source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: bol-van/zapret2
+          ref: 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d
+          fetch-depth: 2
+          path: zapret2
+          persist-credentials: false
+
+      - name: Checkout exact LuaJIT source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: openresty/luajit2
+          ref: dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc
+          fetch-depth: 1
+          path: luajit2
+          persist-credentials: false
+
+      - name: Verify exact source anchors
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C zapret2 rev-parse HEAD).Trim() -ne '4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d') { throw 'Unexpected zapret2 commit' }
+          if ((git -C zapret2 rev-parse HEAD^).Trim() -ne '221d7dff24bfec0cd5ac0a5070b8acef2008af3d') { throw 'Unexpected zapret2 parent' }
+          if ((git -C luajit2 rev-parse HEAD).Trim() -ne 'dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc') { throw 'Unexpected LuaJIT commit' }
+
+      - name: Install signed Cygwin build dependencies
+        uses: cygwin/cygwin-install-action@006ad0b0946ca6d0a3ea2d4437677fa767392401 # v4 exact commit
+        with:
+          platform: x86_64
+          check-sig: 'true'
+          add-to-path: false
+          packages: >-
+            gcc-core
+            make
+            zlib-devel
+
+      - name: Record Cygwin package identities
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path evidence | Out-Null
+          $cygcheck = 'C:\cygwin\bin\cygcheck.exe'
+          if (-not (Test-Path $cygcheck)) { throw 'cygcheck.exe missing' }
+          & $cygcheck -c cygwin gcc-core make zlib-devel | Out-File -FilePath evidence\cygwin-packages.txt -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw 'cygcheck failed' }
+
+          $dll = 'C:\cygwin\bin\cygwin1.dll'
+          if (-not (Test-Path $dll)) { throw 'cygwin1.dll missing' }
+          $dllHash = (Get-FileHash -Algorithm SHA256 $dll).Hash.ToLowerInvariant()
+          $dllSize = (Get-Item $dll).Length
+          @(
+            "cygwin1_dll_sha256=$dllHash"
+            "cygwin1_dll_size=$dllSize"
+          ) | Out-File -FilePath evidence\cygwin-runtime.txt -Encoding ascii
+
+      - name: Download and verify exact WinDivert archive without extraction
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $uri = 'https://github.com/basil00/WinDivert/releases/download/v2.2.2/WinDivert-2.2.2-A.zip'
+          $expected = '63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15'
+          $out = Join-Path $PWD 'WinDivert-2.2.2-A.zip'
+          & curl.exe --fail --location --proto '=https' --tlsv1.2 --output $out $uri
+          if ($LASTEXITCODE -ne 0) { throw 'WinDivert download failed or was blocked' }
+          $actual = (Get-FileHash -Algorithm SHA256 $out).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "WinDivert SHA-256 mismatch: $actual" }
+          @(
+            'windivert_version=2.2.2-A'
+            "windivert_archive_sha256=$actual"
+            "windivert_archive_size=$((Get-Item $out).Length)"
+            'windivert_extracted=false'
+            'windivert_driver_installed=false'
+          ) | Out-File -FilePath evidence\windivert-intake.txt -Encoding ascii
+          Remove-Item -Force $out
+
+      - name: Produce dependency intake evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zapretHead = (git -C zapret2 rev-parse HEAD).Trim()
+          $zapretTree = (git -C zapret2 rev-parse 'HEAD^{tree}').Trim()
+          $luaHead = (git -C luajit2 rev-parse HEAD).Trim()
+          $luaTree = (git -C luajit2 rev-parse 'HEAD^{tree}').Trim()
+          @(
+            'schema_version=1'
+            'scope=windows-dependency-intake-only'
+            'candidate=zapret2-v1.0.6-plus-uaf-fix'
+            "zapret2_commit=$zapretHead"
+            "zapret2_tree=$zapretTree"
+            "luajit_commit=$luaHead"
+            "luajit_tree=$luaTree"
+            'runner=windows-2025'
+            'cygwin_action_commit=006ad0b0946ca6d0a3ea2d4437677fa767392401'
+            'cygwin_setup_signature_check=true'
+            'native_engine_compiled=false'
+            'native_engine_executed=false'
+            'windivert_driver_installed=false'
+          ) | Out-File -FilePath evidence\windows-dependency-intake.txt -Encoding ascii
+
+          Get-ChildItem evidence -File | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          } | Out-File -FilePath evidence\SHA256SUMS.txt -Encoding ascii
+
+      - name: Upload text evidence only
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zapret2-r28-windows-dependency-intake
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
