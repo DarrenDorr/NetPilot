@@ -17,6 +17,20 @@ public sealed class WindowsPrivilegedServiceClient : IPrivilegedServiceClient
         CancellationToken cancellationToken = default) =>
         SendAsync(IpcRequest.CreateOperation(operation), cancellationToken);
 
+    public Task<IpcResponse> ListZapretStrategiesAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(IpcRequest.CreateZapretListStrategies(), cancellationToken);
+
+    public Task<IpcResponse> GetZapretStatusAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(IpcRequest.CreateZapretGetStatus(), cancellationToken);
+
+    public Task<IpcResponse> StartZapretAsync(
+        string strategyId,
+        CancellationToken cancellationToken = default) =>
+        SendAsync(IpcRequest.CreateZapretStart(strategyId), cancellationToken);
+
+    public Task<IpcResponse> StopZapretAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(IpcRequest.CreateZapretStop(), cancellationToken);
+
     private static async Task<IpcResponse> SendAsync(
         IpcRequest request,
         CancellationToken cancellationToken)
