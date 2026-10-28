@@ -131,7 +131,7 @@ static size_t pool_count(const t_conntrack *pool)
     return (size_t)HASH_COUNT(pool->pool);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     t_conntrack pool;
     t_ctrack *track = NULL;
@@ -142,6 +142,9 @@ int main(void)
     struct udp_fixture third;
     struct udp_fixture fourth;
     struct dissect invalid;
+
+    (void)argc;
+    (void)argv;
 
     memset(&params, 0, sizeof(params));
     memset(&invalid, 0, sizeof(invalid));
