@@ -23,7 +23,7 @@ public sealed record WindowsPipeAuthenticationResult(
         new(false, code, message);
 }
 
-public sealed class WindowsNamedPipePeerAuthenticator
+public static class WindowsPipeIdentityPolicy
 {
     private static readonly SecurityIdentifier LocalSystemSid =
         new(WellKnownSidType.LocalSystemSid, null);
@@ -34,6 +34,133 @@ public sealed class WindowsNamedPipePeerAuthenticator
     private static readonly SecurityIdentifier NetworkServiceSid =
         new(WellKnownSidType.NetworkServiceSid, null);
 
+    public static WindowsPipeAuthenticationResult EvaluateClient(
+        uint processId,
+        uint pipeSessionId,
+        uint processSessionId,
+        string? userSidValue,
+        bool isAnonymous,
+        bool isGuest,
+        TokenImpersonationLevel impersonationLevel,
+        bool isInteractive)
+    {
+        if (processId == 0)
+        {
+            return WindowsPipeAuthenticationResult.Rejected(
+                "ClientProcessUnknown",
+                "Не удалось определить процесс IPC-клиента.");
+        }
+
+        if (pipeSessionId != processSessionId)
+        {
+            return WindowsPipeAuthenticationResult.Rejected(
+                "ClientSessionMismatch",
+                "Сеанс процесса не соответствует сеансу IPC-подключения.");
+        }
+
+        if (string.IsNullOrWhiteSpace(userSidValue))
+        {
+            return WindowsPipeAuthenticationResult.Rejected(
+                "ClientSidMissing",
+                "Не удалось определить SID IPC-клиента.");
+        }
+
+        if (isAnonymous || isGuest)
+        {
+            return WindowsPipeAuthenticationResult.Rejected(
+                "ClientIdentityNotAllowed",
+                "Анонимные и гостевые IPC-клиенты запрещены.");
+        }
+
+        if (impersonationLevel is TokenImpersonationLevel.None or TokenImpersonationLevel.Anonymous)
+        {
+            return WindowsPipeAuthenticationResult.Rejected(
+                "ClientImpersonationTooWeak",
+                "Уровень идентификации IPC-клиента недостаточен.");
+        }
+
+        if (pipeSessionId == 0 || !isInteractive)
+        {
+            return WindowsPipeAuthenticationResult.Rejected(
+                "ClientNotInteractive",
+                "IPC-клиент должен принадлежать интерактивной пользовательской сессии.");
+        }
+
+        SecurityIdentifier userSid;
+        try
+        {
+            userSid = new SecurityIdentifier(userSidValue);
+        }
+        catch (ArgumentException)
+        {
+            return WindowsPipeAuthenticationResult.Rejected(
+                "ClientSidInvalid",
+                "SID IPC-клиента имеет недопустимый формат.");
+        }
+
+        if (userSid == LocalSystemSid || userSid == LocalServiceSid || userSid == NetworkServiceSid)
+        {
+            return WindowsPipeAuthenticationResult.Rejected(
+                "ServiceAccountNotAllowed",
+                "Системные служебные учётные записи не могут выступать пользовательским IPC-клиентом.");
+        }
+
+        return WindowsPipeAuthenticationResult.Accepted(
+            new WindowsPipePeerIdentity(processId, pipeSessionId, userSid.Value));
+    }
+
+    public static WindowsPipeAuthenticationResult EvaluateServer(
+        uint processId,
+        uint sessionId,
+        string? ownerSidValue)
+    {
+        if (processId == 0)
+        {
+            return WindowsPipeAuthenticationResult.Rejected(
+                "ServerProcessUnknown",
+                "Не удалось определить процесс IPC-сервера.");
+        }
+
+        if (sessionId != 0)
+        {
+            return WindowsPipeAuthenticationResult.Rejected(
+                "ServerNotServiceSession",
+                "IPC-сервер не работает в системной сессии Windows.");
+        }
+
+        if (string.IsNullOrWhiteSpace(ownerSidValue))
+        {
+            return WindowsPipeAuthenticationResult.Rejected(
+                "ServerOwnerMissing",
+                "Не удалось определить владельца ACL IPC-сервера.");
+        }
+
+        SecurityIdentifier ownerSid;
+        try
+        {
+            ownerSid = new SecurityIdentifier(ownerSidValue);
+        }
+        catch (ArgumentException)
+        {
+            return WindowsPipeAuthenticationResult.Rejected(
+                "ServerOwnerInvalid",
+                "SID владельца IPC-сервера имеет недопустимый формат.");
+        }
+
+        if (ownerSid != LocalSystemSid)
+        {
+            return WindowsPipeAuthenticationResult.Rejected(
+                "ServerOwnerMismatch",
+                "Владельцем IPC-канала не является LocalSystem.");
+        }
+
+        return WindowsPipeAuthenticationResult.Accepted(
+            new WindowsPipePeerIdentity(processId, sessionId, LocalSystemSid.Value));
+    }
+}
+
+public sealed class WindowsNamedPipePeerAuthenticator
+{
     private static readonly SecurityIdentifier InteractiveSid =
         new(WellKnownSidType.InteractiveSid, null);
 
@@ -55,8 +182,7 @@ public sealed class WindowsNamedPipePeerAuthenticator
                 "IPC-канал не подключён.");
         }
 
-        if (!NativeMethods.GetNamedPipeClientProcessId(pipe.SafePipeHandle, out var processId)
-            || processId == 0)
+        if (!NativeMethods.GetNamedPipeClientProcessId(pipe.SafePipeHandle, out var processId))
         {
             return WindowsPipeAuthenticationResult.Rejected(
                 "ClientProcessUnknown",
@@ -70,12 +196,11 @@ public sealed class WindowsNamedPipePeerAuthenticator
                 "Не удалось определить сеанс IPC-клиента.");
         }
 
-        if (!NativeMethods.ProcessIdToSessionId(processId, out var processSessionId)
-            || processSessionId != pipeSessionId)
+        if (!NativeMethods.ProcessIdToSessionId(processId, out var processSessionId))
         {
             return WindowsPipeAuthenticationResult.Rejected(
-                "ClientSessionMismatch",
-                "Сеанс процесса не соответствует сеансу IPC-подключения.");
+                "ClientProcessSessionUnknown",
+                "Не удалось проверить сеанс процесса IPC-клиента.");
         }
 
         ClientTokenSnapshot? token = null;
@@ -105,55 +230,22 @@ public sealed class WindowsNamedPipePeerAuthenticator
                 "Токен IPC-клиента недоступен.");
         }
 
-        if (token is null || string.IsNullOrWhiteSpace(token.UserSid))
+        if (token is null)
         {
             return WindowsPipeAuthenticationResult.Rejected(
-                "ClientSidMissing",
-                "Не удалось определить SID IPC-клиента.");
+                "ClientTokenUnavailable",
+                "Токен IPC-клиента недоступен.");
         }
 
-        if (token.IsAnonymous || token.IsGuest)
-        {
-            return WindowsPipeAuthenticationResult.Rejected(
-                "ClientIdentityNotAllowed",
-                "Анонимные и гостевые IPC-клиенты запрещены.");
-        }
-
-        if (token.ImpersonationLevel is TokenImpersonationLevel.None or TokenImpersonationLevel.Anonymous)
-        {
-            return WindowsPipeAuthenticationResult.Rejected(
-                "ClientImpersonationTooWeak",
-                "Уровень идентификации IPC-клиента недостаточен.");
-        }
-
-        if (pipeSessionId == 0 || !token.IsInteractive)
-        {
-            return WindowsPipeAuthenticationResult.Rejected(
-                "ClientNotInteractive",
-                "IPC-клиент должен принадлежать интерактивной пользовательской сессии.");
-        }
-
-        SecurityIdentifier userSid;
-        try
-        {
-            userSid = new SecurityIdentifier(token.UserSid);
-        }
-        catch (ArgumentException)
-        {
-            return WindowsPipeAuthenticationResult.Rejected(
-                "ClientSidInvalid",
-                "SID IPC-клиента имеет недопустимый формат.");
-        }
-
-        if (userSid == LocalSystemSid || userSid == LocalServiceSid || userSid == NetworkServiceSid)
-        {
-            return WindowsPipeAuthenticationResult.Rejected(
-                "ServiceAccountNotAllowed",
-                "Системные служебные учётные записи не могут выступать пользовательским IPC-клиентом.");
-        }
-
-        return WindowsPipeAuthenticationResult.Accepted(
-            new WindowsPipePeerIdentity(processId, pipeSessionId, userSid.Value));
+        return WindowsPipeIdentityPolicy.EvaluateClient(
+            processId,
+            pipeSessionId,
+            processSessionId,
+            token.UserSid,
+            token.IsAnonymous,
+            token.IsGuest,
+            token.ImpersonationLevel,
+            token.IsInteractive);
     }
 
     public WindowsPipeAuthenticationResult AuthenticateServer(NamedPipeClientStream pipe)
@@ -174,8 +266,7 @@ public sealed class WindowsNamedPipePeerAuthenticator
                 "IPC-канал не подключён.");
         }
 
-        if (!NativeMethods.GetNamedPipeServerProcessId(pipe.SafePipeHandle, out var processId)
-            || processId == 0)
+        if (!NativeMethods.GetNamedPipeServerProcessId(pipe.SafePipeHandle, out var processId))
         {
             return WindowsPipeAuthenticationResult.Rejected(
                 "ServerProcessUnknown",
@@ -189,18 +280,12 @@ public sealed class WindowsNamedPipePeerAuthenticator
                 "Не удалось определить сеанс IPC-сервера.");
         }
 
-        if (sessionId != 0)
-        {
-            return WindowsPipeAuthenticationResult.Rejected(
-                "ServerNotServiceSession",
-                "IPC-сервер не работает в системной сессии Windows.");
-        }
-
-        SecurityIdentifier? owner;
+        string? ownerSidValue;
         try
         {
             var security = pipe.GetAccessControl();
-            owner = security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
+            var owner = security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
+            ownerSidValue = owner?.Value;
         }
         catch (UnauthorizedAccessException)
         {
@@ -215,15 +300,7 @@ public sealed class WindowsNamedPipePeerAuthenticator
                 "ACL IPC-сервера недоступен.");
         }
 
-        if (owner is null || owner != LocalSystemSid)
-        {
-            return WindowsPipeAuthenticationResult.Rejected(
-                "ServerOwnerMismatch",
-                "Владельцем IPC-канала не является LocalSystem.");
-        }
-
-        return WindowsPipeAuthenticationResult.Accepted(
-            new WindowsPipePeerIdentity(processId, sessionId, LocalSystemSid.Value));
+        return WindowsPipeIdentityPolicy.EvaluateServer(processId, sessionId, ownerSidValue);
     }
 
     private static bool HasGroup(WindowsIdentity identity, SecurityIdentifier groupSid)
