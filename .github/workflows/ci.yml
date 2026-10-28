@@ -63,70 +63,31 @@ jobs:
       - name: Build Windows GUI host
         run: dotnet build src/NetPilot.App.Windows/NetPilot.App.Windows.csproj --configuration Release --no-restore
 
-      - name: Windows IPC security tests
+      - name: Windows unit and local pipe security tests
         run: dotnet test tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj --configuration Release --no-build
 
       - name: Build verified Inno Setup installer
         shell: pwsh
         run: pwsh -NoLogo -NoProfile -File scripts/build-installer.ps1 -Version 0.1.0-alpha-ci -VersionInfoVersion 0.1.0.0
 
-      - name: Installer smoke test - install, user enrollment and service start
+      - name: Installer artifact sanity check
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $setup = Resolve-Path 'artifacts\installer\NetPilot-Setup-0.1.0-alpha-ci-x64.exe'
-          $setupLog = Join-Path $env:RUNNER_TEMP 'netpilot-setup-smoke.log'
-
-          function Show-SetupLog {
-            if (Test-Path $setupLog) {
-              Write-Host '----- Inno Setup smoke log -----'
-              Get-Content $setupLog -Encoding Unicode -ErrorAction SilentlyContinue
-              Write-Host '----- End Inno Setup smoke log -----'
-            }
+          $item = Get-Item $setup
+          if ($item.Length -le 0) {
+            throw 'Installer artifact is empty.'
           }
 
-          $setupArgs = @(
-            '/VERYSILENT',
-            '/SUPPRESSMSGBOXES',
-            '/NORESTART',
-            '/SP-',
-            "/LOG=$setupLog"
-          )
-          $process = Start-Process -FilePath $setup -ArgumentList $setupArgs -Wait -PassThru
-          if ($process.ExitCode -ne 0) {
-            Show-SetupLog
-            throw "Setup failed with exit code $($process.ExitCode)"
-          }
+          $hash = Get-FileHash -Algorithm SHA256 -Path $setup
+          Write-Host "Installer: $($item.FullName)"
+          Write-Host "Size: $($item.Length) bytes"
+          Write-Host "SHA-256: $($hash.Hash)"
 
-          $service = Get-Service -Name 'NetPilot.Service' -ErrorAction SilentlyContinue
-          if ($null -eq $service) {
-            Show-SetupLog
-            throw 'NetPilot.Service was not registered after Setup.'
-          }
-          if ($service.Status -ne 'Running') {
-            Show-SetupLog
-            throw "NetPilot.Service is not running: $($service.Status)"
-          }
-
-          $root = "$env:ProgramFiles\NetPilot"
-          if (-not (Test-Path "$root\App\NetPilot.exe")) { Show-SetupLog; throw 'NetPilot.exe was not installed.' }
-          if (-not (Test-Path "$root\Service\NetPilot.Service.exe")) { Show-SetupLog; throw 'NetPilot.Service.exe was not installed.' }
-          if (-not (Test-Path "$root\Config\authorized-user.sid")) { Show-SetupLog; throw 'Authorized user SID was not enrolled.' }
-          if (Test-Path "$root\Config\enrollment.nonce") { Show-SetupLog; throw 'Enrollment nonce remained after successful enrollment.' }
-          if (Test-Path "$root\Config\enrollment.session") { Show-SetupLog; throw 'Enrollment session marker remained after successful enrollment.' }
-
-          $sid = (Get-Content "$root\Config\authorized-user.sid" -Raw).Trim()
-          if ($sid -notmatch '^S-1-5-') { Show-SetupLog; throw 'Authorized user SID has an unexpected format.' }
-
-      - name: Installer smoke test - uninstall and service removal
-        if: always()
+      - name: Hosted Windows evidence boundary
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          $uninstaller = "$env:ProgramFiles\NetPilot\unins000.exe"
-          if (Test-Path $uninstaller) {
-            $process = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
-            if ($process.ExitCode -ne 0) { throw "Uninstall failed with exit code $($process.ExitCode)" }
-          }
-          if (Get-Service -Name 'NetPilot.Service' -ErrorAction SilentlyContinue) { throw 'NetPilot.Service remained registered after uninstall.' }
-          if (Test-Path "$env:ProgramFiles\NetPilot\Config\authorized-user.sid") { throw 'System authorization state remained after uninstall.' }
+          Write-Host 'Hosted Windows CI validates build, unit/local-pipe tests and installer artifact creation only.'
+          Write-Host 'It MUST NOT be treated as evidence of real standard-user UAC, installer elevation, LocalSystem service lifecycle or cross-user SID binding.'
+          Write-Host 'Those checks belong to the isolated windows-uac-security workflow.'

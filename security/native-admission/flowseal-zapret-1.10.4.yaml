@@ -1,0 +1,101 @@
+schema_version: 1
+component_set: flowseal-zapret-1.10.4
+admission_status: REVIEW
+release_gate: BLOCK
+reviewed_at: 2026-10-28
+
+upstream:
+  repository: https://github.com/Flowseal/zapret-discord-youtube
+  release_tag: 1.10.4
+  release_commit: 176f56dc3f11ce5915c26abcdde903f93d835b64
+  release_immutable: true
+  archive:
+    name: zapret-discord-youtube-1.10.4.zip
+    sha256: 291af673bd0238506f9548e0e94ca0abf244000f4c9a06960544fb01c5f97b34
+    size_bytes: 1518649
+    source: https://github.com/Flowseal/zapret-discord-youtube/releases/download/1.10.4/zapret-discord-youtube-1.10.4.zip
+
+policy:
+  activation_requires_full_inventory_match: true
+  unknown_is_pass: false
+  executable_from_user_writable_path_allowed: false
+  signature_bypass_allowed: false
+  version_drift_requires_readmission: true
+
+components:
+  - path: bin/winws.exe
+    role: packet-processing executable
+    git_blob_sha1: bc2cc0ff325fd92da4130b9d781992ff49355ccc
+    sha256: UNKNOWN
+    exact_version: UNKNOWN
+    signer: UNKNOWN
+    publisher: UNKNOWN
+    provenance: CONFIRMED_FROM_IMMUTABLE_FLOWSEAL_TAG
+    decision: REVIEW
+    blockers:
+      - SHA-256 of the exact released file has not yet been independently recorded.
+      - PE version metadata has not yet been independently recorded.
+      - Authenticode signer/publisher status has not yet been independently verified.
+
+  - path: bin/WinDivert.dll
+    role: WinDivert user-mode library
+    size_bytes: 47616
+    git_blob_sha1: 50ca874308a916f834e02a749bcce365673426f3
+    sha256: UNKNOWN
+    exact_version: UNKNOWN
+    signer: UNKNOWN
+    publisher: UNKNOWN
+    provenance: CONFIRMED_FROM_IMMUTABLE_FLOWSEAL_TAG
+    decision: REVIEW
+    blockers:
+      - Exact WinDivert version has not yet been independently established.
+      - SHA-256 and Authenticode status have not yet been independently verified.
+
+  - path: bin/WinDivert64.sys
+    role: privileged WinDivert kernel driver
+    size_bytes: 94144
+    git_blob_sha1: 218ccaf423ef0a67696226f9ef3a09149e4441d0
+    sha256: UNKNOWN
+    exact_version: UNKNOWN
+    signer: UNKNOWN
+    publisher: UNKNOWN
+    provenance: CONFIRMED_FROM_IMMUTABLE_FLOWSEAL_TAG
+    decision: REVIEW
+    blockers:
+      - Exact WinDivert driver version has not yet been independently established.
+      - SHA-256 and Windows driver-signing chain have not yet been independently verified.
+      - Applicable vendor/CVE/KEV review remains required for the exact driver identity.
+
+  - path: bin/cygwin1.dll
+    role: native runtime dependency loaded by winws.exe
+    size_bytes: 2954293
+    git_blob_sha1: 1bb2e05c6d5458ad7987859a17172b635e87b9c5
+    sha256: UNKNOWN
+    exact_version: UNKNOWN
+    signer: UNKNOWN
+    publisher: UNKNOWN
+    provenance: CONFIRMED_FROM_IMMUTABLE_FLOWSEAL_TAG
+    decision: BLOCK
+    blockers:
+      - Exact Cygwin build/version has not yet been independently established.
+      - SHA-256 and signer/publisher status have not yet been independently verified.
+      - Component-level vulnerability/advisory review cannot be completed without exact identity.
+
+required_before_admit:
+  - Download the exact immutable ZIP in an isolated review environment without executing its contents.
+  - Verify the ZIP SHA-256 against the recorded GitHub release digest.
+  - Extract without following symlinks/reparse points and compute SHA-256 for every executable/native component.
+  - Record PE/product/file version metadata where available.
+  - Verify Authenticode/driver signature chain and publisher where applicable.
+  - Perform advisory/CVE/OSV/NVD/CISA KEV applicability review for the exact identified versions.
+  - Compare the extracted inventory byte-for-byte with this manifest and reject any extra executable DLL SYS or script-capable component outside the approved inventory.
+  - Change admission_status to ADMIT only after independent evidence is attached; do not infer PASS from provenance alone.
+
+evidence:
+  - Official GitHub release 1.10.4 is immutable and points to commit 176f56dc3f11ce5915c26abcdde903f93d835b64.
+  - Official release API reports ZIP SHA-256 291af673bd0238506f9548e0e94ca0abf244000f4c9a06960544fb01c5f97b34.
+  - GitHub tag tree confirms the listed component paths and Git blob identities.
+
+notes:
+  - Git blob SHA-1 is repository identity evidence, not a substitute for required component SHA-256.
+  - UNKNOWN fields are intentionally blocking/reviewing evidence gaps and must never be treated as PASS.

@@ -1,0 +1,125 @@
+name: Windows UAC Security Gate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  uac-installer-security:
+    # Отдельная изолированная Windows VM. Runner должен быть запущен ИНТЕРАКТИВНО
+    # от обычного пользователя, а не как служба и не от администратора.
+    runs-on: [self-hosted, windows, netpilot-uac-lab]
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Verify isolated standard-user UAC lab
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+          $sessionId = (Get-Process -Id $PID).SessionId
+          $uac = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name EnableLUA -ErrorAction Stop
+
+          Write-Host "Identity: $($identity.Name)"
+          Write-Host "SID: $($identity.User.Value)"
+          Write-Host "Session ID: $sessionId"
+          Write-Host "Elevated/Admin token: $isAdmin"
+          Write-Host "EnableLUA: $($uac.EnableLUA)"
+
+          if ($identity.IsSystem) { throw 'Runner must not execute as LocalSystem.' }
+          if ($sessionId -eq 0) { throw 'Runner must execute in an interactive desktop session, not Session 0.' }
+          if ($isAdmin) { throw 'Runner must start from a standard-user token. UAC elevation must happen only for Setup.' }
+          if ($uac.EnableLUA -ne 1) { throw 'Windows UAC (EnableLUA) must be enabled.' }
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build Windows security tests
+        shell: pwsh
+        run: |
+          dotnet restore tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj
+          dotnet build tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj --configuration Release --no-restore
+
+      - name: IPC identity policy tests in standard-user session
+        shell: pwsh
+        run: dotnet test tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj --configuration Release --no-build
+
+      - name: Build installer
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File scripts/build-installer.ps1 -Version 0.1.0-alpha-uac -VersionInfoVersion 0.1.0.0
+
+      - name: Standard user to UAC to owner SID binding
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Resolve-Path 'artifacts\installer\NetPilot-Setup-0.1.0-alpha-uac-x64.exe'
+          $expectedSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          $setupLog = Join-Path $env:RUNNER_TEMP 'netpilot-uac-setup.log'
+
+          Write-Host 'A real Windows UAC consent/credential prompt is expected on the VM secure desktop.'
+          Write-Host 'Do not disable UAC and do not use a test-only SID/elevation bypass.'
+
+          $arguments = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/LOG=$setupLog")
+          $process = Start-Process -FilePath $setup -ArgumentList $arguments -Verb RunAs -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            if (Test-Path $setupLog) { Get-Content $setupLog -Encoding Unicode -ErrorAction SilentlyContinue }
+            throw "Elevated Setup failed with exit code $($process.ExitCode)."
+          }
+
+          $root = "$env:ProgramFiles\NetPilot"
+          $sidPath = "$root\Config\authorized-user.sid"
+          $noncePath = "$root\Config\enrollment.nonce"
+          $sessionPath = "$root\Config\enrollment.session"
+
+          $service = Get-CimInstance Win32_Service -Filter "Name='NetPilot.Service'"
+          if ($null -eq $service) { throw 'NetPilot.Service was not registered.' }
+          if ($service.StartName -ne 'LocalSystem') { throw "Unexpected service account: $($service.StartName)" }
+          if ($service.State -ne 'Running') { throw "Service is not running: $($service.State)" }
+
+          if (-not (Test-Path $sidPath)) { throw 'authorized-user.sid was not created.' }
+          $actualSid = (Get-Content $sidPath -Raw).Trim()
+          if ($actualSid -ne $expectedSid) {
+            throw "Owner SID mismatch. Expected standard-user SID $expectedSid, got $actualSid."
+          }
+          if (Test-Path $noncePath) { throw 'Enrollment nonce remained after binding.' }
+          if (Test-Path $sessionPath) { throw 'Enrollment session marker remained after binding.' }
+
+          Write-Host "PASS: standard-user SID $expectedSid survived the real UAC installer boundary and owns the NetPilot installation."
+
+      - name: Uninstall through real UAC boundary
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $uninstaller = "$env:ProgramFiles\NetPilot\unins000.exe"
+          if (Test-Path $uninstaller) {
+            Write-Host 'A real Windows UAC consent/credential prompt may be required for uninstall.'
+            $process = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Verb RunAs -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "Uninstall failed with exit code $($process.ExitCode)." }
+          }
+
+          if (Get-Service -Name 'NetPilot.Service' -ErrorAction SilentlyContinue) {
+            throw 'NetPilot.Service remained registered after uninstall.'
+          }
+          if (Test-Path "$env:ProgramFiles\NetPilot\Config\authorized-user.sid") {
+            throw 'System authorization state remained after uninstall.'
+          }
+
+      - name: Evidence boundary
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host 'This workflow provides evidence for: interactive standard-user start, UAC enabled, elevated installer boundary, LocalSystem service account, SID binding and cleanup.'
+          Write-Host 'A dedicated live cross-user IPC integration harness is still required before claiming full IPC authorization PASS.'
