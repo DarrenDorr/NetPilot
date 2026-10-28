@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 component_set: byedpi-v0.17.3-netpilot-fork-candidate
 admission_status: REVIEW
 release_gate: BLOCK
@@ -44,9 +44,11 @@ policy:
 
 static_review:
   document: docs/BYEDPI-STATIC-ADMISSION-R28.1.md
+  compile_smoke_document: docs/BYEDPI-COMPILE-SMOKE-R28.3.md
   decision: EXACT_V0_17_3_PLUS_CURATED_PATCHES_ONLY
   full_post_release_head_as_base: REJECT
   reason: post-release delta adds new proxy/cache/plugin/raw-mode surfaces beyond first NetPilot need
+  next_gate: R28.3_STATIC_SANITIZER_LOOPBACK_RUNTIME_AND_RESOURCE_EVIDENCE
 
 patch_series:
   - sequence: 1
@@ -54,10 +56,46 @@ patch_series:
     purpose: make loopback the default listener and reject non-loopback --ip values as defense in depth
     git_blob_sha1: fa9ba3349792d66f40d925bc612310e8d18aae8a
     sha256: 3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068
-    status: REVIEW_PENDING_COMPILE_GATE
+    status: PASS_FOR_APPLICABILITY_AND_COMPILE_ONLY
     expected_files:
       - main.c
     changes_network_exposure_policy: true
+    limitation: runtime loopback enforcement is not yet tested; this PASS does not allow candidate execution
+
+compile_smoke:
+  status: PASS_FOR_COMPILE_ONLY
+  workflow: .github/workflows/native-candidate-byedpi-compile-smoke.yml
+  workflow_run_id: 40730956091
+  workflow_job_id: 122966803718
+  head_sha: 9613ab48b10e849550f8b5a69113b88c8e890871
+  artifact_id: 12834388188
+  artifact_name: byedpi-r28-compile-smoke-evidence
+  artifact_zip_sha256: eef60dbe551ee908e0f9e4de0a18519d63a032e0948e07e46eebf0a9725771d4
+  evidence_file: security/native-admission/evidence/byedpi-r28/compile-smoke.txt
+  source_commit: 7efde1b1296eaaa187b70e951894dde17527489c
+  source_tree: 8d13f6f5939190cd27ee68696247073a00b3e7dc
+  linux:
+    compiler: gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+    output: ciadpi
+    sha256: 6787ff3f5ed30f947b61860edbd7439cd6fb9d8eb21de9eb67d4d92ddd573e8a
+  windows_x64:
+    compiler: x86_64-w64-mingw32-gcc (GCC) 13-win32
+    output: ciadpi.exe
+    sha256: 1be8ab31e7089e8794e745d2ec1ee009517d7a1241cbf8e5289b6c45a26cfc58
+  safety:
+    candidate_binary_executed: false
+    listener_opened: false
+    routing_changed: false
+    binaries_persisted_in_repo: false
+
+compile_warning_review:
+  status: OPEN
+  findings:
+    - ignored write() result in init_pid_file on Linux
+    - GCC array-bounds warning around kavl_itr_first_my/dump_cache on Linux and Windows
+    - signed/unsigned event descriptor comparison warning on Windows
+    - compiler reports ret >= WAIT_OBJECT_0 as always true for unsigned type on Windows
+  required_action: targeted source review plus static-analysis/sanitizer gate before runtime admission
 
 curated_backport_candidates:
   - commit: 57f9606feba6e06f9974e8502a21ce6672251548
@@ -71,18 +109,19 @@ curated_backport_candidates:
     status: REVIEW_OR_REIMPLEMENT_NOT_APPLIED
 
 required_before_admit:
-  - Patch 0001 must apply cleanly to exact release tree and compile on Linux and Windows x64.
+  - Review compile warnings and complete targeted static-analysis/sanitizer tests on the exact patched source.
   - Runtime loopback-only regression must prove no listener appears on wildcard or LAN interfaces.
   - Connection and UDP state resource budgets must be measured and fixed as internal typed policy.
   - File/path/raw-data CLI surfaces must remain unreachable from NetPilot UI, IPC and config.
   - Android VpnService and TUN-to-SOCKS components require separate provenance, lifecycle and DNS/UDP review.
   - Windows system-wide transparent routing requires a separately admitted routing component.
   - Selected reliability backports must be reviewed independently with regression tests.
-  - Exact build toolchains and output hashes must be recorded before any runtime admission.
+  - Exact runtime build toolchains/component identities and output hashes must be recorded before runtime admission.
   - Advisory review and HIGH_ASSURANCE human review are required before ADMIT.
 
 notes:
   - ByeDPI itself is a local SOCKS proxy and does not make Windows applications transparently use it.
   - The upstream default listener is 0.0.0.0:1080; NetPilot must never inherit that exposure.
   - Patch identity is anchored by both Git blob SHA-1 and SHA-256 of canonical Git-object bytes; working-tree newline conversion is not a trust input.
+  - Compile-only PASS proves buildability, not runtime safety or loopback enforcement.
   - No native binary from this candidate is currently allowed to execute from NetPilot.
