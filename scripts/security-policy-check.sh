@@ -101,7 +101,7 @@ else
   fi
 
   if ! grep -qF 'AddSingleton<IZapretReleaseTransport>' "$service_program"; then
-    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: GitHub download должен быть зарегистрирован через узкий IZapretReleaseTransport."
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: release download должен быть зарегистрирован через узкий IZapretReleaseTransport."
     fail=1
   fi
 
@@ -138,6 +138,16 @@ else
 
       if ! grep -qF 'NoAdmittedZapretReleaseCatalog.Instance' "$service_program"; then
         echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: без ADMIT updater обязан использовать пустой admission catalog."
+        fail=1
+      fi
+
+      if ! grep -qF 'NoAdmittedZapretReleaseTransport.Instance' "$service_program"; then
+        echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: без ADMIT LocalSystem-служба обязана использовать несетевой release transport."
+        fail=1
+      fi
+
+      if grep -qF 'GithubZapretReleaseClient' "$service_program"; then
+        echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: без ADMIT LocalSystem-служба не должна создавать GitHub updater transport."
         fail=1
       fi
 

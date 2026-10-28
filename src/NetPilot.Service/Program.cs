@@ -33,12 +33,11 @@ builder.Services.AddSingleton(serviceProvider =>
         serviceProvider.GetRequiredService<ZapretProcessRunner>()));
 builder.Services.AddSingleton<IZapretUpdateRuntimeGate, WindowsZapretUpdateRuntimeGate>();
 
-// R17: upstream GitHub является только transport. Решение о том, какой exact release
-// можно установить, принимает локальный admission catalog. Пока ADMIT отсутствует,
-// каталог пуст и updater отказывает до любого metadata/download запроса к GitHub.
-builder.Services.AddSingleton<GithubZapretReleaseClient>();
-builder.Services.AddSingleton<IZapretReleaseTransport>(serviceProvider =>
-    serviceProvider.GetRequiredService<GithubZapretReleaseClient>());
+// R17/R20: release identity по-прежнему проходит только через admission-wrapper,
+// но при отсутствии ADMIT LocalSystem-служба даже не получает сетевой GitHub transport.
+// NoAdmittedZapretReleaseTransport не содержит HttpClient и всегда отказывает fail-closed.
+builder.Services.AddSingleton<IZapretReleaseTransport>(
+    NoAdmittedZapretReleaseTransport.Instance);
 builder.Services.AddSingleton<IZapretReleaseAdmissionCatalog>(
     NoAdmittedZapretReleaseCatalog.Instance);
 builder.Services.AddSingleton<IZapretReleaseSource>(serviceProvider =>
