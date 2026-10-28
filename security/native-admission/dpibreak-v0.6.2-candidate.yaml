@@ -5,7 +5,7 @@ release_gate: BLOCK
 reviewed_at: 2026-10-28
 
 candidate:
-  kind: upstream-release-secondary-engine
+  kind: upstream-first-secondary-engine
   preferred_role: secondary-windows-linux-https-engine
   may_execute: false
   may_integrate: false
@@ -41,6 +41,12 @@ policy:
   separate_gpl_component_boundary_required: true
   typed_allowlisted_profile_required: true
 
+static_review:
+  document: docs/DPIBREAK-STATIC-ADMISSION-R28.1.md
+  fork_strategy: UPSTREAM_FIRST_NO_FORK_UNLESS_BLOCKER
+  primary_engine_candidate: false
+  rationale: Active upstream and strong release provenance make an early NetPilot fork unnecessary; functional scope is narrower than zapret2 and GPL increases fork maintenance cost.
+
 positive_evidence:
   - id: DPIBREAK-SUPPLY-001
     status: PASS_FOR_PROVENANCE_ONLY
@@ -48,6 +54,9 @@ positive_evidence:
   - id: DPIBREAK-CLEANUP-002
     status: PASS_FOR_UPSTREAM_FIX_PRESENCE_ONLY
     finding: v0.6.2 содержит исправления завершения WinDivert, освобождения driver service и memory-related bug в in-tree windivert crate.
+  - id: DPIBREAK-RUST-003
+    status: POSITIVE_FACTOR_ONLY
+    finding: Core написан на Rust, но Windows FFI/WinDivert/driver boundary всё равно требует отдельного native admission.
 
 review_findings:
   - id: DPIBREAK-SCOPE-001
@@ -56,12 +65,13 @@ review_findings:
     impact: Не является полной заменой zapret2 для профиля Discord/UDP; рассматривается как secondary/fallback для HTTPS/YouTube.
   - id: DPIBREAK-NFQ-002
     severity: REVIEW
-    title: Open issue #24 описывает обработку последующих TCP segments как независимых ClientHello на Linux NFQUEUE.
-    required_action: Проверить исправления/актуальность на exact release и отдельно исследовать поведение Windows WinDivert.
+    title: Open issue #24 уточняет NFQUEUE/GSO segmentation semantics на Linux.
+    impact: Default NFQUEUE normalization может сегментировать GSO packet до userspace; включение GSO delivery, в свою очередь, требует корректной обработки packet > MTU и EMSGSIZE.
+    required_action: Провести Linux GSO/MTU/fail-open regression matrix и отдельно исследовать Windows WinDivert segmentation behavior.
   - id: DPIBREAK-WINDIVERT-003
     severity: REVIEW
-    title: Windows runtime использует WinDivert 2.2.2-A через in-tree Rust wrapper.
-    required_action: Провести полный native inventory DLL/SYS, подпись, advisory review и failure-cleanup tests для exact release assets.
+    title: Windows runtime использует WinDivert 2.2.2-A через in-tree Rust wrapper и native driver boundary.
+    required_action: Полный inventory DLL/SYS/EXE, подписи, advisory review, DLL search path и failure-cleanup tests для exact component set.
   - id: DPIBREAK-SIGNING-004
     severity: REVIEW
     title: Authenticode статус dpibreak.exe ещё не подтверждён нашим admission.
@@ -69,14 +79,20 @@ review_findings:
   - id: DPIBREAK-LICENSE-005
     severity: INTEGRATION_CONSTRAINT
     title: Движок GPL-3.0-or-later, тогда как NetPilot MIT.
-    required_action: При распространении держать движок отдельным компонентом/репозиторием, выполнять GPL obligations и не смешивать его исходный код с MIT Core без отдельного legal review.
+    required_action: При распространении держать движок отдельным компонентом/репозиторием, выполнять GPL obligations и не смешивать его implementation с MIT Core без отдельного legal review.
+  - id: DPIBREAK-BUILD-006
+    severity: SUPPLY_CHAIN_REVIEW
+    title: Upstream release workflow использует floating actions/toolchain refs и скачивает WinDivert без pre-use expected SHA check.
+    required_action: NetPilot controlled build pin'ит full action SHAs, exact Rust toolchain, Cargo.lock и WinDivert archive hash до использования.
 
 fork_rules:
-  - Если потребуется форк, базироваться только на exact reviewed commit/tag, а не current master.
-  - Форк DPIBreak остаётся GPL-3.0-or-later и публикует соответствующий исходный код/уведомления.
-  - Не переносить GPL implementation в MIT NetPilot Core.
-  - Параметры NetPilot компилируются из typed allowlist; raw CLI пользователю не передаётся.
-  - Любой upstream sync проходит diff review, dependency review и новый admission delta.
+  - Default decision is no fork: track exact upstream tagged release first.
+  - Create a fork only for a confirmed blocker that cannot be solved at the adapter boundary or accepted upstream in time.
+  - If forked, base only on exact reviewed tag/commit, not current master.
+  - Fork remains GPL-3.0-or-later and publishes corresponding source/notices.
+  - Do not copy GPL implementation into MIT NetPilot Core.
+  - NetPilot arguments come only from typed allowlist; raw CLI is not exposed to users.
+  - Any upstream sync requires diff/dependency review and a new admission delta.
 
 platform_position:
   windows: secondary HTTPS/YouTube fallback candidate
@@ -85,14 +101,15 @@ platform_position:
   discord_udp: insufficient as primary engine based on current documented scope
 
 required_before_admit:
-  - Проверить полный source/dependency tree exact v0.6.2, включая Cargo.lock и in-tree windivert crate.
-  - Выполнить cargo audit/advisory review и статический анализ exact source tree.
-  - Собрать из исходников в контролируемом CI и сравнить ожидаемый состав release artifacts, где возможно.
-  - Инвентаризировать Windows EXE/DLL/SYS, SHA-256 и подписи.
-  - Проверить WinDivert lifecycle: start, stop, abnormal exit, uninstall/update cleanup.
-  - Проверить open issue #24 и Windows packet segmentation behavior.
-  - Изолированные HTTPS/YouTube runtime tests и coexistence tests с распространёнными VPN/security products.
-  - Только после всех проверок exact component set может получить ADMIT.
+  - Review exact Cargo.lock/dependency tree, cargo advisories and unsafe/FFI surfaces.
+  - Controlled Windows/Linux build using pinned immutable workflow actions/toolchain and --locked dependencies.
+  - Pin and verify WinDivert 2.2.2-A archive SHA before build/use.
+  - Inventory Windows EXE/DLL/SYS, SHA-256, PE metadata and signatures.
+  - Verify WinDivert lifecycle: start, stop, abnormal exit, uninstall/update cleanup.
+  - Test Linux NFQUEUE GSO/MTU semantics from issue #24 and Windows packet segmentation behavior separately.
+  - Isolated HTTPS/YouTube runtime and coexistence tests with common VPN/security products.
+  - Bounded CPU/memory/burst tests.
+  - Only after all evidence can an exact component set receive ADMIT.
 
 notes:
   - Rust снижает отдельные классы memory-safety ошибок, но не является автоматическим доказательством безопасности всего продукта и FFI/driver boundary.
