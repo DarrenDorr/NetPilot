@@ -1,0 +1,49 @@
+schema_version: 1
+evidence_id: cygwin-setup-2.940-provenance
+recorded_at: 2026-10-28
+status: PASS_FOR_SETUP_PROVENANCE_ONLY
+admission_effect: NONE
+
+component:
+  name: Cygwin setup
+  version: '2.940'
+  source:
+    executable: https://cygwin.com/setup/setup-2.940.x86_64.exe
+    signature: https://cygwin.com/setup/setup-2.940.x86_64.exe.sig
+    public_key: https://cygwin.com/key/pubring.asc
+  sha512: fc46e3ead0312ea632251c16334b23caab31c9b38db30db4e5418b43ffeec5c003cc867b4166c8222a622ad107660e2ce6e3d855499d08e695dd13010f43a396
+  signing_key_fingerprint: 56405CF6FCC81574682A5D561A698DE9E2E56300
+  signature_valid: true
+  signature_date_utc: '2026-10-11T17:00:50Z'
+  setup_executed: false
+
+workflow:
+  repository: DarrenDorr/NetPilot
+  workflow: Native Candidate Cygwin Setup Provenance
+  run_id: 40714519838
+  head_sha: cc1d43f4bbb92a6e0ae3e92eba164e5f4017d561
+  conclusion: success
+  runner: ubuntu-24.04
+  permissions: contents-read-only
+
+artifact:
+  artifact_id: 12827212270
+  name: cygwin-setup-2.940-provenance-evidence
+  digest_sha256: 3514e453f7ca5bfdac054c2df2e909ec09fb561741e1d79ab816274487a0b665
+  files:
+    cygwin-setup-provenance.txt: edd2cb35dfcb7927cd9065d4659816931525b4d95e98ad7936f39b2ecab7d113
+    gpg-import.txt: 22346fc1cd576807902b029975abed6cfc3068bc7c8f55efa684b38693f43b89
+    gpg-verify-status.txt: 805e8be75e37d8583efe1081b29afdfb9c6ab45f0f2e2c44c7cc015ec1ab3534
+    gpg-verify-stderr.txt: 05d9ed300fe92ef93d21f763364451395da3316268dbe2e7293315da1a0ed77f
+
+interpretation:
+  - The exact Cygwin setup 2.940 executable matched the pinned SHA-512.
+  - Its detached signature validated against the expected full Cygwin signing-key fingerprint.
+  - The executable was not run and was removed before artifact upload.
+  - GPG local trust remained undefined by design; trust comes from the separately pinned expected fingerprint, not the runner trust database.
+  - This does not make the Cygwin package set or complete Windows build toolchain reproducible or admitted.
+
+next_gate:
+  - stop relying on an unversioned third-party download of setup-x86_64.exe for release-grade builds
+  - use an independently verified exact setup identity before execution in any release-grade bootstrap
+  - freeze or attest exact package artifacts and their identities
