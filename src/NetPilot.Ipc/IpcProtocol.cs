@@ -11,6 +11,8 @@ public static class IpcProtocol
     public const string WindowsPipeName = "NetPilot.Service.v1";
     public const int MaxMessageBytes = 64 * 1024;
     public const int ConnectTimeoutMilliseconds = 2_000;
+    public const int RequestTimeoutMilliseconds = 5_000;
+    public const int MaxJsonDepth = 16;
 
     internal static JsonSerializerOptions JsonOptions { get; } = CreateJsonOptions();
 
@@ -20,10 +22,11 @@ public static class IpcProtocol
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             PropertyNameCaseInsensitive = false,
-            UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
+            UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+            MaxDepth = MaxJsonDepth
         };
 
-        options.Converters.Add(new JsonStringEnumConverter());
+        options.Converters.Add(new JsonStringEnumConverter(allowIntegerValues: false));
         return options;
     }
 }

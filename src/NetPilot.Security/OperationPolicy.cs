@@ -3,9 +3,12 @@ namespace NetPilot.Security;
 public sealed class OperationPolicy
 {
     private static readonly IReadOnlySet<PrivilegedOperation> DefaultAllowed =
-        new HashSet<PrivilegedOperation>(Enum.GetValues<PrivilegedOperation>());
+        new HashSet<PrivilegedOperation>();
 
-    public bool IsAllowed(PrivilegedOperation operation) => DefaultAllowed.Contains(operation);
+    public bool IsAllowed(PrivilegedOperation operation) =>
+        Enum.IsDefined(operation) && DefaultAllowed.Contains(operation);
 
-    // Deliberately no API exists for executing arbitrary shell text.
+    // Безопасное значение по умолчанию: ни одна привилегированная операция не разрешена.
+    // Каждая будущая операция должна включаться отдельно после реализации авторизации и тестов.
+    // API для выполнения произвольного shell-текста намеренно отсутствует.
 }
