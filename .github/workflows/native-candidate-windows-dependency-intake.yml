@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/native-candidate-windows-dependency-intake.yml"
+      - "scripts/security/install-cygwin-r28.ps1"
       - "security/native-admission/**"
       - "docs/ZAPRET2-*.md"
 
@@ -54,30 +55,24 @@ jobs:
           if ((git -C zapret2 rev-parse HEAD^).Trim() -ne '221d7dff24bfec0cd5ac0a5070b8acef2008af3d') { throw 'Unexpected zapret2 parent' }
           if ((git -C luajit2 rev-parse HEAD).Trim() -ne 'dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc') { throw 'Unexpected LuaJIT commit' }
 
-      - name: Install signed Cygwin build dependencies
-        uses: cygwin/cygwin-install-action@006ad0b0946ca6d0a3ea2d4437677fa767392401 # v4 exact commit
-        with:
-          platform: x86_64
-          site: https://mirrors.kernel.org/sourceware/cygwin/
-          check-sig: 'true'
-          add-to-path: false
-          packages: >-
-            gcc-core
-            make
-            zlib-devel
+      - name: Install exact hash-pinned Cygwin build dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\netpilot\scripts\security\install-cygwin-r28.ps1 | Out-File -FilePath cygwin-bootstrap.txt -Encoding ascii
+          if ($LASTEXITCODE -ne 0) { throw 'Exact Cygwin bootstrap failed' }
 
       - name: Record Cygwin package identities
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path evidence | Out-Null
+          Move-Item -LiteralPath cygwin-bootstrap.txt -Destination evidence\cygwin-bootstrap.txt
           $cygcheck = 'C:\cygwin\bin\cygcheck.exe'
-          if (-not (Test-Path $cygcheck)) { throw 'cygcheck.exe missing' }
           & $cygcheck -c cygwin gcc-core make zlib-devel | Out-File -FilePath evidence\cygwin-packages.txt -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw 'cygcheck failed' }
 
           $dll = 'C:\cygwin\bin\cygwin1.dll'
-          if (-not (Test-Path $dll)) { throw 'cygwin1.dll missing' }
           $dllHash = (Get-FileHash -Algorithm SHA256 $dll).Hash.ToLowerInvariant()
           $dllSize = (Get-Item $dll).Length
           @(
@@ -114,7 +109,7 @@ jobs:
           $luaHead = (git -C luajit2 rev-parse HEAD).Trim()
           $luaTree = (git -C luajit2 rev-parse 'HEAD^{tree}').Trim()
           @(
-            'schema_version=1'
+            'schema_version=2'
             'scope=windows-dependency-intake-only'
             'candidate=zapret2-v1.0.6-plus-uaf-fix'
             "zapret2_commit=$zapretHead"
@@ -122,9 +117,10 @@ jobs:
             "luajit_commit=$luaHead"
             "luajit_tree=$luaTree"
             'runner=windows-2025'
+            'cygwin_setup_version=2.940'
+            'cygwin_setup_sha512=fc46e3ead0312ea632251c16334b23caab31c9b38db30db4e5418b43ffeec5c003cc867b4166c8222a622ad107660e2ce6e3d855499d08e695dd13010f43a396'
             'cygwin_site=https://mirrors.kernel.org/sourceware/cygwin/'
-            'cygwin_action_commit=006ad0b0946ca6d0a3ea2d4437677fa767392401'
-            'cygwin_setup_signature_check=true'
+            'cygwin_repository_signature_check=true'
             'native_engine_compiled=false'
             'native_engine_executed=false'
             'windivert_driver_installed=false'
