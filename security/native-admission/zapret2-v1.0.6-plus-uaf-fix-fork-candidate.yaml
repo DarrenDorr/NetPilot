@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 3
 component_set: zapret2-v1.0.6-plus-uaf-fix-fork-candidate
 admission_status: REVIEW
 release_gate: BLOCK
@@ -17,7 +17,7 @@ upstream:
   base_release_commit: 221d7dff24bfec0cd5ac0a5070b8acef2008af3d
   base_release_archive_sha256: e141b51b60c895fe9548f4d644365461dcad8155e068d284a9aae1724504237d
   required_fix_commit: 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d
-  required_fix_title: nfqws2: fix UAF
+  required_fix_title: "nfqws2: fix UAF"
   required_fix_parent: 221d7dff24bfec0cd5ac0a5070b8acef2008af3d
   required_fix_tree: 5c2a77786cc7089145abe2ca99bcc53a8ed7de15
   relationship_verified: true
@@ -38,6 +38,8 @@ policy:
   strategy_must_compile_from_typed_allowlisted_profile: true
   upstream_master_auto_merge_allowed: false
   automatic_runtime_update_from_upstream_allowed: false
+  zero_conntrack_budget_means_unlimited: false
+  production_conntrack_budget_must_be_nonzero: true
 
 static_review:
   source_review_document: docs/ZAPRET2-STATIC-ADMISSION-R28.1.md
@@ -46,23 +48,27 @@ static_review:
   controlled_build_document: docs/ZAPRET2-CONTROLLED-BUILD-R28.2.md
   windows_compile_smoke_document: docs/ZAPRET2-WINDOWS-COMPILE-SMOKE-R28.2.md
   queue_sanitizer_document: docs/ZAPRET2-QUEUE-SANITIZER-R28.3.md
+  protocol_parser_sanitizer_document: docs/ZAPRET2-PROTOCOL-PARSER-SANITIZER-R28.3.md
+  conntrack_fail_closed_document: docs/ZAPRET2-CONNTRACK-FAIL-CLOSED-R28.3.md
   windivert_boundary_document: docs/ZAPRET2-WINDIVERT-BOUNDARY-R28.3.md
   provenance_workflow: .github/workflows/native-candidate-provenance.yml
+  linux_compile_smoke_workflow: .github/workflows/native-candidate-compile-smoke.yml
   windows_compile_smoke_workflow: .github/workflows/native-candidate-windows-compile-smoke.yml
   queue_sanitizer_workflow: .github/workflows/native-candidate-queue-sanitizer-regression.yml
   static_sanitizer_workflow: .github/workflows/native-candidate-static-sanitizer-compile.yml
   protocol_parser_sanitizer_workflow: .github/workflows/native-candidate-protocol-parser-sanitizer.yml
+  conntrack_budget_workflow: .github/workflows/native-candidate-conntrack-budget-regression.yml
   fork_strategy: OWNED_MINIMAL_HARDENED_FORK_CANDIDATE
   full_upstream_master_as_base: REJECT
-  next_gate: R28.3_PROTOCOL_FUZZ_RESOURCE_AND_ISOLATED_RUNTIME_EVIDENCE
+  next_gate: R28.3_PATCHSET_0001_0005_REGRESSION_AND_RESOURCE_EVIDENCE
 
 patch_series:
   - sequence: 1
     path: security/native-admission/patches/zapret2-r28/0001-explicit-conntrack-feed-result.patch
     purpose: behavior-preserving refactor of ambiguous bool feed result before any resource cap is introduced
-    status: APPLY_CHECK_AND_WINDOWS_COMPILE_SMOKE_PASS
-    changes_packet_policy: false
     sha256: af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff
+    status: HISTORICAL_COMPILE_PASS_CURRENT_PATCHSET_RERUN_PENDING
+    changes_packet_policy: false
     expected_files:
       - nfq2/conntrack.c
       - nfq2/conntrack.h
@@ -72,212 +78,194 @@ patch_series:
   - sequence: 2
     path: security/native-admission/patches/zapret2-r28/0002-bounded-conntrack-resource-result.patch
     purpose: introduce explicit RESOURCE_EXHAUSTED state and aggregate conntrack entry budget with fail-safe VERDICT_PASS before dp_find/desync
-    status: APPLY_CHECK_AND_WINDOWS_COMPILE_SMOKE_PASS
     sha256: a3531211626ce602a3b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783
     git_blob_sha1: 334f917b5d50b30fca8108f05944b11a46ed235b
+    status: HISTORICAL_COMPILE_PASS_CURRENT_PATCHSET_RERUN_PENDING
     changes_packet_policy: true
+    limitation: production max_entries value is not admitted until empirical workload tests are completed
     expected_files:
       - nfq2/conntrack.c
       - nfq2/conntrack.h
       - nfq2/desync.c
-    limitation: production max_entries value is not admitted until empirical workload tests are completed
 
   - sequence: 3
     path: security/native-admission/patches/zapret2-r28/0003-bounded-delayed-queue-bytes.patch
     purpose: add overflow-safe delayed raw-packet queue byte accounting without removing the existing packet-count bound
-    status: APPLY_CHECK_WINDOWS_COMPILE_AND_ISOLATED_ASAN_UBSAN_PASS
     sha256: 33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68
     git_blob_sha1: 425614bf8f23cbe693e3ff2fb18512d052722f03
+    status: HISTORICAL_ISOLATED_ASAN_UBSAN_PASS_CURRENT_PATCHSET_RERUN_PENDING
     changes_packet_policy: resource_saturation_only
+    limitation: production max_bytes value is not admitted until empirical workload tests are completed
     expected_files:
       - nfq2/packet_queue.c
       - nfq2/packet_queue.h
-    limitation: production max_bytes value is not admitted until empirical workload tests are completed
 
   - sequence: 4
     path: security/native-admission/patches/zapret2-r28/0004-explicit-daemon-stdio-redirection.patch
     purpose: redirect daemon stdio deterministically through one /dev/null descriptor instead of relying on descriptor allocation order
-    status: APPLY_CHECK_AND_STATIC_ANALYZER_COMPILE_PASS_WITH_EXPECTED_WARNINGS
     sha256: f32e0c27393bcdfa30aa7e8c58749bb9e70e2a870350f5c3cfa429597a887777
+    status: HISTORICAL_STATIC_ANALYZER_COMPILE_PASS_CURRENT_PATCHSET_RERUN_PENDING
     changes_packet_policy: false
+    limitation: analyzer intentionally reports three standard-fd retention warnings; runtime daemon lifecycle is not yet admitted
     expected_files:
       - nfq2/sec.c
-    limitation: analyzer intentionally reports three standard-fd retention warnings; runtime daemon lifecycle is not yet admitted
+
+  - sequence: 5
+    path: security/native-admission/patches/zapret2-r28/0005-fail-closed-zero-conntrack-budget.patch
+    purpose: make an unconfigured zero conntrack budget fail closed for new state instead of silently allowing unlimited state
+    sha256: 67cbbfa656c47b7342a8c56ab178716e7890de0f05efc25eed2cc20b299c4ed1
+    git_blob_sha1: 4f3582eea971885fabdd1ea6bc8423187b8e70e8
+    status: APPLY_CHECK_AND_REGRESSION_PENDING
+    changes_packet_policy: resource_saturation_and_unconfigured_budget_only
+    expected_files:
+      - nfq2/conntrack.c
+    semantics:
+      zero_budget_existing_flow_lookup: ALLOW
+      zero_budget_new_flow: CTRACK_FEED_RESOURCE_EXHAUSTED
+      main_desync_effect: VERDICT_PASS_BEFORE_DESYNC
+    limitation: production numeric max_entries is still not selected or admitted
 
 verified_delta:
   - id: Z2-FORK-BASE-001
     status: PASS_FOR_RELATIONSHIP_ONLY
     finding: Исправление UAF является прямым дочерним коммитом точного релизного коммита v1.0.6.
-    evidence: Коммит 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d имеет единственного родителя 221d7dff24bfec0cd5ac0a5070b8acef2008af3d и tree 5c2a77786cc7089145abe2ca99bcc53a8ed7de15.
+    limitation: Это не является полным admission движка.
 
-  - id: Z2-FORK-BASE-002
-    status: PASS_FOR_KNOWN_UAF_FIX_ONLY
-    finding: Патч сбрасывает сохранённое представление reassembly payload после освобождения буфера перед повторным разбором.
-    limitation: Это подтверждает исправление ранее найденного UAF, но не является полным security admission всего движка.
-
-  - id: Z2-SEMANTICS-003
+  - id: Z2-SEMANTICS-002
     status: DESIGN_VERIFIED
-    finding: ConntrackPoolFeed()==false в main desync path не означает pass-through; play_prolog продолжает без conntrack и может применить stateless desync.
-    effect: Простой count cap с return false отклонён. Resource saturation получил отдельный internal result и явный VERDICT_PASS до dp_find/desync processing.
+    finding: Resource exhaustion получает отдельный internal result и в main path приводит к VERDICT_PASS до dp_find/desync.
+    limitation: Числовой production budget ещё не определён.
 
-  - id: Z2-PATCH-0001-004
-    status: PASS_FOR_APPLICABILITY_AND_COMPILE_ONLY
-    finding: Patch 0001 применим к exact source tree и входит в успешный Windows x64 compile-smoke.
-    limitation: Runtime behavior не проверен.
+  - id: Z2-PARSER-003
+    status: PASS_FOR_ISOLATED_PROTOCOL_PARSER_SANITIZER_REGRESSION_ONLY
+    finding: Exact post-UAF source плюс patches 0001-0004 прошли isolated ASan/UBSan parser corpus без network syscalls.
+    limitation: После добавления patch 0005 current parser workflow обязан повторно пройти; historical PASS сам по себе не переводит текущий patchset в ADMIT.
 
-  - id: Z2-PATCH-0002-005
-    status: PASS_FOR_APPLICABILITY_AND_COMPILE_ONLY
-    finding: Patch 0002 вводит отдельный RESOURCE_EXHAUSTED и aggregate entry budget; exact patch вошёл в успешный Windows x64 compile-smoke.
-    limitation: Числовой production budget и runtime saturation behavior ещё не подтверждены workload-тестами.
+  - id: Z2-PATCH-0005-004
+    status: DESIGN_FIXED_REGRESSION_PENDING
+    finding: Нулевой conntrack budget больше не означает unlimited state; новый flow должен получать RESOURCE_EXHAUSTED.
+    limitation: Новый exact patchset 0001-0005 ещё должен пройти provenance/compile/sanitizer/conntrack gates.
 
-  - id: Z2-PATCH-0003-006
-    status: PASS_FOR_ISOLATED_QUEUE_SANITIZER_REGRESSION
-    finding: Patch 0003 вводит overflow-safe queued-bytes accounting и проходит отдельный ASan/UBSan packet-queue harness без сетевых syscall.
-    limitation: Числовой production byte budget и реальная нагрузка ещё не подтверждены.
+historical_evidence:
+  provenance_0001_0004:
+    status: PASS_FOR_SOURCE_AND_PATCH_APPLICABILITY
+    run_id: 40708142913
+    head_sha: 859c53e1fdd2e3f7ba92e84f82207f84c992ffe7
+    artifact_id: 12824806940
+    artifact_name: zapret2-r28-source-provenance
+    artifact_zip_sha256: 700962c2acb0d9873836bb371a7a6d51459c0951d9796bd5065fd6678787b7b6
+    note: Historical evidence; predates patches 0004/0005 as a complete current patchset gate.
 
-  - id: Z2-WINDOWS-COMPILE-007
+  windows_compile_0001_0003:
     status: PASS_FOR_COMPILE_ONLY
-    finding: Exact post-UAF source + NetPilot patches 0001-0003 + exact LuaJIT commit успешно компилируются в Windows x64 winws2.exe на windows-2025/Cygwin.
-    limitation: Этот сохранённый evidence относится к patch series 0001-0003; повторная Windows compile-smoke с 0004 выполняется отдельно. Binary не запускался; WinDivert отсутствовал; результат не является ADMIT.
-
-  - id: Z2-PATCH-0004-008
-    status: PASS_FOR_APPLICABILITY_AND_STATIC_ANALYZER_COMPILE_ONLY
-    finding: Patch 0004 применим к exact source tree; patched source проходит configured GCC analyzer build и ASan/UBSan instrumented compile.
-    limitation: Analyzer допускает только три заранее зафиксированных warning о намеренно остающихся открытыми fd 0/1/2; sanitizer runtime всего engine не выполнялся.
-
-  - id: Z2-WINDIVERT-009
-    status: PASS_FOR_PROVENANCE_AND_INVENTORY_ONLY
-    finding: Exact WinDivert 2.2.2-A archive, x64 DLL и driver hashes/signature inventory зафиксированы без загрузки driver.
-    limitation: Runtime остаётся BLOCK из-за открытых upstream lifecycle/kernel issues.
-
-provenance_gate:
-  workflow_status: PASS_FOR_SOURCE_AND_PATCH_APPLICABILITY
-  run_id: 40708142913
-  head_sha: 859c53e1fdd2e3f7ba92e84f82207f84c992ffe7
-  artifact_id: 12824806940
-  artifact_name: zapret2-r28-source-provenance
-  artifact_zip_sha256: 700962c2acb0d9873836bb371a7a6d51459c0951d9796bd5065fd6678787b7b6
-  source_anchor_sha256: dfd059a545ef2d7cbe9e322ab6d5a993a75ab45452cf964c24d3f47e9274e369
-  upstream_uaf_patch_sha256: a6cc3426bd38bf4c38d6c87edec64b3436386a95a2d5cd7d9d935d5d960df38e
-  netpilot_patch_0001_sha256: af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff
-  ci_run_id: 40708142910
-  ci_conclusion: success
-  codeql_run_id: 40708143025
-  codeql_conclusion: success
-  execution_scope: source_checkout_and_metadata_only
-  native_execution_allowed: false
-  driver_install_allowed: false
-  workflow_actions_pinned_by_full_sha: true
-  checkout_credentials_persisted: false
-  runner: ubuntu-24.04
-
-windows_compile_smoke:
-  status: PASS_FOR_COMPILE_ONLY_PATCHES_0001_0003
-  workflow_run_id: 40718483443
-  workflow_job_id: 122922566162
-  head_sha: 66d5cd72370e1283e5fbaf59e7cced9baf0003c4
-  artifact_id: 12829318738
-  artifact_name: zapret2-r28-windows-x64-compile-smoke-evidence
-  artifact_zip_sha256: 63a445d03202d6b2e548c1dd8f7d9791863d7decaa74338cd8e8084ed5ecbc92
-  evidence_file: security/native-admission/evidence/zapret2-r28/windows-x64-compile-smoke.txt
-  evidence_file_original_sha256: 16f1c974d2b7d5e2b9060b01accf1316c4f93a789ab19fdbaccfc0304563829d
-  checksums_file: security/native-admission/evidence/zapret2-r28/SHA256SUMS.txt
-  source_commit: 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d
-  source_parent: 221d7dff24bfec0cd5ac0a5070b8acef2008af3d
-  luajit_commit: dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc
-  runner: windows-2025
-  cygwin_setup_version: '2.940'
-  cygwin_setup_sha512: fc46e3ead0312ea632251c16334b23caab31c9b38db30db4e5418b43ffeec5c003cc867b4166c8222a622ad107660e2ce6e3d855499d08e695dd13010f43a396
-  observed_cygwin_runtime: 3.6.12-1
-  observed_gcc_core: 14.4.0-1
-  observed_make: 4.4.1-2
-  patch_series_applied:
-    - 0001-explicit-conntrack-feed-result.patch
-    - 0002-bounded-conntrack-resource-result.patch
-    - 0003-bounded-delayed-queue-bytes.patch
-  output:
-    filename: winws2.exe
-    size_bytes: 650240
-    sha256: 869d5e80ec1b5b263b27485ef7c943066becf58e2b69bb463a43bfd064edb28d
-    authenticode_status: NotSigned
-    signer: null
-    file_version: null
-    product_version: null
-  cygwin_runtime_dll:
-    filename: cygwin1.dll
-    size_bytes: 3246645
-    sha256: ed9d5379061e5de79c3375cc62246c2142ea1c97d94f4d16bfbea6fb1b7fc889
-  safety:
-    winws2_executed: false
+    workflow_run_id: 40718483443
+    workflow_job_id: 122922566162
+    head_sha: 66d5cd72370e1283e5fbaf59e7cced9baf0003c4
+    artifact_id: 12829318738
+    artifact_name: zapret2-r28-windows-x64-compile-smoke-evidence
+    artifact_zip_sha256: 63a445d03202d6b2e548c1dd8f7d9791863d7decaa74338cd8e8084ed5ecbc92
+    output_sha256: 869d5e80ec1b5b263b27485ef7c943066becf58e2b69bb463a43bfd064edb28d
+    output_authenticode_status: NotSigned
+    candidate_binary_executed: false
     windivert_present: false
-    windivert_driver_installed: false
-    output_binary_persisted_in_repo: false
-    output_binary_removed_after_inventory: true
 
-r28_3_gates:
-  queue_sanitizer:
+  queue_sanitizer_0001_0004:
     status: PASS_FOR_ISOLATED_PACKET_QUEUE_SANITIZER_REGRESSION_ONLY
     workflow_run_id: 40725210869
     workflow_job_id: 122946503505
     artifact_id: 12831748330
-    artifact_name: zapret2-r28-packet-queue-sanitizer-regression-evidence
     artifact_zip_sha256: c6741937eecf81cad86af184e077ec82b50353b74d8cbbdb69994e6575c0e939
     evidence_file: security/native-admission/evidence/zapret2-r28/packet-queue-sanitizer-regression.txt
-    evidence_file_sha256: 2c540c49f36907f17ecbe1612d55326360c49930116df6731e91a56fc0188d67
     candidate_engine_executed: false
     network_syscalls_observed: false
 
-  static_sanitizer_compile:
+  static_sanitizer_compile_0001_0004:
     status: PASS_FOR_STATIC_ANALYSIS_AND_SANITIZER_COMPILE_ONLY
     workflow_run_id: 40726114351
     workflow_job_id: 122949718942
     artifact_id: 12832897860
-    artifact_name: zapret2-r28-static-sanitizer-compile-evidence
     artifact_zip_sha256: 7566b0b62de71f966522866d976f7dd86ba264749116003912a0c265926a014c
-    evidence_file: security/native-admission/evidence/zapret2-r28/static-sanitizer-compile.txt
     analyzer_outcome: success
     sanitizer_compile_outcome: success
-    expected_analyzer_warning_policy: exactly-three-daemon-stdio-fd-retention-warnings-only
     expected_daemon_stdio_fd_retention_warnings: 3
     candidate_binary_executed: false
     sanitizer_runtime_test_performed: false
 
+  protocol_parser_sanitizer_0001_0004:
+    status: PASS_FOR_ISOLATED_PROTOCOL_PARSER_SANITIZER_REGRESSION_ONLY
+    workflow_run_id: 40730430434
+    workflow_job_id: 122964950398
+    artifact_id: 12835176063
+    artifact_zip_sha256: d98a85f30149672c838893b3a2ba441271ec30cbf8be97efff99aa625fb68179
+    evidence_file: security/native-admission/evidence/zapret2-r28/protocol-parser-sanitizer-regression.txt
+    corpus: known-good TLS plus all truncations plus short patterns plus 12000 deterministic random inputs
+    covered_entry_points: tls,http,quic,dns,discord,stun,dtls,wireguard,dht,mtproto,bt,utp_bt
+    candidate_engine_executed: false
+    network_syscalls_observed: false
+
+current_patchset_gates:
+  patchset: 0001-0005
+  provenance:
+    status: PENDING
+    workflow: .github/workflows/native-candidate-provenance.yml
+  linux_compile:
+    status: PENDING
+    workflow: .github/workflows/native-candidate-compile-smoke.yml
+  windows_compile:
+    status: PENDING
+    workflow: .github/workflows/native-candidate-windows-compile-smoke.yml
+  queue_sanitizer:
+    status: PENDING
+    workflow: .github/workflows/native-candidate-queue-sanitizer-regression.yml
+  static_sanitizer_compile:
+    status: PENDING
+    workflow: .github/workflows/native-candidate-static-sanitizer-compile.yml
   protocol_parser_sanitizer:
     status: PENDING
     workflow: .github/workflows/native-candidate-protocol-parser-sanitizer.yml
-    harness: security/native-admission/harnesses/zapret2-r28/protocol_parser_sanitizer_harness.c
-    scope: known-good TLS truncation corpus plus deterministic random parser inputs under ASan/UBSan
-    candidate_engine_execution_allowed: false
+  conntrack_budget_regression:
+    status: PENDING
+    workflow: .github/workflows/native-candidate-conntrack-budget-regression.yml
+    harness: security/native-admission/harnesses/zapret2-r28/conntrack_budget_harness.c
+    required_semantics:
+      - cap_three_accepts_first_three_flows
+      - saturated_existing_forward_flow_remains_available
+      - saturated_existing_reverse_flow_remains_available
+      - fourth_new_flow_returns_resource_exhausted
+      - zero_unconfigured_budget_existing_flow_remains_available
+      - zero_unconfigured_budget_new_flow_returns_resource_exhausted
+      - explicit_cap_four_accepts_fourth_flow
+      - destroy_frees_all_state
+      - no_network_syscalls
+      - no_engine_execution
 
-  windivert_inventory:
-    status: PASS_FOR_INVENTORY_AND_SIGNATURE_OBSERVATION_ONLY
-    workflow_run_id: 40726114320
-    artifact_id: 12832851711
-    artifact_name: windivert-2.2.2-a-x64-inventory-evidence
-    artifact_zip_sha256: c444ac9e5f17e0760606df17f983f6b1674d9fe42fbfe5c1755ce5aa85ce0ae8
-    upstream_release_tag: v2.2.2
-    upstream_asset_id: 78510020
-    upstream_asset_filename: WinDivert-2.2.2-A.zip
-    upstream_asset_size_bytes: 405137
-    archive_sha256: 63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15
-    dll_sha256: c1e060ee19444a259b2162f8af0f3fe8c4428a1c6f694dce20de194ac8d7d9a2
-    dll_authenticode_status: NotSigned
-    driver_sha256: 8da085332782708d8767bcace5327a6ec7283c17cfb85e40b03cd2323a90ddc2
-    driver_authenticode_status: Valid
-    driver_signer_thumbprint: 043589F75FCE2795E7F2CC3E526D46784D5DDAB3
-    files_executed: false
-    driver_installed: false
-    driver_loaded: false
-    runtime_status: BLOCK
+windivert_inventory:
+  status: PASS_FOR_INVENTORY_AND_SIGNATURE_OBSERVATION_ONLY
+  workflow_run_id: 40726114320
+  artifact_id: 12832851711
+  artifact_name: windivert-2.2.2-a-x64-inventory-evidence
+  artifact_zip_sha256: c444ac9e5f17e0760606df17f983f6b1674d9fe42fbfe5c1755ce5aa85ce0ae8
+  upstream_release_tag: v2.2.2
+  upstream_asset_filename: WinDivert-2.2.2-A.zip
+  archive_sha256: 63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15
+  dll_sha256: c1e060ee19444a259b2162f8af0f3fe8c4428a1c6f694dce20de194ac8d7d9a2
+  dll_authenticode_status: NotSigned
+  driver_sha256: 8da085332782708d8767bcace5327a6ec7283c17cfb85e40b03cd2323a90ddc2
+  driver_authenticode_status: Valid
+  driver_signer_thumbprint: 043589F75FCE2795E7F2CC3E526D46784D5DDAB3
+  files_executed: false
+  driver_installed: false
+  driver_loaded: false
+  runtime_status: BLOCK
 
 residual_review_blockers:
   - id: Z2-STATE-001
-    title: Механизм aggregate conntrack budget уже компилируется, но production value и runtime saturation behavior не доказаны.
-    required_action: Измерить browser/YouTube/Discord/combined/burst/hostile workloads; подтвердить fail-safe VERDICT_PASS при saturation и выбрать лимит по evidence, а не на глаз.
+    title: Production conntrack budget не выбран и не интегрирован.
+    required_action: Измерить browser/YouTube/Discord/combined/burst/hostile workloads и выбрать ненулевой лимит по evidence.
 
   - id: Z2-DELAYED-QUEUE-002
-    title: Изолированный ASan/UBSan regression packet queue PASS, но production max_bytes и реальная workload-модель ещё не доказаны.
-    required_action: Controlled load tests enqueue/dequeue/destroy/saturation и выбор max_bytes по измерениям без ослабления 64-packet cap.
+    title: Production max_bytes для delayed queue и реальная workload-модель ещё не доказаны.
+    required_action: Controlled load tests enqueue/dequeue/destroy/saturation и выбор max_bytes по измерениям без ослабления packet-count cap.
 
   - id: Z2-HOSTNAME-003
     title: Packet-derived hostname не должен становиться доверенным постоянным содержимым auto-hostlist/log.
@@ -297,22 +285,22 @@ residual_review_blockers:
 
   - id: Z2-SUPPLY-007
     title: Build chain ещё не полностью воспроизводима на уровне всех транзитивных Cygwin packages.
-    required_action: Зафиксировать/проверить exact package identities или воспроизводимый build environment; сохранить SBOM/build manifest; любое drift требует readmission.
+    required_action: Зафиксировать exact package identities или воспроизводимый build environment; сохранить SBOM/build manifest; любое drift требует readmission.
 
   - id: Z2-RUNTIME-008
-    title: Static compile и изолированный queue harness не дают полного runtime evidence.
-    required_action: Завершить parser sanitizer/fuzz, resource/load и затем изолированный runtime lab без production activation.
+    title: Даже успешные isolated/compile gates не дают полного runtime evidence.
+    required_action: После current patchset PASS провести resource/load и isolated runtime lab без production activation.
 
   - id: WD-RUNTIME-001
     title: WinDivert v2.2.2 имеет открытый upstream report о driver-load initialization race с возможным BSOD 0xD1.
-    required_action: Reviewed upstream fix + readmission, либо доказанная безопасная lifecycle-модель с concurrent-open stress, либо отказ от WinDivert production backend.
+    required_action: Reviewed upstream fix + readmission, доказанная безопасная lifecycle-модель либо отказ от WinDivert production backend.
 
   - id: WD-LIFECYCLE-002
     title: Остановка WinDivert service при чужих открытых handles может оставить ERROR_SERVICE_DISABLED 1058 и заблокированный driver file.
     required_action: Не применять безусловный stop/remove; разработать shared-driver ownership/lifecycle policy и проверить coexistence/update/uninstall в изолированной VM.
 
   - id: WD-DEFENDER-003
-    title: Для exact официального WinDivert-2.2.2-A.zip существует текущий upstream report Defender Misleading:Win32/Malgent!AMTB без artifact-specific resolution.
+    title: Для exact WinDivert-2.2.2-A.zip существует upstream report Defender Misleading:Win32/Malgent!AMTB без artifact-specific resolution.
     required_action: Не отключать Defender/не добавлять exclusions; до admission получить reviewed disposition/replacement либо использовать другой component set.
 
 fork_rules:
@@ -322,12 +310,13 @@ fork_rules:
   - Каждый дополнительный upstream commit проходит отдельный diff review и CI до включения.
   - Поддерживать минимальный NetPilot patchset и журнал происхождения каждого патча.
   - Не patch'ить необязательные опасные функции только ради их сохранения: auto-hostlist/ipcache-hostname/raw Lua могут оставаться недоступными.
-  - Собственная версия не должна выдаваться за официальный zapret2; пример схемы версии: 1.0.6-np.1.
+  - Собственная версия не должна выдавваться за официальный zapret2; пример схемы версии: 1.0.6-np.1.
   - Release asset форка должен иметь immutable identity, SHA-256 и воспроизводимое происхождение сборки, где это возможно.
   - Runtime получает только фиксированный executable и валидированный ArgumentList из allowlist.
+  - Typed production adapter обязан задавать ненулевой conntrack budget; ноль является fail-closed unconfigured state.
 
 required_before_admit:
-  - Завершить protocol parser sanitizer/fuzz regression на exact patched source и устранить/зафиксировать все findings.
+  - Все current patchset 0001-0005 gates должны завершиться success и быть зафиксированы immutable evidence.
   - Провести controlled resource/load tests и выбрать production conntrack/max_bytes значения по измерениям.
   - Закрыть WinDivert runtime/lifecycle blockers либо выбрать Windows backend без WinDivert.
   - Сформировать полный Windows component-set manifest/SBOM и проверить provenance всех runtime dependencies.
@@ -338,6 +327,7 @@ required_before_admit:
 
 notes:
   - Исходный zapret2 v1.0.6 остаётся навсегда BLOCK в отдельном manifest и не переопределяется этим кандидатом.
+  - Historical PASS не переносится автоматически на изменённый patchset.
   - Успешные provenance/compile/sanitizer gates не являются ADMIT и не разрешают native execution.
   - NotSigned у controlled winws2 и WinDivert.dll не трактуется автоматически как вредоносность; production trust требует immutable provenance/hash enforcement и отдельной signing policy.
   - WinDivert inventory PASS не разрешает загрузку kernel driver.
