@@ -12,10 +12,11 @@ if ([string]::IsNullOrWhiteSpace($OutputDir)) {
     $OutputDir = Join-Path $repoRoot "artifacts\installer"
 }
 
-$versionParts = $VersionInfoVersion.Split('.')
-if ($versionParts.Length -lt 3 -or $versionParts.Length -gt 4 -or $versionParts | Where-Object { $_ -notmatch '^\d+$' }) {
+if ($VersionInfoVersion -notmatch '^\d+\.\d+\.\d+(?:\.\d+)?$') {
     throw "VersionInfoVersion должен иметь вид 0.1.0.0."
 }
+
+$versionParts = $VersionInfoVersion.Split('.')
 $packageVersion = ($versionParts[0..2] -join '.')
 
 $appPublishDir = Join-Path $repoRoot "artifacts\publish\app-win-x64"
