@@ -280,6 +280,29 @@ begin
   end;
 end;
 
+function RemoveFreshEnrollmentArtifacts: Boolean;
+begin
+  Result := True;
+
+  if FileExists(AuthorizedSidPath) and (not DeleteFile(AuthorizedSidPath)) then
+  begin
+    Log('Не удалось удалить SID владельца после неудачной первичной установки.');
+    Result := False;
+  end;
+
+  if FileExists(EnrollmentNoncePath) and (not DeleteFile(EnrollmentNoncePath)) then
+  begin
+    Log('Не удалось удалить enrollment nonce после неудачной первичной установки.');
+    Result := False;
+  end;
+
+  if FileExists(EnrollmentSessionPath) and (not DeleteFile(EnrollmentSessionPath)) then
+  begin
+    Log('Не удалось удалить enrollment session после неудачной первичной установки.');
+    Result := False;
+  end;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
@@ -411,27 +434,33 @@ begin
   Result := True;
 end;
 
-procedure ConfigureAndStartService;
+procedure ConfigureAndStartService(const EnrollmentRequired: Boolean);
 var
   ResultCode: Integer;
   ServiceExe: String;
   Parameters: String;
+  StartMode: String;
 begin
   ServiceExe := ExpandConstant('{app}\Service\NetPilot.Service.exe');
+
+  if EnrollmentRequired then
+    StartMode := 'demand'
+  else
+    StartMode := 'auto';
 
   if ServiceExists then
   begin
     Parameters :=
       'config ' + Quote(NetPilotServiceName) +
       ' binPath= ' + Quote(ServiceExe) +
-      ' start= auto obj= LocalSystem DisplayName= ' + Quote(NetPilotServiceDisplayName);
+      ' start= ' + StartMode + ' obj= LocalSystem DisplayName= ' + Quote(NetPilotServiceDisplayName);
   end
   else
   begin
     Parameters :=
       'create ' + Quote(NetPilotServiceName) +
       ' binPath= ' + Quote(ServiceExe) +
-      ' start= auto obj= LocalSystem DisplayName= ' + Quote(NetPilotServiceDisplayName);
+      ' start= ' + StartMode + ' obj= LocalSystem DisplayName= ' + Quote(NetPilotServiceDisplayName);
   end;
 
   if not RunSc(Parameters, False, ResultCode) then
@@ -451,34 +480,76 @@ begin
     ResultCode) then
     RaiseException('Не удалось применить защищённый ACL службы NetPilot.');
 
+  if not RunSc('start ' + Quote(NetPilotServiceName), False, ResultCode) then
+    RaiseException('Служба NetPilot установлена, но не смогла запуститься.');
+end;
+
+function FinalizeServiceRuntimePolicy: Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := False;
+
+  if not RunSc(
+    'config ' + Quote(NetPilotServiceName) + ' start= auto',
+    False,
+    ResultCode) then
+    Exit;
+
   if not RunSc(
     'failure ' + Quote(NetPilotServiceName) +
     ' reset= 86400 actions= restart/5000/restart/15000',
     False,
     ResultCode) then
-    RaiseException('Не удалось настроить восстановление службы NetPilot.');
+    Exit;
 
-  RunSc('failureflag ' + Quote(NetPilotServiceName) + ' 1', True, ResultCode);
+  if not RunSc(
+    'failureflag ' + Quote(NetPilotServiceName) + ' 1',
+    False,
+    ResultCode) then
+    Exit;
 
-  if not RunSc('start ' + Quote(NetPilotServiceName), False, ResultCode) then
-    RaiseException('Служба NetPilot установлена, но не смогла запуститься.');
+  Result := True;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  EnrollmentRequired: Boolean;
+  ServiceCleanupSucceeded: Boolean;
+  ArtifactCleanupSucceeded: Boolean;
 begin
   if CurStep = ssPostInstall then
   begin
+    EnrollmentRequired := not FileExists(AuthorizedSidPath);
+
     if not PrepareEnrollmentSession then
       RaiseException('Не удалось подготовить безопасную привязку пользователя NetPilot.');
 
-    ConfigureAndStartService;
+    ConfigureAndStartService(EnrollmentRequired);
 
-    if not CompleteOriginalUserEnrollment then
+    if EnrollmentRequired and (not CompleteOriginalUserEnrollment) then
     begin
-      if not DisableAndRemoveService then
-        RaiseException('Не удалось безопасно привязать пользователя и полностью удалить службу NetPilot. Установка остановлена; проверьте состояние службы перед повторной установкой.');
+      ServiceCleanupSucceeded := DisableAndRemoveService;
+      ArtifactCleanupSucceeded := RemoveFreshEnrollmentArtifacts;
+
+      if (not ServiceCleanupSucceeded) or (not ArtifactCleanupSucceeded) then
+        RaiseException('Не удалось безопасно привязать пользователя и полностью очистить состояние первичной установки NetPilot. Установка остановлена; проверьте состояние службы перед повторной установкой.');
 
       RaiseException('Не удалось безопасно привязать службу NetPilot к текущему пользователю Windows.');
+    end;
+
+    if not FinalizeServiceRuntimePolicy then
+    begin
+      if EnrollmentRequired then
+      begin
+        ServiceCleanupSucceeded := DisableAndRemoveService;
+        ArtifactCleanupSucceeded := RemoveFreshEnrollmentArtifacts;
+
+        if (not ServiceCleanupSucceeded) or (not ArtifactCleanupSucceeded) then
+          RaiseException('Не удалось завершить политику автозапуска после enrollment и полностью очистить состояние первичной установки NetPilot.');
+      end;
+
+      RaiseException('Не удалось безопасно завершить настройку службы NetPilot.');
     end;
   end;
 end;
