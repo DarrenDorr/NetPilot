@@ -54,10 +54,12 @@ jobs:
           test "$(git -C luajit rev-parse HEAD)" = "dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc"
           test -f luajit/src/lua.h
           test -f luajit/src/lualib.h
+          test "$(git -C zapret2 rev-parse 'HEAD:nfq2/crypto/aes.c')" = "49cd313ebb12513a0a4f5f5eb2d237ab57fb6db8"
+          test "$(git -C zapret2 rev-parse 'HEAD:nfq2/crypto/aes-ctr.c')" = "f046c01b7c467cbf226b52ab791c530f81338116"
 
           patch_dir="$PWD/netpilot/security/native-admission/patches/zapret2-r28"
           echo "af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff  $patch_dir/0001-explicit-conntrack-feed-result.patch" | sha256sum -c -
-          echo "a3531211626ce602a3b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783  $patch_dir/0002-bounded-conntrack-resource-result.patch" | sha256sum -c -
+          echo "a35312116263b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783  $patch_dir/0002-bounded-conntrack-resource-result.patch" | sha256sum -c -
           echo "33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68  $patch_dir/0003-bounded-delayed-queue-bytes.patch" | sha256sum -c -
           echo "f32e0c27393bcdfa30aa7e8c58749bb9e70e2a870350f5c3cfa429597a887777  $patch_dir/0004-explicit-daemon-stdio-redirection.patch" | sha256sum -c -
 
@@ -124,6 +126,8 @@ jobs:
             scratch/protocol_parser_sanitizer_harness.o \
             zapret2/nfq2/protocol.c \
             zapret2/nfq2/helpers.c \
+            zapret2/nfq2/crypto/aes.c \
+            zapret2/nfq2/crypto/aes-ctr.c \
             -Wl,--gc-sections \
             -o scratch/protocol_parser_sanitizer_harness \
             2>&1 | tee evidence/compile.log
@@ -178,13 +182,16 @@ jobs:
           fi
 
           {
-            echo 'schema_version=3'
+            echo 'schema_version=4'
             echo 'scope=isolated-protocol-parser-sanitizer-regression'
             echo 'candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0004'
             echo 'source_commit=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d'
             echo 'source_tree=5c2a77786cc7089145abe2ca99bcc53a8ed7de15'
             echo 'luajit_headers_commit=dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc'
             echo 'luajit_scope=headers-only-no-luajit-runtime-linked'
+            echo 'crypto_source_aes_blob_sha1=49cd313ebb12513a0a4f5f5eb2d237ab57fb6db8'
+            echo 'crypto_source_aes_ctr_blob_sha1=f046c01b7c467cbf226b52ab791c530f81338116'
+            echo 'crypto_scope=minimal-link-dependencies-only'
             echo "compiler=$(gcc --version | head -n1)"
             echo "harness_sha256=$harness_sha256"
             echo "instrumented_harness_binary_sha256=$binary_sha256"
