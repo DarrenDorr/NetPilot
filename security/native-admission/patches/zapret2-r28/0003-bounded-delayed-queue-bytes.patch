@@ -1,82 +1,70 @@
 diff --git a/nfq2/packet_queue.h b/nfq2/packet_queue.h
 --- a/nfq2/packet_queue.h
 +++ b/nfq2/packet_queue.h
-@@ -17,10 +17,13 @@ TAILQ_HEAD(rawpacket_head, rawpacket);
- struct rawpacket_queue
+@@ -27,9 +27,12 @@
  {
- 	size_t max_packets;
+ 	struct rawpacket_tailhead q;
+ 	unsigned int max_packets;
 +	size_t max_bytes;
 +	size_t queued_bytes;
- 	struct rawpacket_head head;
  };
  
- void rawpacket_queue_init(struct rawpacket_queue *q, size_t max_packets);
+ void rawpacket_queue_init(struct rawpacket_queue *q, unsigned int max_packets);
 +void rawpacket_queue_set_max_bytes(struct rawpacket_queue *q, size_t max_bytes);
  void rawpacket_queue_destroy(struct rawpacket_queue *q);
- struct rawpacket *rawpacket_queue(struct rawpacket_queue *q, const uint8_t *packet, size_t len);
- struct rawpacket *rawpacket_dequeue(struct rawpacket_queue *q);
+ bool rawpacket_queue_empty(const struct rawpacket_queue *q);
+ unsigned int rawpacket_queue_count(const struct rawpacket_queue *q);
 diff --git a/nfq2/packet_queue.c b/nfq2/packet_queue.c
 --- a/nfq2/packet_queue.c
 +++ b/nfq2/packet_queue.c
-@@ -6,8 +6,15 @@ void rawpacket_queue_init(struct rawpacket_queue *q, size_t max_packets)
+@@ -8,6 +8,12 @@
  {
+ 	TAILQ_INIT(&q->q);
  	q->max_packets = max_packets;
 +	q->max_bytes = 0;
 +	q->queued_bytes = 0;
- 	TAILQ_INIT(&q->head);
- }
- 
++}
 +void rawpacket_queue_set_max_bytes(struct rawpacket_queue *q, size_t max_bytes)
 +{
 +	q->max_bytes = max_bytes;
-+}
-+
- bool rawpacket_queue_empty(const struct rawpacket_queue *q)
+ }
+ void rawpacket_free(struct rawpacket *rp)
  {
- 	return TAILQ_EMPTY(&q->head);
-@@ -17,8 +24,9 @@ void rawpacket_queue_destroy(struct rawpacket_queue *q)
+@@ -18,13 +24,18 @@
  {
  	struct rawpacket *rp;
- 	while ((rp = rawpacket_dequeue(q)))
- 	{
- 		free(rp->packet);
- 		free(rp);
- 	}
-+	q->queued_bytes = 0;
- }
-@@ -44,17 +52,24 @@ struct rawpacket *rawpacket_queue(struct rawpacket_queue *q, const uint8_t *packe
- {
- 	struct rawpacket *rp;
-+	size_t new_queued_bytes;
- 	if (q->max_packets && q->max_packets <= rawpacket_queue_size(q))
- 		return NULL;
-+	new_queued_bytes = q->queued_bytes + len;
-+	if (new_queued_bytes < q->queued_bytes)
-+		return NULL;
-+	if (q->max_bytes && new_queued_bytes > q->max_bytes)
-+		return NULL;
- 	rp = (struct rawpacket*)malloc(sizeof(struct rawpacket));
- 	if (!rp) return NULL;
- 	rp->packet = (uint8_t*)malloc(len);
- 	if (!rp->packet)
- 	{
- 		free(rp);
- 		return NULL;
- 	}
- 	memcpy(rp->packet,packet,len);
- 	rp->len=len;
- 	TAILQ_INSERT_TAIL(&q->head, rp, next);
-+	q->queued_bytes = new_queued_bytes;
- 	return rp;
- }
-@@ -63,5 +78,9 @@ struct rawpacket *rawpacket_dequeue(struct rawpacket_queue *q)
- {
- 	struct rawpacket *rp = TAILQ_FIRST(&q->head);
--	if (rp) TAILQ_REMOVE(&q->head, rp, next);
+ 	rp = TAILQ_FIRST(&q->q);
+-	if (rp)	TAILQ_REMOVE(&q->q, rp, next);
 +	if (rp)
 +	{
-+		TAILQ_REMOVE(&q->head, rp, next);
++		TAILQ_REMOVE(&q->q, rp, next);
 +		q->queued_bytes = rp->len > q->queued_bytes ? 0 : q->queued_bytes - rp->len;
 +	}
+ 	return rp;
+ }
+ void rawpacket_queue_destroy(struct rawpacket_queue *q)
+ {
+ 	struct rawpacket *rp;
+ 	while((rp = rawpacket_dequeue(q))) rawpacket_free(rp);
++	q->queued_bytes = 0;
+ }
+ 
+ struct rawpacket *rawpacket_queue(
+@@ -37,6 +48,9 @@
+ 	bool server_side)
+ {
+ 	if (q->max_packets && rawpacket_queue_count(q)>=q->max_packets) return NULL;
++	if (len > SIZE_MAX - q->queued_bytes) return NULL;
++	size_t new_queued_bytes = q->queued_bytes + len;
++	if (q->max_bytes && new_queued_bytes > q->max_bytes) return NULL;
+ 
+ 	struct rawpacket *rp = malloc(sizeof(struct rawpacket));
+ 	if (!rp) return NULL;
+@@ -74,6 +88,7 @@
+ 	rp->server_side = server_side;
+ 	
+ 	TAILQ_INSERT_TAIL(&q->q, rp, next);
++	q->queued_bytes = new_queued_bytes;
+ 	
  	return rp;
  }
