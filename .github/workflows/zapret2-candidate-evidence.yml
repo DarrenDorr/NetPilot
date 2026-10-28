@@ -1,0 +1,111 @@
+name: Zapret2 Candidate Evidence
+
+on:
+  push:
+    branches: [ feature/engine-bootstrap-r15 ]
+    paths:
+      - '.github/workflows/zapret2-candidate-evidence.yml'
+      - 'security/native-admission/zapret2-v1.0.6-candidate.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Verify and inventory candidate without execution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          Add-Type -AssemblyName System.IO.Compression
+
+          $uri = 'https://github.com/bol-van/zapret2/releases/download/v1.0.6/zapret2-v1.0.6.zip'
+          $expectedSha256 = 'e141b51b60c895fe9548f4d644365461dcad8155e068d284a9aae1724504237d'
+          $expectedSize = 9970350
+          $zipPath = Join-Path $env:RUNNER_TEMP 'zapret2-v1.0.6.zip'
+          $scratch = Join-Path $env:RUNNER_TEMP 'zapret2-candidate-evidence'
+
+          Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $scratch | Out-Null
+
+          Invoke-WebRequest -Uri $uri -OutFile $zipPath -UseBasicParsing -MaximumRedirection 5
+          $item = Get-Item -LiteralPath $zipPath
+          $actualSha256 = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($item.Length -ne $expectedSize) { throw "Archive size mismatch: $($item.Length)" }
+          if ($actualSha256 -ne $expectedSha256) { throw "Archive SHA-256 mismatch: $actualSha256" }
+
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+          try {
+            foreach ($entry in $zip.Entries) {
+              $name = $entry.FullName.Replace('\','/')
+              if ([string]::IsNullOrWhiteSpace($name)) { continue }
+              if ($name.StartsWith('/') -or $name.StartsWith('\') -or $name -match '^[A-Za-z]:' -or $name.Split('/') -contains '..') {
+                throw "Unsafe archive entry path: $name"
+              }
+              $unixMode = (($entry.ExternalAttributes -shr 16) -band 0xF000)
+              if ($unixMode -eq 0xA000) { throw "Symlink entry forbidden: $name" }
+            }
+
+            $nativeEntries = @($zip.Entries | Where-Object {
+              $_.FullName.Replace('\','/') -match '(?i)\.(exe|dll|sys)$'
+            } | Sort-Object FullName)
+
+            if ($nativeEntries.Count -eq 0) { throw 'No EXE/DLL/SYS components found in candidate archive.' }
+
+            $results = @()
+            foreach ($entry in $nativeEntries) {
+              $normalized = $entry.FullName.Replace('\','/')
+              $safeName = ([Convert]::ToHexString([Text.Encoding]::UTF8.GetBytes($normalized))).ToLowerInvariant()
+              $target = Join-Path $scratch $safeName
+              $input = $entry.Open()
+              try {
+                $output = [IO.File]::Open($target,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+                try { $input.CopyTo($output) } finally { $output.Dispose() }
+              } finally { $input.Dispose() }
+
+              $file = Get-Item -LiteralPath $target
+              $signature = Get-AuthenticodeSignature -LiteralPath $target
+              $version = $file.VersionInfo
+              $results += [pscustomobject][ordered]@{
+                archive_path = $normalized
+                size_bytes = $file.Length
+                sha256 = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
+                file_version = if ([string]::IsNullOrWhiteSpace($version.FileVersion)) { $null } else { $version.FileVersion }
+                product_version = if ([string]::IsNullOrWhiteSpace($version.ProductVersion)) { $null } else { $version.ProductVersion }
+                company_name = if ([string]::IsNullOrWhiteSpace($version.CompanyName)) { $null } else { $version.CompanyName }
+                product_name = if ([string]::IsNullOrWhiteSpace($version.ProductName)) { $null } else { $version.ProductName }
+                signature_status = [string]$signature.Status
+                signer_subject = if ($null -eq $signature.SignerCertificate) { $null } else { $signature.SignerCertificate.Subject }
+                signer_thumbprint = if ($null -eq $signature.SignerCertificate) { $null } else { $signature.SignerCertificate.Thumbprint }
+              }
+            }
+
+            [ordered]@{
+              release = 'bol-van/zapret2 v1.0.6'
+              archive_sha256 = $actualSha256
+              archive_size_bytes = $item.Length
+              native_component_count = $results.Count
+              native_components = $results
+            } | ConvertTo-Json -Depth 8 | Write-Host
+          }
+          finally {
+            $zip.Dispose()
+            Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Candidate boundary
+        shell: pwsh
+        run: |
+          Write-Host 'Candidate evidence only: downloaded code was not executed.'
+          Write-Host 'No installation, activation or integration is authorized by this workflow.'
