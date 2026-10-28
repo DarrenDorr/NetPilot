@@ -123,7 +123,7 @@ jobs:
         run: |
           set -euo pipefail
           patch_file="../netpilot/security/native-admission/patches/zapret2-r28/0004-explicit-daemon-stdio-redirection.patch"
-          echo 'dd22de05235807f1b2c1400774f6e4605c96c0ebc07b5e5ac4aa56efefd4849c  '"$patch_file" | sha256sum -c -
+          echo 'df4bef5487febac8c4b3a55c85e939fdd6f57fb7b481d80bcc7962498303e4d0  '"$patch_file" | sha256sum -c -
           git apply --check "$patch_file"
           mapfile -t patched_files < <(git apply --numstat "$patch_file" | awk '{print $3}' | sort)
           test "${#patched_files[@]}" -eq 1
