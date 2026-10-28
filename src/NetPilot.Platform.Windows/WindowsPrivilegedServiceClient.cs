@@ -19,6 +19,10 @@ public sealed class WindowsPrivilegedServiceClient : IPrivilegedServiceClient
         IpcRequest request,
         CancellationToken cancellationToken)
     {
+        using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        requestTimeout.CancelAfter(IpcProtocol.RequestTimeoutMilliseconds);
+        var requestToken = requestTimeout.Token;
+
         using var pipe = new NamedPipeClientStream(
             ".",
             IpcProtocol.WindowsPipeName,
@@ -26,17 +30,27 @@ public sealed class WindowsPrivilegedServiceClient : IPrivilegedServiceClient
             PipeOptions.Asynchronous,
             TokenImpersonationLevel.Identification);
 
-        await pipe.ConnectAsync(IpcProtocol.ConnectTimeoutMilliseconds, cancellationToken);
-        await IpcFraming.WriteAsync(pipe, request, cancellationToken);
+        try
+        {
+            await pipe.ConnectAsync(IpcProtocol.ConnectTimeoutMilliseconds, requestToken);
+            await IpcFraming.WriteAsync(pipe, request, requestToken);
 
-        var response = await IpcFraming.ReadAsync<IpcResponse>(pipe, cancellationToken);
-        if (response.ProtocolVersion != IpcProtocol.Version || response.RequestId != request.RequestId)
+            var response = await IpcFraming.ReadAsync<IpcResponse>(pipe, requestToken);
+            if (response.ProtocolVersion != IpcProtocol.Version || response.RequestId != request.RequestId)
+            {
+                throw new IpcProtocolException(
+                    "InvalidResponse",
+                    "Ответ службы NetPilot не соответствует отправленному запросу.");
+            }
+
+            return response;
+        }
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
             throw new IpcProtocolException(
-                "InvalidResponse",
-                "Ответ службы NetPilot не соответствует отправленному запросу.");
+                "RequestTimeout",
+                "Служба NetPilot не ответила за допустимое время.",
+                exception);
         }
-
-        return response;
     }
 }
