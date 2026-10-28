@@ -38,25 +38,48 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C byedpi rev-parse HEAD)" = "7efde1b1296eaaa187b70e951894dde17527489c"
-          test "$(git -C byedpi rev-parse 'HEAD^{tree}')" = "8d13f6f5939190cd27ee68696247073a00b3e7dc"
-
+          expected_commit='7efde1b1296eaaa187b70e951894dde17527489c'
+          expected_tree='8d13f6f5939190cd27ee68696247073a00b3e7dc'
           patch_path='security/native-admission/patches/byedpi-r28/0001-loopback-only-listener.patch'
           expected_blob='9e00f9402fe65720102041c4174fb7f5673291dd'
           expected_sha256='1b3dfe6659dc39c706a626aaeaf597671ce0ab1b686a7f1898bca9e2a08b1251'
 
-          test "$(git -C netpilot rev-parse "HEAD:$patch_path")" = "$expected_blob"
+          observed_commit="$(git -C byedpi rev-parse HEAD)"
+          observed_tree="$(git -C byedpi rev-parse 'HEAD^{tree}')"
+          observed_blob="$(git -C netpilot rev-parse "HEAD:$patch_path")"
+
           mkdir -p scratch
           git -C netpilot show "HEAD:$patch_path" > scratch/byedpi-0001.patch
-          actual_sha256="$(sha256sum scratch/byedpi-0001.patch | awk '{print $1}')"
-          test "$actual_sha256" = "$expected_sha256"
+          observed_sha256="$(sha256sum scratch/byedpi-0001.patch | awk '{print $1}')"
 
-          git -C byedpi apply --check "$PWD/scratch/byedpi-0001.patch"
-          git -C byedpi apply "$PWD/scratch/byedpi-0001.patch"
+          printf 'observed_source_commit=%s\n' "$observed_commit"
+          printf 'observed_source_tree=%s\n' "$observed_tree"
+          printf 'observed_patch_blob=%s\n' "$observed_blob"
+          printf 'observed_patch_sha256=%s\n' "$observed_sha256"
 
-          grep -Fq 'Listening IP, loopback only; default 127.0.0.1' byedpi/main.c
-          grep -Fq 'netpilot_is_loopback_addr' byedpi/main.c
-          grep -Fq 'get_addr("127.0.0.1", &params.laddr)' byedpi/main.c
+          if [ "$observed_commit" != "$expected_commit" ]; then
+            echo 'ByeDPI source commit mismatch' >&2
+            exit 1
+          fi
+          if [ "$observed_tree" != "$expected_tree" ]; then
+            echo 'ByeDPI source tree mismatch' >&2
+            exit 1
+          fi
+          if [ "$observed_blob" != "$expected_blob" ]; then
+            echo 'ByeDPI canonical patch blob mismatch' >&2
+            exit 1
+          fi
+          if [ "$observed_sha256" != "$expected_sha256" ]; then
+            echo 'ByeDPI canonical patch SHA-256 mismatch' >&2
+            exit 1
+          fi
+
+          git -C byedpi apply --verbose --check "$PWD/scratch/byedpi-0001.patch"
+          git -C byedpi apply --verbose "$PWD/scratch/byedpi-0001.patch"
+
+          grep -Fq 'Listening IP, loopback only; default 127.0.0.1' byedpi/main.c || { echo 'ByeDPI help-text hardening anchor missing after patch' >&2; exit 1; }
+          grep -Fq 'netpilot_is_loopback_addr' byedpi/main.c || { echo 'ByeDPI loopback validator missing after patch' >&2; exit 1; }
+          grep -Fq 'get_addr("127.0.0.1", &params.laddr)' byedpi/main.c || { echo 'ByeDPI loopback default missing after patch' >&2; exit 1; }
 
       - name: Install compile-only toolchains
         shell: bash
@@ -117,7 +140,7 @@ jobs:
             windows_compiler="$(x86_64-w64-mingw32-gcc --version | head -n1)"
           fi
           {
-            echo 'schema_version=2'
+            echo 'schema_version=3'
             echo 'scope=byedpi-v0.17.3-loopback-hardening-compile-only'
             echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
             echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
