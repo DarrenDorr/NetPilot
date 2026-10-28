@@ -1,0 +1,153 @@
+name: Native Candidate Static and Sanitizer Compile
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/native-candidate-static-sanitizer-compile.yml"
+      - "security/native-admission/patches/zapret2-r28/**"
+      - "security/native-admission/zapret2-v1.0.6-plus-uaf-fix-fork-candidate.yaml"
+      - "docs/ZAPRET2-*.md"
+
+permissions:
+  contents: read
+
+jobs:
+  zapret2-linux-static-sanitizer-compile:
+    name: Analyze and sanitizer-compile patched zapret2 without execution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout NetPilot without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: netpilot
+          persist-credentials: false
+
+      - name: Checkout exact zapret2 UAF-fix source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: bol-van/zapret2
+          ref: 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d
+          fetch-depth: 2
+          path: zapret2
+          persist-credentials: false
+
+      - name: Verify exact source and apply reviewed patch series
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C zapret2 rev-parse HEAD)" = "4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d"
+          test "$(git -C zapret2 rev-parse HEAD^)" = "221d7dff24bfec0cd5ac0a5070b8acef2008af3d"
+          test "$(git -C zapret2 rev-parse 'HEAD^{tree}')" = "5c2a77786cc7089145abe2ca99bcc53a8ed7de15"
+
+          patch_dir="$PWD/netpilot/security/native-admission/patches/zapret2-r28"
+          for patch in \
+            0001-explicit-conntrack-feed-result.patch \
+            0002-bounded-conntrack-resource-result.patch \
+            0003-bounded-delayed-queue-bytes.patch
+          do
+            git -C zapret2 apply --check "$patch_dir/$patch"
+            git -C zapret2 apply "$patch_dir/$patch"
+          done
+
+      - name: Install compile-only analysis dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            pkg-config \
+            libcap-dev \
+            libluajit-5.1-dev \
+            zlib1g-dev \
+            libnetfilter-queue-dev \
+            libnfnetlink-dev \
+            libmnl-dev
+
+      - name: GCC static analyzer compile
+        id: analyzer
+        continue-on-error: true
+        shell: bash
+        working-directory: zapret2
+        run: |
+          set -euo pipefail
+          mkdir -p ../evidence
+          make -C nfq2 clean >/dev/null
+          make -C nfq2 \
+            CC=gcc \
+            LUA_JIT=1 \
+            MINSIZE= \
+            OPTIMIZE='-O1 -fanalyzer -Werror=analyzer-use-after-free -Werror=analyzer-double-free -Werror=analyzer-null-dereference' \
+            nfqws2 2>&1 | tee ../evidence/gcc-analyzer-build.log
+          test -f nfq2/nfqws2
+          sha256sum nfq2/nfqws2 | awk '{print $1}' > ../evidence/gcc-analyzer-binary.sha256
+          rm -f nfq2/nfqws2
+          test ! -e nfq2/nfqws2
+
+      - name: ASan and UBSan instrumented compile
+        id: sanitizer_compile
+        continue-on-error: true
+        shell: bash
+        working-directory: zapret2
+        run: |
+          set -euo pipefail
+          mkdir -p ../evidence
+          make -C nfq2 clean >/dev/null
+          make -C nfq2 \
+            CC=gcc \
+            LUA_JIT=1 \
+            MINSIZE= \
+            CFLAGS_UBSAN='-fsanitize=address,undefined,alignment -fno-sanitize-recover=undefined,alignment -fno-omit-frame-pointer' \
+            ubsan 2>&1 | tee ../evidence/asan-ubsan-compile.log
+          test -f nfq2/nfqws2
+          sha256sum nfq2/nfqws2 | awk '{print $1}' > ../evidence/asan-ubsan-binary.sha256
+          rm -f nfq2/nfqws2
+          test ! -e nfq2/nfqws2
+
+      - name: Produce text-only evidence
+        if: always()
+        shell: bash
+        env:
+          ANALYZER_OUTCOME: ${{ steps.analyzer.outcome }}
+          SANITIZER_COMPILE_OUTCOME: ${{ steps.sanitizer_compile.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          {
+            echo 'schema_version=1'
+            echo 'scope=static-analysis-and-sanitizer-compile-only'
+            echo 'candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0003'
+            echo 'source_commit=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d'
+            echo 'source_parent=221d7dff24bfec0cd5ac0a5070b8acef2008af3d'
+            echo "analyzer_outcome=$ANALYZER_OUTCOME"
+            echo "sanitizer_compile_outcome=$SANITIZER_COMPILE_OUTCOME"
+            echo "compiler=$(gcc --version | head -n1)"
+            echo 'candidate_binary_executed=false'
+            echo 'network_interception_enabled=false'
+            echo 'driver_installed=false'
+            echo 'sanitizer_runtime_test_performed=false'
+          } > evidence/static-sanitizer-compile.txt
+          sha256sum evidence/* | sort > evidence/SHA256SUMS-static-sanitizer.txt
+
+      - name: Upload text evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zapret2-r28-static-sanitizer-compile-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce analysis and compile success after evidence upload
+        if: always()
+        shell: bash
+        env:
+          ANALYZER_OUTCOME: ${{ steps.analyzer.outcome }}
+          SANITIZER_COMPILE_OUTCOME: ${{ steps.sanitizer_compile.outcome }}
+        run: |
+          set -euo pipefail
+          test "$ANALYZER_OUTCOME" = 'success'
+          test "$SANITIZER_COMPILE_OUTCOME" = 'success'
