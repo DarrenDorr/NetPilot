@@ -7,9 +7,12 @@ public static partial class ZapretStrategyCatalog
     private const int MaxStrategyFileBytes = 256 * 1024;
 
     [GeneratedRegex(
-        "^general(?: \\((?<id>[A-Za-z0-9][A-Za-z0-9_-]{0,31})\\))?\\.bat$",
+        "^general(?: \\((?<id>[A-Za-z0-9][A-Za-z0-9 _-]{0,47})\\))?\\.bat$",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex OfficialFileNameRegex();
+
+    [GeneratedRegex("[ _-]+", RegexOptions.CultureInvariant)]
+    private static partial Regex IdSeparatorRegex();
 
     public static bool IsOfficialStrategyFileName(string fileName)
     {
@@ -28,17 +31,21 @@ public static partial class ZapretStrategyCatalog
 
     public static string GetStrategyId(string fileName)
     {
-        var match = OfficialFileNameRegex().Match(fileName);
-        if (!match.Success)
+        var rawId = GetRawStrategyName(fileName);
+        if (rawId is null)
         {
-            throw new ZapretStrategyParseException(
-                "InvalidStrategyFileName",
-                "Имя файла не соответствует формату официальной стратегии Zapret.");
+            return "DEFAULT";
         }
 
-        return match.Groups["id"].Success
-            ? match.Groups["id"].Value.ToUpperInvariant()
-            : "DEFAULT";
+        return IdSeparatorRegex()
+            .Replace(rawId.Trim(), "_")
+            .ToUpperInvariant();
+    }
+
+    public static string GetStrategyDisplayName(string fileName)
+    {
+        var rawId = GetRawStrategyName(fileName);
+        return rawId is null ? "Стандартная" : rawId.Trim();
     }
 
     public static IReadOnlyList<string> DiscoverStrategyFiles(string engineRoot)
@@ -97,6 +104,19 @@ public static partial class ZapretStrategyCatalog
             StringComparer.OrdinalIgnoreCase.Compare(Path.GetFileName(left), Path.GetFileName(right)));
 
         return result;
+    }
+
+    private static string? GetRawStrategyName(string fileName)
+    {
+        var match = OfficialFileNameRegex().Match(fileName);
+        if (!match.Success)
+        {
+            throw new ZapretStrategyParseException(
+                "InvalidStrategyFileName",
+                "Имя файла не соответствует формату официальной стратегии Zapret.");
+        }
+
+        return match.Groups["id"].Success ? match.Groups["id"].Value : null;
     }
 
     private static bool IsDirectChild(string root, string path)
