@@ -147,7 +147,7 @@ public static class SafeZipExtractor
     {
         var normalized = entryName.Replace('\\', '/');
 
-        if (normalized.StartsWith('/', StringComparison.Ordinal)
+        if (normalized.StartsWith("/", StringComparison.Ordinal)
             || normalized.Contains(':'))
         {
             throw new UpdateSecurityException("InvalidArchivePath", "Абсолютные пути и имена дисков в ZIP запрещены.");
