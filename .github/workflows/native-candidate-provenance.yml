@@ -66,23 +66,13 @@ jobs:
         working-directory: zapret2
         run: |
           set -euo pipefail
-
           patch_file="../netpilot/security/native-admission/patches/zapret2-r28/0001-explicit-conntrack-feed-result.patch"
-          test -f "$patch_file"
+          echo 'af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff  '"$patch_file" | sha256sum -c -
           git apply --check "$patch_file"
-
           mapfile -t patched_files < <(git apply --numstat "$patch_file" | awk '{print $3}' | sort)
-          expected_files=(
-            "nfq2/conntrack.c"
-            "nfq2/conntrack.h"
-            "nfq2/desync.c"
-            "nfq2/lua.c"
-          )
+          expected_files=("nfq2/conntrack.c" "nfq2/conntrack.h" "nfq2/desync.c" "nfq2/lua.c")
           test "${#patched_files[@]}" -eq "${#expected_files[@]}"
-          for i in "${!expected_files[@]}"; do
-            test "${patched_files[$i]}" = "${expected_files[$i]}"
-          done
-
+          for i in "${!expected_files[@]}"; do test "${patched_files[$i]}" = "${expected_files[$i]}"; done
           git apply "$patch_file"
           grep -Fq 'CTRACK_FEED_NONE = 0' nfq2/conntrack.h
           grep -Fq 'CTRACK_FEED_OK = 1' nfq2/conntrack.h
@@ -92,24 +82,14 @@ jobs:
         working-directory: zapret2
         run: |
           set -euo pipefail
-
           patch_file="../netpilot/security/native-admission/patches/zapret2-r28/0002-bounded-conntrack-resource-result.patch"
-          test -f "$patch_file"
+          echo 'a3531211626ce602a3b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783  '"$patch_file" | sha256sum -c -
           git apply --check "$patch_file"
-
           mapfile -t patched_files < <(git apply --numstat "$patch_file" | awk '{print $3}' | sort)
-          expected_files=(
-            "nfq2/conntrack.c"
-            "nfq2/conntrack.h"
-            "nfq2/desync.c"
-          )
+          expected_files=("nfq2/conntrack.c" "nfq2/conntrack.h" "nfq2/desync.c")
           test "${#patched_files[@]}" -eq "${#expected_files[@]}"
-          for i in "${!expected_files[@]}"; do
-            test "${patched_files[$i]}" = "${expected_files[$i]}"
-          done
-
+          for i in "${!expected_files[@]}"; do test "${patched_files[$i]}" = "${expected_files[$i]}"; done
           git apply "$patch_file"
-
           grep -Fq 'CTRACK_FEED_RESOURCE_EXHAUSTED = 2' nfq2/conntrack.h
           grep -Fq 'ConntrackPoolSetMaxEntries' nfq2/conntrack.h
           grep -Fq 'HASH_COUNT(*pp) >= max_entries' nfq2/conntrack.c
@@ -122,29 +102,37 @@ jobs:
         working-directory: zapret2
         run: |
           set -euo pipefail
-
           patch_file="../netpilot/security/native-admission/patches/zapret2-r28/0003-bounded-delayed-queue-bytes.patch"
-          test -f "$patch_file"
+          echo '33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68  '"$patch_file" | sha256sum -c -
           git apply --check "$patch_file"
-
           mapfile -t patched_files < <(git apply --numstat "$patch_file" | awk '{print $3}' | sort)
-          expected_files=(
-            "nfq2/packet_queue.c"
-            "nfq2/packet_queue.h"
-          )
+          expected_files=("nfq2/packet_queue.c" "nfq2/packet_queue.h")
           test "${#patched_files[@]}" -eq "${#expected_files[@]}"
-          for i in "${!expected_files[@]}"; do
-            test "${patched_files[$i]}" = "${expected_files[$i]}"
-          done
-
+          for i in "${!expected_files[@]}"; do test "${patched_files[$i]}" = "${expected_files[$i]}"; done
           git apply "$patch_file"
-
           grep -Fq 'size_t max_bytes;' nfq2/packet_queue.h
           grep -Fq 'size_t queued_bytes;' nfq2/packet_queue.h
           grep -Fq 'rawpacket_queue_set_max_bytes' nfq2/packet_queue.h
           grep -Fq 'len > SIZE_MAX - q->queued_bytes' nfq2/packet_queue.c
           grep -Fq 'new_queued_bytes > q->max_bytes' nfq2/packet_queue.c
           grep -Fq 'q->queued_bytes = new_queued_bytes;' nfq2/packet_queue.c
+
+      - name: Verify and apply NetPilot patch 0004
+        shell: bash
+        working-directory: zapret2
+        run: |
+          set -euo pipefail
+          patch_file="../netpilot/security/native-admission/patches/zapret2-r28/0004-explicit-daemon-stdio-redirection.patch"
+          echo 'dd22de05235807f1b2c1400774f6e4605c96c0ebc07b5e5ac4aa56efefd4849c  '"$patch_file" | sha256sum -c -
+          git apply --check "$patch_file"
+          mapfile -t patched_files < <(git apply --numstat "$patch_file" | awk '{print $3}' | sort)
+          test "${#patched_files[@]}" -eq 1
+          test "${patched_files[0]}" = "nfq2/sec.c"
+          git apply "$patch_file"
+          grep -Fq 'int nullfd = open("/dev/null", O_RDWR);' nfq2/sec.c
+          grep -Fq 'nullfd != STDIN_FILENO' nfq2/sec.c
+          grep -Fq 'dup2(STDIN_FILENO, STDOUT_FILENO)' nfq2/sec.c
+          grep -Fq 'dup2(STDIN_FILENO, STDERR_FILENO)' nfq2/sec.c
 
       - name: Produce provenance evidence
         shell: bash
@@ -156,10 +144,11 @@ jobs:
           patch_0001="../netpilot/security/native-admission/patches/zapret2-r28/0001-explicit-conntrack-feed-result.patch"
           patch_0002="../netpilot/security/native-admission/patches/zapret2-r28/0002-bounded-conntrack-resource-result.patch"
           patch_0003="../netpilot/security/native-admission/patches/zapret2-r28/0003-bounded-delayed-queue-bytes.patch"
+          patch_0004="../netpilot/security/native-admission/patches/zapret2-r28/0004-explicit-daemon-stdio-redirection.patch"
 
           {
-            echo "schema_version=3"
-            echo "candidate=zapret2-v1.0.6-plus-uaf-fix"
+            echo "schema_version=4"
+            echo "candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0004"
             echo "repository=https://github.com/bol-van/zapret2"
             echo "head_commit=$(git rev-parse HEAD)"
             echo "parent_commit=$(git rev-parse HEAD^)"
@@ -172,6 +161,7 @@ jobs:
             echo "netpilot_patch_0001_sha256=$(sha256sum "$patch_0001" | awk '{print $1}')"
             echo "netpilot_patch_0002_sha256=$(sha256sum "$patch_0002" | awk '{print $1}')"
             echo "netpilot_patch_0003_sha256=$(sha256sum "$patch_0003" | awk '{print $1}')"
+            echo "netpilot_patch_0004_sha256=$(sha256sum "$patch_0004" | awk '{print $1}')"
             echo "patched_worktree_files_begin"
             git diff --name-only HEAD | sort
             echo "patched_worktree_files_end"
@@ -181,6 +171,7 @@ jobs:
           cp "$patch_0001" ../evidence/netpilot-0001-explicit-conntrack-feed-result.patch
           cp "$patch_0002" ../evidence/netpilot-0002-bounded-conntrack-resource-result.patch
           cp "$patch_0003" ../evidence/netpilot-0003-bounded-delayed-queue-bytes.patch
+          cp "$patch_0004" ../evidence/netpilot-0004-explicit-daemon-stdio-redirection.patch
           git diff --binary HEAD > ../evidence/netpilot-patched-worktree.diff
           sha256sum ../evidence/* | sort > ../evidence/SHA256SUMS.txt
 
