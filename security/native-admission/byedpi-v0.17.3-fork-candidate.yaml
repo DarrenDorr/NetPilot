@@ -52,6 +52,7 @@ patch_series:
   - sequence: 1
     path: security/native-admission/patches/byedpi-r28/0001-loopback-only-listener.patch
     purpose: make loopback the default listener and reject non-loopback --ip values as defense in depth
+    git_blob_sha1: 9e00f9402fe65720102041c4174fb7f5673291dd
     sha256: 1b3dfe6659dc39c706a626aaeaf597671ce0ab1b686a7f1898bca9e2a08b1251
     status: REVIEW_PENDING_COMPILE_GATE
     expected_files:
@@ -83,4 +84,5 @@ required_before_admit:
 notes:
   - ByeDPI itself is a local SOCKS proxy and does not make Windows applications transparently use it.
   - The upstream default listener is 0.0.0.0:1080; NetPilot must never inherit that exposure.
+  - Patch identity is anchored by both Git blob SHA-1 and SHA-256 of canonical Git-object bytes; working-tree newline conversion is not a trust input.
   - No native binary from this candidate is currently allowed to execute from NetPilot.
