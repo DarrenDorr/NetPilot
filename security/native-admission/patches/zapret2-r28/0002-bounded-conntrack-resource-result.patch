@@ -25,7 +25,7 @@ diff --git a/nfq2/conntrack.h b/nfq2/conntrack.h
 diff --git a/nfq2/conntrack.c b/nfq2/conntrack.c
 --- a/nfq2/conntrack.c
 +++ b/nfq2/conntrack.c
-@@ -62,8 +62,13 @@ void ConntrackPoolInit(t_conntrack *p, time_t purge_interval, uint32_t timeout_s
+@@ -62,8 +62,14 @@ void ConntrackPoolInit(t_conntrack *p, time_t purge_interval, uint32_t timeout_s
  	p->t_purge_interval = purge_interval;
  	p->t_last_purge = boottime();
  	p->pool = NULL;
