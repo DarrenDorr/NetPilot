@@ -30,6 +30,7 @@ public static class IpcRequestValidator
         {
             IpcCommand.Ping => ValidateNoPayload(request),
             IpcCommand.EnrollAuthorizedUser => ValidateEnrollment(request),
+            IpcCommand.ZapretGetInstallationStatus => ValidateNoPayload(request),
             IpcCommand.ZapretListStrategies => ValidateNoPayload(request),
             IpcCommand.ZapretGetStatus => ValidateNoPayload(request),
             IpcCommand.ZapretStop => ValidateNoPayload(request),
@@ -130,6 +131,7 @@ public interface IPrivilegedServiceClient
     Task<IpcResponse> EnrollAuthorizedUserAsync(
         string enrollmentNonce,
         CancellationToken cancellationToken = default);
+    Task<IpcResponse> GetZapretInstallationStatusAsync(CancellationToken cancellationToken = default);
     Task<IpcResponse> ListZapretStrategiesAsync(CancellationToken cancellationToken = default);
     Task<IpcResponse> GetZapretStatusAsync(CancellationToken cancellationToken = default);
     Task<IpcResponse> StartZapretStrategyAsync(
