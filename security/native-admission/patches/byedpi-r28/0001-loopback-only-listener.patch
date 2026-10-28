@@ -36,7 +36,7 @@ index b84a4bb..0000000 100644
  int get_default_ttl(void)
  {
      int orig_ttl = -1, fd;
-@@ -660,6 +678,10 @@ int main(int argc, char **argv)
+@@ -660,5 +678,9 @@ int main(int argc, char **argv)
      }
      //
 +    if (get_addr("127.0.0.1", &params.laddr) < 0) {
