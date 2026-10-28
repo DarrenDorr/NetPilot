@@ -313,6 +313,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 LastAction = "Обнаружен кратковременный сбой. Текущий профиль сохранён.";
                 break;
 
+            case StrategySelectionStatus.RecoveryNotApplicable:
+                LastAction = result.DiagnosticCode switch
+                {
+                    "RecoverySuppressedDnsFailure" =>
+                        "Обнаружена проблема DNS. Текущий профиль сохранён; перебор альтернатив не выполнялся.",
+                    "RecoverySuppressedHttpResponse" =>
+                        "Сервис отвечает по HTTPS, поэтому автоматическая смена сетевого профиля не выполнялась.",
+                    "RecoverySuppressedSecurityOrConfiguration" =>
+                        "Автоматическая смена профиля остановлена политикой безопасности или конфигурацией. Текущий профиль сохранён.",
+                    "RecoverySuppressedUnclassifiedFailure" =>
+                        "Причина сбоя недостаточно определена. NetPilot сохранил текущий профиль без перебора альтернатив.",
+                    _ =>
+                        "Причина сбоя не допускает автоматическую смену профиля. Текущий профиль сохранён."
+                };
+                break;
+
             case StrategySelectionStatus.Switched:
                 LastAction = "NetPilot подтвердил рабочую альтернативу и переключил профиль.";
                 break;
