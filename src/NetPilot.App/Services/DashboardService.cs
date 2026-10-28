@@ -16,6 +16,12 @@ public interface IDashboardService : IDisposable
 
     Task<StrategyRuntimeState> GetStrategyRuntimeStateAsync(
         CancellationToken cancellationToken = default);
+
+    Task<EngineInstallationState> GetEngineInstallationStateAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<EngineInstallResult> InstallEngineAsync(
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class DashboardService : IDashboardService
@@ -23,16 +29,19 @@ public sealed class DashboardService : IDashboardService
     private readonly PublicHttpsHealthChecker _healthChecker;
     private readonly IStrategyRuntime _strategyRuntime;
     private readonly StrategySelectionEngine _selectionEngine;
+    private readonly IEngineProvisioningService _provisioningService;
     private bool _disposed;
 
     public DashboardService(
         PublicHttpsHealthChecker healthChecker,
         IStrategyRuntime strategyRuntime,
-        StrategySelectionEngine selectionEngine)
+        StrategySelectionEngine selectionEngine,
+        IEngineProvisioningService provisioningService)
     {
         _healthChecker = healthChecker ?? throw new ArgumentNullException(nameof(healthChecker));
         _strategyRuntime = strategyRuntime ?? throw new ArgumentNullException(nameof(strategyRuntime));
         _selectionEngine = selectionEngine ?? throw new ArgumentNullException(nameof(selectionEngine));
+        _provisioningService = provisioningService ?? throw new ArgumentNullException(nameof(provisioningService));
     }
 
     public IReadOnlyList<ResourceDefinition> Resources => BuiltInResourceCatalog.All;
@@ -64,6 +73,20 @@ public sealed class DashboardService : IDashboardService
     {
         ThrowIfDisposed();
         return _strategyRuntime.GetStateAsync(cancellationToken);
+    }
+
+    public Task<EngineInstallationState> GetEngineInstallationStateAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        return _provisioningService.GetInstallationStateAsync(cancellationToken);
+    }
+
+    public Task<EngineInstallResult> InstallEngineAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        return _provisioningService.InstallLatestAsync(cancellationToken);
     }
 
     public void Dispose()
