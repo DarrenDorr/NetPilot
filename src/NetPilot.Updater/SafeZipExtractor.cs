@@ -15,6 +15,24 @@ public static class SafeZipExtractor
         ArgumentNullException.ThrowIfNull(zipStream);
         ArgumentException.ThrowIfNullOrWhiteSpace(stagingRoot);
 
+        try
+        {
+            await ExtractCoreAsync(zipStream, stagingRoot, cancellationToken);
+        }
+        catch (InvalidDataException exception)
+        {
+            throw new UpdateSecurityException(
+                "InvalidZipArchive",
+                "ZIP-пакет обновления повреждён или имеет неподдерживаемую структуру.",
+                exception);
+        }
+    }
+
+    private static async Task ExtractCoreAsync(
+        Stream zipStream,
+        string stagingRoot,
+        CancellationToken cancellationToken)
+    {
         var root = EnsureCleanStagingRoot(stagingRoot);
         using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read, leaveOpen: true);
 
