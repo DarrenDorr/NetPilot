@@ -41,8 +41,8 @@ jobs:
           expected_commit='7efde1b1296eaaa187b70e951894dde17527489c'
           expected_tree='8d13f6f5939190cd27ee68696247073a00b3e7dc'
           patch_path='security/native-admission/patches/byedpi-r28/0001-loopback-only-listener.patch'
-          expected_blob='9e00f9402fe65720102041c4174fb7f5673291dd'
-          expected_sha256='f7b358d9bf67e8275ed5f6fd700e86832253660911c97f1156c51b28dc5c43f1'
+          expected_blob='7c72a0ca63b04d61a3e0ae7bd45e30f030d3f4a6'
+          expected_sha256='aa571be24686188140c4522fc7bd0a2bfa172984d17c48b677cc9454353c499c'
 
           observed_commit="$(git -C byedpi rev-parse HEAD)"
           observed_tree="$(git -C byedpi rev-parse 'HEAD^{tree}')"
@@ -140,12 +140,12 @@ jobs:
             windows_compiler="$(x86_64-w64-mingw32-gcc --version | head -n1)"
           fi
           {
-            echo 'schema_version=3'
+            echo 'schema_version=4'
             echo 'scope=byedpi-v0.17.3-loopback-hardening-compile-only'
             echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
             echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
-            echo 'patch_0001_git_blob_sha1=9e00f9402fe65720102041c4174fb7f5673291dd'
-            echo 'patch_0001_sha256=f7b358d9bf67e8275ed5f6fd700e86832253660911c97f1156c51b28dc5c43f1'
+            echo 'patch_0001_git_blob_sha1=7c72a0ca63b04d61a3e0ae7bd45e30f030d3f4a6'
+            echo 'patch_0001_sha256=aa571be24686188140c4522fc7bd0a2bfa172984d17c48b677cc9454353c499c'
             echo "linux_compile_outcome=$LINUX_OUTCOME"
             echo "windows_x64_cross_compile_outcome=$WINDOWS_OUTCOME"
             echo "linux_compiler=$linux_compiler"
