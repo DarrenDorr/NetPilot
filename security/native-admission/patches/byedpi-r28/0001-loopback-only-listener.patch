@@ -46,13 +46,10 @@ index b84a4bb..0000000 100644
      params.laddr.in.sin_port = htons(1080);
      if (!ipv6_support()) {
          params.baddr.sa.sa_family = AF_INET;
-@@ -727,7 +749,8 @@ int main(int argc, char **argv)
-             return 0;
- 
+@@ -727,4 +749,5 @@ int main(int argc, char **argv)
          case 'i':
 -            if (get_addr(optarg, &params.laddr) < 0)
 +            if (get_addr(optarg, &params.laddr) < 0
 +                    || !netpilot_is_loopback_addr(&params.laddr))
                  invalid = 1;
              break;
- 
