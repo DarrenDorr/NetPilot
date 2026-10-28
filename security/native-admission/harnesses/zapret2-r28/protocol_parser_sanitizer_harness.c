@@ -29,6 +29,22 @@ static void validate_position(ssize_t pos, size_t len)
         fail("parser returned an out-of-range marker position");
 }
 
+static void validate_span(const uint8_t *base, size_t len,
+    const uint8_t *ptr, size_t span_len, const char *message)
+{
+    if (ptr == NULL)
+        return;
+
+    uintptr_t base_addr = (uintptr_t)base;
+    uintptr_t ptr_addr = (uintptr_t)ptr;
+    uintptr_t end_addr = base_addr + len;
+
+    if (ptr_addr < base_addr || ptr_addr > end_addr)
+        fail(message);
+    if (span_len > (size_t)(end_addr - ptr_addr))
+        fail(message);
+}
+
 static void exercise_tls(const uint8_t *data, size_t len)
 {
     const uint8_t *ext = NULL;
@@ -45,14 +61,14 @@ static void exercise_tls(const uint8_t *data, size_t len)
         fail("TLSFindExtLen returned an offset outside the input");
 
     (void)TLSFindExt(data, len, 0, &ext, &ext_len, false);
-    if (ext != NULL && (ext < data || ext > data + len || ext_len > (size_t)(data + len - ext)))
-        fail("TLSFindExt returned an out-of-range extension");
+    validate_span(data, len, ext, ext_len,
+        "TLSFindExt returned an out-of-range extension");
 
     ext = NULL;
     ext_len = 0;
     (void)TLSFindExt(data, len, 0, &ext, &ext_len, true);
-    if (ext != NULL && (ext < data || ext > data + len || ext_len > (size_t)(data + len - ext)))
-        fail("partial TLSFindExt returned an out-of-range extension");
+    validate_span(data, len, ext, ext_len,
+        "partial TLSFindExt returned an out-of-range extension");
 
     memset(host, 0xA5, sizeof(host));
     (void)TLSHelloExtractHost(data, len, host, sizeof(host), false);
@@ -77,18 +93,16 @@ static void exercise_quic(const uint8_t *data, size_t len)
     size_t hello_len = 0;
     quic_cid_t cid;
 
+    (void)QUICIsLongHeader(data, len);
+    (void)QUICExtractVersion(data, len);
     (void)IsQUICInitial(data, len);
     (void)IsQUICCryptoHello(data, len, &hello_offset, &hello_len);
     if (hello_offset > len || hello_len > len - hello_offset)
         fail("IsQUICCryptoHello returned an out-of-range span");
 
-    if (QUICIsLongHeader(data, len))
-    {
-        (void)QUICExtractVersion(data, len);
-        memset(&cid, 0, sizeof(cid));
-        if (QUICExtractDCID(data, len, &cid) && cid.len > QUIC_MAX_CID_LENGTH)
-            fail("QUICExtractDCID returned an oversized CID");
-    }
+    memset(&cid, 0, sizeof(cid));
+    if (QUICExtractDCID(data, len, &cid) && cid.len > QUIC_MAX_CID_LENGTH)
+        fail("QUICExtractDCID returned an oversized CID");
 }
 
 static void exercise_other_protocols(const uint8_t *data, size_t len)
@@ -132,13 +146,12 @@ static void test_valid_tls_and_all_truncations(void)
         0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
         0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
         0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
         0x00,0x00,0x00,0x00,
         0x00,
         0x00,0x02,0x13,0x01,
         0x01,0x00,
         0x00,0x14,
-        0x00,0x00,0x00,0x10,
+        0x00,0x00,0x10,
         0x00,0x0e,0x00,0x00,0x0b,
         'e','x','a','m','p','l','e','.','c','o','m'
     };
@@ -155,6 +168,24 @@ static void test_valid_tls_and_all_truncations(void)
 
     for (size_t len = 0; len <= sizeof(tls_client_hello); ++len)
         exercise_all(tls_client_hello, len);
+}
+
+static void test_short_input_patterns(void)
+{
+    uint8_t buffer[96];
+
+    for (size_t len = 0; len <= sizeof(buffer); ++len)
+    {
+        memset(buffer, 0x00, sizeof(buffer));
+        exercise_all(buffer, len);
+
+        memset(buffer, 0xff, sizeof(buffer));
+        exercise_all(buffer, len);
+
+        for (size_t i = 0; i < sizeof(buffer); ++i)
+            buffer[i] = (uint8_t)i;
+        exercise_all(buffer, len);
+    }
 }
 
 static void test_deterministic_random_inputs(void)
@@ -189,6 +220,7 @@ int main(void)
 
     exercise_all(&empty, 0);
     test_valid_tls_and_all_truncations();
+    test_short_input_patterns();
     test_deterministic_random_inputs();
 
     puts("protocol_parser_sanitizer_harness: PASS");
