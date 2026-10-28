@@ -9,12 +9,22 @@ obj/
 TestResults/
 artifacts/
 publish/
+
+# Ключи, сертификаты с приватной частью и хранилища подписания
 *.pfx
+*.p12
 *.snk
 *.key
 *.pem
+*.jks
+*.keystore
+
+# Конфигурации/экспорты, которые потенциально могут содержать секреты
 *.npb
 *.npconfig
 .env
 .env.*
 !.env.example
+.secrets/
+credentials.json
+secrets.json
