@@ -27,7 +27,8 @@ internal static class Program
         var dashboardService = new DashboardService(
             healthChecker,
             strategyRuntime,
-            selectionEngine);
+            selectionEngine,
+            serviceClient);
 
         return new MainWindowViewModel(dashboardService);
     }
