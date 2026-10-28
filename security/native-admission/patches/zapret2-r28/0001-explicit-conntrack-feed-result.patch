@@ -1,7 +1,7 @@
 diff --git a/nfq2/conntrack.h b/nfq2/conntrack.h
 --- a/nfq2/conntrack.h
 +++ b/nfq2/conntrack.h
-@@ -88,9 +88,15 @@ typedef struct
+@@ -101,9 +101,15 @@
  	t_conntrack_pool *pool;
  } t_conntrack;
  
@@ -21,10 +21,7 @@ diff --git a/nfq2/conntrack.h b/nfq2/conntrack.h
 diff --git a/nfq2/conntrack.c b/nfq2/conntrack.c
 --- a/nfq2/conntrack.c
 +++ b/nfq2/conntrack.c
-@@ -239,14 +239,14 @@ bool ConntrackPoolDoubleSearch(t_conntrack *p, const struct dissect *dis, t_ctr
- 	return ConntrackPoolDoubleSearchPool(&p->pool, dis, ctrack, bReverse);
- }
- 
+@@ -250,11 +250,11 @@
 -static bool ConntrackPoolFeedPool(t_conntrack_pool **pp, const struct dissect *dis, t_ctrack **ctrack, bool *bReverse)
 +static t_conntrack_feed_result ConntrackPoolFeedPool(t_conntrack_pool **pp, const struct dissect *dis, t_ctrack **ctrack, bool *bReverse)
  {
@@ -38,7 +35,7 @@ diff --git a/nfq2/conntrack.c b/nfq2/conntrack.c
  	if ((ctr = ConntrackPoolSearch(*pp, &conn)))
  	{
  		ConntrackFeedPacket(&ctr->track, (b_rev = false), dis);
-@@ -274,15 +274,15 @@ static bool ConntrackPoolFeedPool(t_conntrack_pool **pp, const struct dissect *
+@@ -278,14 +278,14 @@
  			goto ok;
  		}
  	}
@@ -59,7 +56,7 @@ diff --git a/nfq2/conntrack.c b/nfq2/conntrack.c
 diff --git a/nfq2/desync.c b/nfq2/desync.c
 --- a/nfq2/desync.c
 +++ b/nfq2/desync.c
-@@ -1263,7 +1263,7 @@ static bool play_prolog(
+@@ -1281,7 +1281,7 @@
  		if (!params.ctrack_disable)
  		{
  			ConntrackPoolPurge(&params.conntrack);
@@ -71,7 +68,7 @@ diff --git a/nfq2/desync.c b/nfq2/desync.c
 diff --git a/nfq2/lua.c b/nfq2/lua.c
 --- a/nfq2/lua.c
 +++ b/nfq2/lua.c
-@@ -3047,7 +3047,7 @@ static int luacall_conntrack_feed(lua_State *L)
+@@ -3068,7 +3068,7 @@
  		proto_dissect_l3l4(pbuf, len, &dis, false);
  
  		ConntrackPoolPurge(&params.conntrack);
