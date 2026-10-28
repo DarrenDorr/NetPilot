@@ -142,7 +142,7 @@ jobs:
           grep -Fq 'size_t max_bytes;' nfq2/packet_queue.h
           grep -Fq 'size_t queued_bytes;' nfq2/packet_queue.h
           grep -Fq 'rawpacket_queue_set_max_bytes' nfq2/packet_queue.h
-          grep -Fq 'new_queued_bytes < q->queued_bytes' nfq2/packet_queue.c
+          grep -Fq 'len > SIZE_MAX - q->queued_bytes' nfq2/packet_queue.c
           grep -Fq 'new_queued_bytes > q->max_bytes' nfq2/packet_queue.c
           grep -Fq 'q->queued_bytes = new_queued_bytes;' nfq2/packet_queue.c
 
