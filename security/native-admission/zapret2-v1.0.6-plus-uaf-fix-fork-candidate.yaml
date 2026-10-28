@@ -19,6 +19,7 @@ upstream:
   required_fix_commit: 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d
   required_fix_title: nfqws2: fix UAF
   required_fix_parent: 221d7dff24bfec0cd5ac0a5070b8acef2008af3d
+  required_fix_tree: 5c2a77786cc7089145abe2ca99bcc53a8ed7de15
   relationship_verified: true
 
 policy:
@@ -41,6 +42,8 @@ policy:
 static_review:
   source_review_document: docs/ZAPRET2-STATIC-ADMISSION-R28.1.md
   resource_hardening_document: docs/ZAPRET2-RESOURCE-HARDENING-R28.1.md
+  controlled_build_document: docs/ZAPRET2-CONTROLLED-BUILD-R28.2.md
+  provenance_workflow: .github/workflows/native-candidate-provenance.yml
   fork_strategy: OWNED_MINIMAL_HARDENED_FORK_CANDIDATE
   full_upstream_master_as_base: REJECT
   next_gate: R28.2_CONTROLLED_BUILD_AND_PATCH_EVIDENCE
@@ -49,16 +52,32 @@ verified_delta:
   - id: Z2-FORK-BASE-001
     status: PASS_FOR_RELATIONSHIP_ONLY
     finding: Исправление UAF является прямым дочерним коммитом точного релизного коммита v1.0.6.
-    evidence: Коммит 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d имеет единственного родителя 221d7dff24bfec0cd5ac0a5070b8acef2008af3d и изменяет nfq2/desync.c.
+    evidence: Коммит 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d имеет единственного родителя 221d7dff24bfec0cd5ac0a5070b8acef2008af3d и tree 5c2a77786cc7089145abe2ca99bcc53a8ed7de15.
   - id: Z2-FORK-BASE-002
     status: PASS_FOR_KNOWN_UAF_FIX_ONLY
     finding: Патч сбрасывает сохранённое представление reassembly payload после освобождения буфера перед повторным разбором.
     limitation: Это подтверждает исправление ранее найденного UAF, но не является полным security admission всего движка.
 
+provenance_gate:
+  workflow_status: REQUIRED_EVIDENCE
+  execution_scope: source_checkout_and_metadata_only
+  native_execution_allowed: false
+  driver_install_allowed: false
+  checks:
+    - exact head commit
+    - exact parent commit
+    - exact tree
+    - delta contains only nfq2/desync.c
+    - expected UAF-fix source assertions
+    - SHA-256 evidence artifact
+  workflow_actions_pinned_by_full_sha: true
+  checkout_credentials_persisted: false
+  runner: ubuntu-24.04
+
 residual_review_blockers:
   - id: Z2-STATE-001
     title: Нет продуктового агрегатного лимита conntrack/ipcache.
-    required_action: Реализовать и измерить bounded-resource policy; при насыщении новый flow должен fail-open/pass-through, без произвольного вытеснения активных tracks.
+    required_action: Реализовать и измерить bounded-resource policy; при насыщении новый flow должен fail-safe/pass-through, без произвольного вытеснения активных tracks.
   - id: Z2-DELAYED-QUEUE-002
     title: Delayed raw packet queue имеет packet-count bound, но нужен отдельный byte budget.
     required_action: Добавить overflow-safe accounting queued bytes и тесты saturated/failure paths до ADMIT.
@@ -90,6 +109,7 @@ fork_rules:
   - Runtime получает только фиксированный executable и валидированный ArgumentList из allowlist.
 
 required_before_admit:
+  - Успешное evidence от Native Candidate Provenance workflow для exact source anchor.
   - Реализовать и проверить resource hardening из docs/ZAPRET2-RESOURCE-HARDENING-R28.1.md.
   - Controlled source build с pinned immutable actions/toolchain/dependency hashes.
   - Полный Windows x64 inventory EXE/DLL/SYS с SHA-256 и проверкой подписей.
