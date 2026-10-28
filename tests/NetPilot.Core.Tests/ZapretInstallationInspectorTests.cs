@@ -61,7 +61,7 @@ public sealed class ZapretInstallationInspectorTests : IDisposable
             """
             {
               "schemaVersion": 1,
-              "upstreamId": "flowseal-zapret-discord-youtube",
+              "upstreamId": "flowseal-zapret",
               "version": "1.10.4-beta",
               "sha256Hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "installedAtUtc": "2026-10-28T00:00:00+00:00"
