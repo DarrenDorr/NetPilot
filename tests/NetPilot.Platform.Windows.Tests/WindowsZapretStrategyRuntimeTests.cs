@@ -137,6 +137,29 @@ public sealed class WindowsZapretStrategyRuntimeTests
         public Task<IpcResponse> PingAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new IpcResponse(IpcProtocol.Version, Guid.NewGuid(), true, "Ok"));
 
+        public Task<IpcResponse> EnrollAuthorizedUserAsync(
+            string enrollmentNonce,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new IpcResponse(IpcProtocol.Version, Guid.NewGuid(), true, "Ok"));
+
+        public Task<IpcResponse> GetZapretInstallationStatusAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new IpcResponse(
+                IpcProtocol.Version,
+                Guid.NewGuid(),
+                true,
+                "Ok",
+                ZapretInstallation: new IpcZapretInstallationStatus(true, "1.0.0")));
+
+        public Task<IpcResponse> InstallLatestZapretAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new IpcResponse(
+                IpcProtocol.Version,
+                Guid.NewGuid(),
+                true,
+                "Ok",
+                ZapretInstall: new IpcZapretInstallResult("1.0.0", true, true)));
+
         public Task<IpcResponse> ListZapretStrategiesAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
