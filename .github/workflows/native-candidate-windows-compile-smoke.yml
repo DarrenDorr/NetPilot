@@ -115,7 +115,7 @@ jobs:
           mkdir -p "$WORK/evidence" &&
           cd "$WORK/zapret2" &&
           export CFLAGS="-DZAPRET_GH_VER=netpilot-r28-windows-compile-smoke -DZAPRET_GH_HASH=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d" &&
-          /usr/bin/make -C nfq2 clean 2>&1 | tee "$WORK/evidence/winws-clean.log" &&
+          /usr/bin/make -C nfq2 CC=/usr/bin/gcc LUA_JIT=1 LUA_CFLAGS="-I$DEPS/include/luajit-2.1" LUA_LIB="-L$DEPS/lib -lluajit-5.1" clean 2>&1 | tee "$WORK/evidence/winws-clean.log" &&
           /usr/bin/make -C nfq2 CC=/usr/bin/gcc LUA_JIT=1 LUA_CFLAGS="-I$DEPS/include/luajit-2.1" LUA_LIB="-L$DEPS/lib -lluajit-5.1" cygwin 2>&1 | tee "$WORK/evidence/winws-build.log" &&
           test -f nfq2/winws2.exe
 
