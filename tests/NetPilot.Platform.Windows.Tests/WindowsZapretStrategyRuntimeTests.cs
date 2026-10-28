@@ -151,6 +151,30 @@ public sealed class WindowsZapretStrategyRuntimeTests
             return Task.FromResult(StatusResponse);
         }
 
+        public Task<IpcResponse> GetZapretInstallationStatusAsync(
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(new IpcResponse(
+                IpcProtocol.Version,
+                Guid.NewGuid(),
+                true,
+                "Ok",
+                ZapretInstallation: new IpcZapretInstallationStatus(false)));
+        }
+
+        public Task<IpcResponse> InstallOrUpdateOfficialZapretLatestAsync(
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(new IpcResponse(
+                IpcProtocol.Version,
+                Guid.NewGuid(),
+                true,
+                "Installed",
+                ZapretInstallation: new IpcZapretInstallationStatus(true, "1.10.4")));
+        }
+
         public Task<IpcResponse> StartZapretStrategyAsync(
             string strategyId,
             CancellationToken cancellationToken = default)
