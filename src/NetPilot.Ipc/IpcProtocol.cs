@@ -11,6 +11,7 @@ public static class IpcProtocol
     public const string WindowsPipeName = "NetPilot.Service.v1";
     public const int MaxMessageBytes = 64 * 1024;
     public const int ConnectTimeoutMilliseconds = 2_000;
+    public const int RequestTimeoutMilliseconds = 5_000;
 
     internal static JsonSerializerOptions JsonOptions { get; } = CreateJsonOptions();
 
