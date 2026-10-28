@@ -38,6 +38,11 @@ check_pattern \
   "строковое ProcessStartInfo.Arguments запрещено; используйте ArgumentList" \
   '\.Arguments[[:space:]]*='
 
+# До отдельного этапа process runner никакой модуль не должен реально стартовать процессы.
+check_pattern \
+  "Process.Start пока запрещён; сначала требуется отдельный audited runner" \
+  'Process[[:space:]]*\.Start[[:space:]]*\('
+
 if [[ "$fail" -ne 0 ]]; then
   echo "Проверка политики безопасности NetPilot завершилась ошибкой."
   exit 1
