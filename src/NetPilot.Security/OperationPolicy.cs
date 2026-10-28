@@ -15,6 +15,17 @@ public sealed class OperationPolicy
     public bool IsAllowed(PrivilegedOperation operation) =>
         Enum.IsDefined(operation) && _allowed.Contains(operation);
 
+    /// <summary>
+    /// Runtime-профиль для состояния, когда ни один сетевой движок не имеет
+    /// статуса ADMIT. Новую установку и запуск запрещаем fail-closed, но
+    /// сохраняем возможность остановить уже существующий legacy-процесс.
+    /// </summary>
+    public static OperationPolicy CreateNoAdmittedEnginePolicy() =>
+        new(
+        [
+            PrivilegedOperation.EngineStop
+        ]);
+
     // Безопасное значение по умолчанию: ни одна привилегированная операция не разрешена.
     // Служба должна явно передать минимальный набор capabilities текущего этапа.
     // API для выполнения произвольного shell-текста намеренно отсутствует.

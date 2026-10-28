@@ -13,12 +13,11 @@ builder.Services.AddWindowsService(options =>
     options.ServiceName = "NetPilot Service";
 });
 
-builder.Services.AddSingleton(new OperationPolicy(
-[
-    PrivilegedOperation.EngineInstall,
-    PrivilegedOperation.EngineStart,
-    PrivilegedOperation.EngineStop
-]));
+// На текущем этапе ни Flowseal/zapret1, ни zapret2 не имеют статуса ADMIT.
+// Поэтому установка и запуск сетевого движка запрещены fail-closed.
+// EngineStop оставлен намеренно: служба должна уметь остановить уже существующий
+// legacy-процесс после обновления NetPilot или при аварийном восстановлении.
+builder.Services.AddSingleton(OperationPolicy.CreateNoAdmittedEnginePolicy());
 
 builder.Services.AddSingleton(serviceProvider =>
     new WindowsAuthorizedUserStore(

@@ -30,4 +30,16 @@ public sealed class OperationPolicyTests
         Assert.False(policy.IsAllowed(PrivilegedOperation.UpdateApply));
         Assert.False(policy.IsAllowed(PrivilegedOperation.BackupRestore));
     }
+
+    [Fact]
+    public void No_admitted_engine_policy_allows_only_emergency_stop()
+    {
+        var policy = OperationPolicy.CreateNoAdmittedEnginePolicy();
+
+        Assert.True(policy.IsAllowed(PrivilegedOperation.EngineStop));
+        Assert.False(policy.IsAllowed(PrivilegedOperation.EngineInstall));
+        Assert.False(policy.IsAllowed(PrivilegedOperation.EngineStart));
+        Assert.False(policy.IsAllowed(PrivilegedOperation.UpdateApply));
+        Assert.False(policy.IsAllowed(PrivilegedOperation.BackupRestore));
+    }
 }
