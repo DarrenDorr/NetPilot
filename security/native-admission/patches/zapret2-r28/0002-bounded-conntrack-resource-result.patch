@@ -1,7 +1,7 @@
 diff --git a/nfq2/conntrack.h b/nfq2/conntrack.h
 --- a/nfq2/conntrack.h
 +++ b/nfq2/conntrack.h
-@@ -99,18 +99,21 @@ typedef struct
+@@ -99,16 +99,19 @@ typedef struct
  	// inactivity time to purge an entry in each connection state
  	uint32_t timeout_syn,timeout_established,timeout_fin,timeout_udp;
  	time_t t_purge_interval, t_last_purge;
@@ -49,7 +49,7 @@ diff --git a/nfq2/conntrack.c b/nfq2/conntrack.c
  {
  	t_conn conn, connswp;
  	t_conntrack_pool *ctr;
-@@ -274,18 +279,23 @@ static t_conntrack_feed_result ConntrackPoolFeedPool(t_conntrack_pool **pp, cons
+@@ -274,20 +279,23 @@ static t_conntrack_feed_result ConntrackPoolFeedPool(t_conntrack_pool **pp, cons
  	b_rev = dis->tcp && tcp_synack_segment(dis->tcp);
  	if ((dis->tcp && tcp_syn_segment(dis->tcp)) || b_rev || dis->udp)
  	{
@@ -77,7 +77,7 @@ diff --git a/nfq2/conntrack.c b/nfq2/conntrack.c
 diff --git a/nfq2/desync.c b/nfq2/desync.c
 --- a/nfq2/desync.c
 +++ b/nfq2/desync.c
-@@ -1280,8 +1280,14 @@ static bool play_prolog(
+@@ -1280,7 +1280,13 @@ static bool play_prolog(
  		if (!params.ctrack_disable)
  		{
  			ConntrackPoolPurge(&params.conntrack);
