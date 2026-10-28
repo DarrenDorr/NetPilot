@@ -112,7 +112,7 @@ Patch 0001:
 - обновляет два известных callers — `desync.c` и `lua.c`;
 - является подготовительным behavior-preserving refactor перед saturation state.
 
-До успешного provenance run его статус — **APPLY_CHECK_REQUIRED**, а не PASS.
+Для головы `5af1ff39f261a51caa4287d990dc43e318d82053` GitHub запустил `Native Candidate Provenance` run `40705736623`. На момент фиксации документа run был `in_progress`; это **не считается PASS evidence** до `completed/success` и проверки artifact.
 
 ## Следующий patch gate
 
@@ -183,13 +183,12 @@ Build не должен доверять:
 
 ## Следующие действия R28.2
 
-1. Получить CI evidence от `Native Candidate Provenance` для exact source + patch 0001.
-2. Зафиксировать run/artifact identity.
-3. После успешного apply-check подготовить patch 0002 с отдельным resource-exhaustion result и aggregate conntrack budget.
-4. Подготовить patch 0003 с delayed queue byte accounting.
-5. Добавить source assertions/tests к patch series до компиляции.
-6. Зафиксировать controlled Windows build inputs и hashes.
-7. Собрать candidate без его запуска.
-8. Провести native inventory и only-after-build security review.
+1. Дождаться фактического результата уже запущенного `Native Candidate Provenance` и проверить artifact; до этого PASS не фиксировать.
+2. После успешного apply-check подготовить patch 0002 с отдельным resource-exhaustion result и aggregate conntrack budget.
+3. Подготовить patch 0003 с delayed queue byte accounting.
+4. Добавить source assertions/tests к patch series до компиляции.
+5. Зафиксировать controlled Windows build inputs и hashes.
+6. Собрать candidate без его запуска.
+7. Провести native inventory и only-after-build security review.
 
 Только после этого можно переходить к sanitizer/fuzz и isolated runtime R28.3.
