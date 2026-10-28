@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 component_set: zapret2-v1.0.6-plus-uaf-fix-fork-candidate
 admission_status: REVIEW
 release_gate: BLOCK
@@ -45,11 +45,16 @@ static_review:
   saturation_semantics_document: docs/ZAPRET2-CONNTRACK-SATURATION-R28.2.md
   controlled_build_document: docs/ZAPRET2-CONTROLLED-BUILD-R28.2.md
   windows_compile_smoke_document: docs/ZAPRET2-WINDOWS-COMPILE-SMOKE-R28.2.md
+  queue_sanitizer_document: docs/ZAPRET2-QUEUE-SANITIZER-R28.3.md
+  windivert_boundary_document: docs/ZAPRET2-WINDIVERT-BOUNDARY-R28.3.md
   provenance_workflow: .github/workflows/native-candidate-provenance.yml
   windows_compile_smoke_workflow: .github/workflows/native-candidate-windows-compile-smoke.yml
+  queue_sanitizer_workflow: .github/workflows/native-candidate-queue-sanitizer-regression.yml
+  static_sanitizer_workflow: .github/workflows/native-candidate-static-sanitizer-compile.yml
+  protocol_parser_sanitizer_workflow: .github/workflows/native-candidate-protocol-parser-sanitizer.yml
   fork_strategy: OWNED_MINIMAL_HARDENED_FORK_CANDIDATE
   full_upstream_master_as_base: REJECT
-  next_gate: R28.3_SANITIZER_FUZZ_RESOURCE_AND_ISOLATED_RUNTIME_EVIDENCE
+  next_gate: R28.3_PROTOCOL_FUZZ_RESOURCE_AND_ISOLATED_RUNTIME_EVIDENCE
 
 patch_series:
   - sequence: 1
@@ -68,6 +73,7 @@ patch_series:
     path: security/native-admission/patches/zapret2-r28/0002-bounded-conntrack-resource-result.patch
     purpose: introduce explicit RESOURCE_EXHAUSTED state and aggregate conntrack entry budget with fail-safe VERDICT_PASS before dp_find/desync
     status: APPLY_CHECK_AND_WINDOWS_COMPILE_SMOKE_PASS
+    sha256: a3531211626ce602a3b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783
     git_blob_sha1: 334f917b5d50b30fca8108f05944b11a46ed235b
     changes_packet_policy: true
     expected_files:
@@ -79,13 +85,24 @@ patch_series:
   - sequence: 3
     path: security/native-admission/patches/zapret2-r28/0003-bounded-delayed-queue-bytes.patch
     purpose: add overflow-safe delayed raw-packet queue byte accounting without removing the existing packet-count bound
-    status: APPLY_CHECK_AND_WINDOWS_COMPILE_SMOKE_PASS
+    status: APPLY_CHECK_WINDOWS_COMPILE_AND_ISOLATED_ASAN_UBSAN_PASS
+    sha256: 33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68
     git_blob_sha1: 425614bf8f23cbe693e3ff2fb18512d052722f03
     changes_packet_policy: resource_saturation_only
     expected_files:
       - nfq2/packet_queue.c
       - nfq2/packet_queue.h
     limitation: production max_bytes value is not admitted until empirical workload tests are completed
+
+  - sequence: 4
+    path: security/native-admission/patches/zapret2-r28/0004-explicit-daemon-stdio-redirection.patch
+    purpose: redirect daemon stdio deterministically through one /dev/null descriptor instead of relying on descriptor allocation order
+    status: APPLY_CHECK_AND_STATIC_ANALYZER_COMPILE_PASS_WITH_EXPECTED_WARNINGS
+    sha256: f32e0c27393bcdfa30aa7e8c58749bb9e70e2a870350f5c3cfa429597a887777
+    changes_packet_policy: false
+    expected_files:
+      - nfq2/sec.c
+    limitation: analyzer intentionally reports three standard-fd retention warnings; runtime daemon lifecycle is not yet admitted
 
 verified_delta:
   - id: Z2-FORK-BASE-001
@@ -114,14 +131,24 @@ verified_delta:
     limitation: Числовой production budget и runtime saturation behavior ещё не подтверждены workload-тестами.
 
   - id: Z2-PATCH-0003-006
-    status: PASS_FOR_APPLICABILITY_AND_COMPILE_ONLY
-    finding: Patch 0003 вводит overflow-safe queued-bytes accounting; exact patch вошёл в успешный Windows x64 compile-smoke.
-    limitation: Числовой production byte budget и runtime queue behavior ещё не подтверждены workload-тестами.
+    status: PASS_FOR_ISOLATED_QUEUE_SANITIZER_REGRESSION
+    finding: Patch 0003 вводит overflow-safe queued-bytes accounting и проходит отдельный ASan/UBSan packet-queue harness без сетевых syscall.
+    limitation: Числовой production byte budget и реальная нагрузка ещё не подтверждены.
 
   - id: Z2-WINDOWS-COMPILE-007
     status: PASS_FOR_COMPILE_ONLY
     finding: Exact post-UAF source + NetPilot patches 0001-0003 + exact LuaJIT commit успешно компилируются в Windows x64 winws2.exe на windows-2025/Cygwin.
-    limitation: Binary не запускался; WinDivert отсутствовал; результат не является ADMIT.
+    limitation: Этот сохранённый evidence относится к patch series 0001-0003; повторная Windows compile-smoke с 0004 выполняется отдельно. Binary не запускался; WinDivert отсутствовал; результат не является ADMIT.
+
+  - id: Z2-PATCH-0004-008
+    status: PASS_FOR_APPLICABILITY_AND_STATIC_ANALYZER_COMPILE_ONLY
+    finding: Patch 0004 применим к exact source tree; patched source проходит configured GCC analyzer build и ASan/UBSan instrumented compile.
+    limitation: Analyzer допускает только три заранее зафиксированных warning о намеренно остающихся открытыми fd 0/1/2; sanitizer runtime всего engine не выполнялся.
+
+  - id: Z2-WINDIVERT-009
+    status: PASS_FOR_PROVENANCE_AND_INVENTORY_ONLY
+    finding: Exact WinDivert 2.2.2-A archive, x64 DLL и driver hashes/signature inventory зафиксированы без загрузки driver.
+    limitation: Runtime остаётся BLOCK из-за открытых upstream lifecycle/kernel issues.
 
 provenance_gate:
   workflow_status: PASS_FOR_SOURCE_AND_PATCH_APPLICABILITY
@@ -145,7 +172,7 @@ provenance_gate:
   runner: ubuntu-24.04
 
 windows_compile_smoke:
-  status: PASS_FOR_COMPILE_ONLY
+  status: PASS_FOR_COMPILE_ONLY_PATCHES_0001_0003
   workflow_run_id: 40718483443
   workflow_job_id: 122922566162
   head_sha: 66d5cd72370e1283e5fbaf59e7cced9baf0003c4
@@ -187,14 +214,70 @@ windows_compile_smoke:
     output_binary_persisted_in_repo: false
     output_binary_removed_after_inventory: true
 
+r28_3_gates:
+  queue_sanitizer:
+    status: PASS_FOR_ISOLATED_PACKET_QUEUE_SANITIZER_REGRESSION_ONLY
+    workflow_run_id: 40725210869
+    workflow_job_id: 122946503505
+    artifact_id: 12831748330
+    artifact_name: zapret2-r28-packet-queue-sanitizer-regression-evidence
+    artifact_zip_sha256: c6741937eecf81cad86af184e077ec82b50353b74d8cbbdb69994e6575c0e939
+    evidence_file: security/native-admission/evidence/zapret2-r28/packet-queue-sanitizer-regression.txt
+    evidence_file_sha256: 2c540c49f36907f17ecbe1612d55326360c49930116df6731e91a56fc0188d67
+    candidate_engine_executed: false
+    network_syscalls_observed: false
+
+  static_sanitizer_compile:
+    status: PASS_FOR_STATIC_ANALYSIS_AND_SANITIZER_COMPILE_ONLY
+    workflow_run_id: 40726114351
+    workflow_job_id: 122949718942
+    artifact_id: 12832897860
+    artifact_name: zapret2-r28-static-sanitizer-compile-evidence
+    artifact_zip_sha256: 7566b0b62de71f966522866d976f7dd86ba264749116003912a0c265926a014c
+    evidence_file: security/native-admission/evidence/zapret2-r28/static-sanitizer-compile.txt
+    analyzer_outcome: success
+    sanitizer_compile_outcome: success
+    expected_analyzer_warning_policy: exactly-three-daemon-stdio-fd-retention-warnings-only
+    expected_daemon_stdio_fd_retention_warnings: 3
+    candidate_binary_executed: false
+    sanitizer_runtime_test_performed: false
+
+  protocol_parser_sanitizer:
+    status: PENDING
+    workflow: .github/workflows/native-candidate-protocol-parser-sanitizer.yml
+    harness: security/native-admission/harnesses/zapret2-r28/protocol_parser_sanitizer_harness.c
+    scope: known-good TLS truncation corpus plus deterministic random parser inputs under ASan/UBSan
+    candidate_engine_execution_allowed: false
+
+  windivert_inventory:
+    status: PASS_FOR_INVENTORY_AND_SIGNATURE_OBSERVATION_ONLY
+    workflow_run_id: 40726114320
+    artifact_id: 12832851711
+    artifact_name: windivert-2.2.2-a-x64-inventory-evidence
+    artifact_zip_sha256: c444ac9e5f17e0760606df17f983f6b1674d9fe42fbfe5c1755ce5aa85ce0ae8
+    upstream_release_tag: v2.2.2
+    upstream_asset_id: 78510020
+    upstream_asset_filename: WinDivert-2.2.2-A.zip
+    upstream_asset_size_bytes: 405137
+    archive_sha256: 63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15
+    dll_sha256: c1e060ee19444a259b2162f8af0f3fe8c4428a1c6f694dce20de194ac8d7d9a2
+    dll_authenticode_status: NotSigned
+    driver_sha256: 8da085332782708d8767bcace5327a6ec7283c17cfb85e40b03cd2323a90ddc2
+    driver_authenticode_status: Valid
+    driver_signer_thumbprint: 043589F75FCE2795E7F2CC3E526D46784D5DDAB3
+    files_executed: false
+    driver_installed: false
+    driver_loaded: false
+    runtime_status: BLOCK
+
 residual_review_blockers:
   - id: Z2-STATE-001
     title: Механизм aggregate conntrack budget уже компилируется, но production value и runtime saturation behavior не доказаны.
     required_action: Измерить browser/YouTube/Discord/combined/burst/hostile workloads; подтвердить fail-safe VERDICT_PASS при saturation и выбрать лимит по evidence, а не на глаз.
 
   - id: Z2-DELAYED-QUEUE-002
-    title: Механизм delayed queue byte budget уже компилируется, но production value и runtime accounting не доказаны.
-    required_action: Regression/load tests enqueue/dequeue/destroy/saturation и выбор max_bytes по измерениям без ослабления 64-packet cap.
+    title: Изолированный ASan/UBSan regression packet queue PASS, но production max_bytes и реальная workload-модель ещё не доказаны.
+    required_action: Controlled load tests enqueue/dequeue/destroy/saturation и выбор max_bytes по измерениям без ослабления 64-packet cap.
 
   - id: Z2-HOSTNAME-003
     title: Packet-derived hostname не должен становиться доверенным постоянным содержимым auto-hostlist/log.
@@ -209,16 +292,28 @@ residual_review_blockers:
     required_action: Пользовательский Lua/raw CLI запрещены; project-owned Lua допустим только при hash pinning и отдельном admission, если вообще понадобится.
 
   - id: Z2-DEPS-006
-    title: Controlled winws2/Cygwin compile inventory получен, но WinDivert DLL/SYS и полный production component set ещё не сведены в единый admission.
-    required_action: Точный WinDivert inventory, SHA-256, PE/signatures, driver lifecycle review и затем полный component-set manifest.
+    title: WinDivert provenance/inventory получены, но runtime driver safety и полный Windows component set ещё не допущены.
+    required_action: Не загружать driver до закрытия WD-RUNTIME-001/WD-LIFECYCLE-002, component-set SBOM и isolated Windows runtime lab.
 
   - id: Z2-SUPPLY-007
     title: Build chain ещё не полностью воспроизводима на уровне всех транзитивных Cygwin packages.
     required_action: Зафиксировать/проверить exact package identities или воспроизводимый build environment; сохранить SBOM/build manifest; любое drift требует readmission.
 
   - id: Z2-RUNTIME-008
-    title: Успешная компиляция не даёт runtime evidence.
-    required_action: Sanitizer/fuzz/static-analysis и затем изолированный runtime lab без production activation.
+    title: Static compile и изолированный queue harness не дают полного runtime evidence.
+    required_action: Завершить parser sanitizer/fuzz, resource/load и затем изолированный runtime lab без production activation.
+
+  - id: WD-RUNTIME-001
+    title: WinDivert v2.2.2 имеет открытый upstream report о driver-load initialization race с возможным BSOD 0xD1.
+    required_action: Reviewed upstream fix + readmission, либо доказанная безопасная lifecycle-модель с concurrent-open stress, либо отказ от WinDivert production backend.
+
+  - id: WD-LIFECYCLE-002
+    title: Остановка WinDivert service при чужих открытых handles может оставить ERROR_SERVICE_DISABLED 1058 и заблокированный driver file.
+    required_action: Не применять безусловный stop/remove; разработать shared-driver ownership/lifecycle policy и проверить coexistence/update/uninstall в изолированной VM.
+
+  - id: WD-DEFENDER-003
+    title: Для exact официального WinDivert-2.2.2-A.zip существует текущий upstream report Defender Misleading:Win32/Malgent!AMTB без artifact-specific resolution.
+    required_action: Не отключать Defender/не добавлять exclusions; до admission получить reviewed disposition/replacement либо использовать другой component set.
 
 fork_rules:
   - Ветвить только от exact v1.0.6 commit 221d7dff24bfec0cd5ac0a5070b8acef2008af3d.
@@ -232,9 +327,9 @@ fork_rules:
   - Runtime получает только фиксированный executable и валидированный ArgumentList из allowlist.
 
 required_before_admit:
-  - Провести sanitizer/static-analysis tests и parser/fuzz regression tests на exact patched source.
+  - Завершить protocol parser sanitizer/fuzz regression на exact patched source и устранить/зафиксировать все findings.
   - Провести controlled resource/load tests и выбрать production conntrack/max_bytes значения по измерениям.
-  - Выполнить полный WinDivert DLL/SYS inventory, SHA-256, PE/signature и driver lifecycle review.
+  - Закрыть WinDivert runtime/lifecycle blockers либо выбрать Windows backend без WinDivert.
   - Сформировать полный Windows component-set manifest/SBOM и проверить provenance всех runtime dependencies.
   - Выполнить изолированные runtime tests: start, stop, crash, cleanup, HTTPS, Discord TCP/UDP, повторный запуск.
   - Повторить advisory/CVE/KEV review для exact component set непосредственно перед admission decision.
@@ -243,7 +338,9 @@ required_before_admit:
 
 notes:
   - Исходный zapret2 v1.0.6 остаётся навсегда BLOCK в отдельном manifest и не переопределяется этим кандидатом.
-  - Успешные provenance/compile gates не являются ADMIT и не разрешают native execution.
-  - NotSigned у controlled winws2 не трактуется автоматически как вредоносность; для production потребуется immutable provenance/hash enforcement и отдельное решение по signing policy.
+  - Успешные provenance/compile/sanitizer gates не являются ADMIT и не разрешают native execution.
+  - NotSigned у controlled winws2 и WinDivert.dll не трактуется автоматически как вредоносность; production trust требует immutable provenance/hash enforcement и отдельной signing policy.
+  - WinDivert inventory PASS не разрешает загрузку kernel driver.
+  - Windows и Linux admission могут расходиться: WinDivert blockers не должны блокировать Linux-кандидат автоматически.
   - Этот record не разрешает установку, запуск или production-интеграцию native engine.
   - REVIEW и BLOCK никогда не трактуются как PASS или ADMIT.
