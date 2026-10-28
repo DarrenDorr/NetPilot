@@ -183,7 +183,7 @@ Build не должен доверять:
 
 ## Следующие действия R28.2
 
-1. Дождаться фактического результата уже запущенного `Native Candidate Provenance` и проверить artifact; до этого PASS не фиксировать.
+1. Проверить фактический результат уже запущенного `Native Candidate Provenance` и artifact; до этого PASS не фиксировать.
 2. После успешного apply-check подготовить patch 0002 с отдельным resource-exhaustion result и aggregate conntrack budget.
 3. Подготовить patch 0003 с delayed queue byte accounting.
 4. Добавить source assertions/tests к patch series до компиляции.
