@@ -1,0 +1,106 @@
+schema_version: 1
+component_set: byedpi-v0.17.3-candidate
+admission_status: REVIEW
+release_gate: BLOCK
+reviewed_at: 2026-10-28
+
+candidate:
+  kind: upstream-release-and-post-release-delta-review
+  preferred_role: android-secondary-cross-platform-engine
+  may_execute: false
+  may_integrate: false
+
+upstream:
+  repository: https://github.com/hufrea/byedpi
+  license: MIT
+  release_tag: v0.17.3
+  release_commit: 7efde1b1296eaaa187b70e951894dde17527489c
+  release_published_at: 2025-09-22T18:07:50Z
+  release_immutable: false
+  windows_x64_asset:
+    name: byedpi-17.3-x86_64-w64.zip
+    size_bytes: 69809
+    sha256: 70d2c94147193cb915f9c6eb5144b8d404dacbcfa90bda2383b6b211afafa456
+  reviewed_post_release_head: ba532298de7b28cfe854aea83d061369d13ca290
+  commits_after_tag_to_review: 38
+
+policy:
+  candidate_only: true
+  activation_requires_admit: true
+  unknown_is_pass: false
+  executable_from_user_writable_path_allowed: false
+  version_drift_requires_readmission: true
+  raw_command_line_allowed: false
+  user_supplied_paths_allowed: false
+  user_supplied_files_allowed: false
+  external_listener_allowed: false
+  listener_must_be_loopback_only: true
+  arbitrary_proxy_exposure_allowed: false
+  automatic_runtime_update_from_upstream_allowed: false
+  typed_allowlisted_profile_required: true
+
+architecture_findings:
+  - id: BYEDPI-LISTENER-001
+    severity: BLOCK_FOR_UNCHANGED_INTEGRATION
+    title: Upstream SOCKS listener по умолчанию привязан к 0.0.0.0:1080.
+    evidence: README v0.17.3 документирует --ip default 0.0.0.0 и --port default 1080.
+    required_action: NetPilot должен принудительно использовать только loopback и не предоставлять UI/API для открытия прокси в LAN/WAN.
+  - id: BYEDPI-PROXY-002
+    severity: ARCHITECTURE_REVIEW
+    title: ByeDPI является локальным SOCKS proxy, а не прозрачным системным Windows packet engine.
+    impact: Для system-wide Windows и Discord UDP потребуется отдельно проверенный TUN/WFP/tun2socks routing layer; сам ByeDPI не должен незаметно расширять привилегированную поверхность.
+  - id: BYEDPI-FILES-003
+    severity: REVIEW
+    title: Upstream CLI принимает пути и произвольные данные.
+    evidence: В v0.17.3 есть pidfile, cache-dump, hosts, ipset, fake-data и другие file/string параметры.
+    required_action: NetPilot не передаёт пользовательские пути/файлы/raw CLI; только внутренние typed values и project-owned immutable data.
+  - id: BYEDPI-RESOURCES-004
+    severity: REVIEW
+    title: Upstream default max connections равен 512.
+    required_action: Установить продуктовые bounded limits и безопасное поведение при насыщении до admission.
+
+post_release_delta:
+  status: REVIEW_REQUIRED
+  summary: Tagged v0.17.3 отстаёт от 38 последующих upstream commits до выбранной точки ba532298de7b28cfe854aea83d061369d13ca290.
+  notable_changes:
+    - commit: 57f9606feba6e06f9974e8502a21ce6672251548
+      title: Fix fatal UDP tunnel closures caused by ICMP errors
+      relevance: UDP reliability
+    - commit: a5df2608ab99cac9d5b21d57d08e674af7852726
+      title: Handle send error
+      relevance: error handling
+    - commit: ba532298de7b28cfe854aea83d061369d13ca290
+      title: Save pointer to free before exit
+      relevance: memory/resource cleanup
+    - title: Dont ignore write result, check that the split position is a number
+      relevance: input validation and error handling
+  decision: Stock v0.17.3 не может получить ADMIT, пока не решено, какие post-release fixes обязательны и какая exact source point станет fork base.
+
+fork_rules:
+  - Сначала провести diff review v0.17.3..ba532298de7b28cfe854aea83d061369d13ca290 и выбрать exact anchor.
+  - Не брать latest/master автоматически.
+  - Принудительно loopback-only listener; запрет 0.0.0.0 и внешних интерфейсов в production NetPilot.
+  - Запрет пользовательских file/path/raw-data arguments.
+  - Ограничить число соединений, буферы, таймауты и UDP state.
+  - Каждый upstream sync оформлять отдельным reviewed delta.
+  - Сохранять MIT notice и собственную версию форка, не выдавая её за официальный ByeDPI.
+
+platform_position:
+  windows: secondary; requires separately reviewed transparent-routing layer for system-wide use
+  linux: secondary/proxy candidate
+  android: strong candidate through platform VpnService/TUN architecture, subject to separate Android admission
+
+required_before_admit:
+  - Полный static review выбранного exact source anchor.
+  - Проверка release/source provenance и воспроизводимой сборки Windows x64.
+  - Native inventory и SHA-256 итогового бинарника.
+  - Loopback-only regression test и тест отсутствия внешнего listener.
+  - Fuzz/sanitizer tests parser/strategy input, UDP and SOCKS state where feasible.
+  - Изолированные tests connection limits, shutdown, crash and cleanup.
+  - Отдельный review transparent routing для Windows и VpnService/TUN для Android.
+  - Только новый exact component set после всех проверок может получить ADMIT.
+
+notes:
+  - Отсутствие опубликованных security advisories не считается доказательством безопасности.
+  - REVIEW и BLOCK никогда не трактуются как PASS или ADMIT.
+  - Этот manifest не разрешает запуск или интеграцию ByeDPI.

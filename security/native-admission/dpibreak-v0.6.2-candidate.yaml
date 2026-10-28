@@ -1,0 +1,101 @@
+schema_version: 1
+component_set: dpibreak-v0.6.2-candidate
+admission_status: REVIEW
+release_gate: BLOCK
+reviewed_at: 2026-10-28
+
+candidate:
+  kind: upstream-release-secondary-engine
+  preferred_role: secondary-windows-linux-https-engine
+  may_execute: false
+  may_integrate: false
+
+upstream:
+  repository: https://github.com/dilluti0n/dpibreak
+  license: GPL-3.0-or-later
+  release_tag: v0.6.2
+  release_commit: 334285b60aabd5a32a83a65211ac60bce968b211
+  annotated_tag_object: 7601532147fe92130964e49a644d3207e74b8a51
+  tag_signature_verified_by_github: true
+  release_published_at: 2026-07-14T19:03:52Z
+  release_immutable: false
+  windows_x64_asset:
+    name: dpibreak-0.6.2-x86_64-pc-windows-msvc.zip
+    size_bytes: 318648
+    sha256: 606a2b4179b423ab9d4b0f0210dedbb3fc9e7c09af52949164893bd53a7dda6f
+  linux_x64_asset:
+    name: dpibreak-0.6.2-x86_64-unknown-linux-musl.tar.gz
+    sha256: bb19b1f9716efa15b801c2ad53f787412b44d59123b81b740f569eda2abd3f9a
+  checksum_signature_asset_present: true
+  buildinfo_points_to_release_commit: true
+
+policy:
+  candidate_only: true
+  activation_requires_admit: true
+  unknown_is_pass: false
+  executable_from_user_writable_path_allowed: false
+  version_drift_requires_readmission: true
+  raw_command_line_allowed: false
+  user_supplied_paths_allowed: false
+  automatic_runtime_update_from_upstream_allowed: false
+  separate_gpl_component_boundary_required: true
+  typed_allowlisted_profile_required: true
+
+positive_evidence:
+  - id: DPIBREAK-SUPPLY-001
+    status: PASS_FOR_PROVENANCE_ONLY
+    finding: v0.6.2 имеет подписанный annotated tag, release checksums, отдельную подпись checksum-файла и buildinfo с exact commit/toolchain.
+  - id: DPIBREAK-CLEANUP-002
+    status: PASS_FOR_UPSTREAM_FIX_PRESENCE_ONLY
+    finding: v0.6.2 содержит исправления завершения WinDivert, освобождения driver service и memory-related bug в in-tree windivert crate.
+
+review_findings:
+  - id: DPIBREAK-SCOPE-001
+    severity: PRODUCT_LIMITATION
+    title: DPIBreak ориентирован на HTTPS/TLS ClientHello.
+    impact: Не является полной заменой zapret2 для профиля Discord/UDP; рассматривается как secondary/fallback для HTTPS/YouTube.
+  - id: DPIBREAK-NFQ-002
+    severity: REVIEW
+    title: Open issue #24 описывает обработку последующих TCP segments как независимых ClientHello на Linux NFQUEUE.
+    required_action: Проверить исправления/актуальность на exact release и отдельно исследовать поведение Windows WinDivert.
+  - id: DPIBREAK-WINDIVERT-003
+    severity: REVIEW
+    title: Windows runtime использует WinDivert 2.2.2-A через in-tree Rust wrapper.
+    required_action: Провести полный native inventory DLL/SYS, подпись, advisory review и failure-cleanup tests для exact release assets.
+  - id: DPIBREAK-SIGNING-004
+    severity: REVIEW
+    title: Authenticode статус dpibreak.exe ещё не подтверждён нашим admission.
+    required_action: Проверить PE metadata/signature отдельно; NetPilot не должен советовать пользователю обходить SmartScreen/Defender предупреждения.
+  - id: DPIBREAK-LICENSE-005
+    severity: INTEGRATION_CONSTRAINT
+    title: Движок GPL-3.0-or-later, тогда как NetPilot MIT.
+    required_action: При распространении держать движок отдельным компонентом/репозиторием, выполнять GPL obligations и не смешивать его исходный код с MIT Core без отдельного legal review.
+
+fork_rules:
+  - Если потребуется форк, базироваться только на exact reviewed commit/tag, а не current master.
+  - Форк DPIBreak остаётся GPL-3.0-or-later и публикует соответствующий исходный код/уведомления.
+  - Не переносить GPL implementation в MIT NetPilot Core.
+  - Параметры NetPilot компилируются из typed allowlist; raw CLI пользователю не передаётся.
+  - Любой upstream sync проходит diff review, dependency review и новый admission delta.
+
+platform_position:
+  windows: secondary HTTPS/YouTube fallback candidate
+  linux: secondary HTTPS fallback candidate
+  android: not selected for current Android path
+  discord_udp: insufficient as primary engine based on current documented scope
+
+required_before_admit:
+  - Проверить полный source/dependency tree exact v0.6.2, включая Cargo.lock и in-tree windivert crate.
+  - Выполнить cargo audit/advisory review и статический анализ exact source tree.
+  - Собрать из исходников в контролируемом CI и сравнить ожидаемый состав release artifacts, где возможно.
+  - Инвентаризировать Windows EXE/DLL/SYS, SHA-256 и подписи.
+  - Проверить WinDivert lifecycle: start, stop, abnormal exit, uninstall/update cleanup.
+  - Проверить open issue #24 и Windows packet segmentation behavior.
+  - Изолированные HTTPS/YouTube runtime tests и coexistence tests с распространёнными VPN/security products.
+  - Только после всех проверок exact component set может получить ADMIT.
+
+notes:
+  - Rust снижает отдельные классы memory-safety ошибок, но не является автоматическим доказательством безопасности всего продукта и FFI/driver boundary.
+  - Подписанный tag и checksums повышают доверие к происхождению, но не заменяют security review.
+  - REVIEW и BLOCK никогда не трактуются как PASS или ADMIT.
+  - Этот manifest не разрешает запуск или интеграцию DPIBreak.

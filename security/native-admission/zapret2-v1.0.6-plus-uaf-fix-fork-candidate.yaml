@@ -1,0 +1,91 @@
+schema_version: 1
+component_set: zapret2-v1.0.6-plus-uaf-fix-fork-candidate
+admission_status: REVIEW
+release_gate: BLOCK
+reviewed_at: 2026-10-28
+
+candidate:
+  kind: source_fork_base
+  preferred_role: primary-windows-linux-engine
+  may_execute: false
+  may_integrate: false
+
+upstream:
+  repository: https://github.com/bol-van/zapret2
+  license: MIT
+  base_release_tag: v1.0.6
+  base_release_commit: 221d7dff24bfec0cd5ac0a5070b8acef2008af3d
+  base_release_archive_sha256: e141b51b60c895fe9548f4d644365461dcad8155e068d284a9aae1724504237d
+  required_fix_commit: 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d
+  required_fix_title: nfqws2: fix UAF
+  required_fix_parent: 221d7dff24bfec0cd5ac0a5070b8acef2008af3d
+  relationship_verified: true
+
+policy:
+  candidate_only: true
+  activation_requires_admit: true
+  unknown_is_pass: false
+  executable_from_user_writable_path_allowed: false
+  version_drift_requires_readmission: true
+  raw_command_line_allowed: false
+  user_supplied_lua_allowed: false
+  user_supplied_lua_paths_allowed: false
+  luaexec_code_from_config_allowed: false
+  only_hash_pinned_project_lua_allowed: true
+  user_supplied_paths_allowed: false
+  user_supplied_urls_allowed: false
+  strategy_must_compile_from_typed_allowlisted_profile: true
+  upstream_master_auto_merge_allowed: false
+  automatic_runtime_update_from_upstream_allowed: false
+
+verified_delta:
+  - id: Z2-FORK-BASE-001
+    status: PASS_FOR_RELATIONSHIP_ONLY
+    finding: Исправление UAF является прямым дочерним коммитом точного релизного коммита v1.0.6.
+    evidence: Коммит 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d имеет единственного родителя 221d7dff24bfec0cd5ac0a5070b8acef2008af3d и изменяет nfq2/desync.c.
+  - id: Z2-FORK-BASE-002
+    status: PASS_FOR_KNOWN_UAF_FIX_ONLY
+    finding: Патч сбрасывает сохранённое представление reassembly payload после освобождения буфера перед повторным разбором.
+    limitation: Это подтверждает исправление ранее найденного UAF, но не является полным security admission всего движка.
+
+residual_review_blockers:
+  - id: Z2-STATE-001
+    title: Нет продуктового агрегатного лимита conntrack/ipcache.
+    required_action: Определить безопасные лимиты, таймауты и поведение при насыщении для NetPilot либо исключить опасные режимы.
+  - id: Z2-HOSTNAME-002
+    title: Packet-derived hostname не должен становиться доверенным постоянным содержимым auto-hostlist/log.
+    required_action: Отключить persistent auto-hostlist либо добавить отдельную валидацию, квоты и безопасное восстановление.
+  - id: Z2-DNSCACHE-003
+    title: Экспериментальный ipcache-hostname не имеет достаточной корреляции DNS-ответов.
+    required_action: Не включать эту возможность в NetPilot без отдельного review.
+  - id: Z2-LUA-004
+    title: Upstream имеет мощную Lua/CLI поверхность.
+    required_action: Допускать только project-owned hash-pinned Lua и типизированный компилятор профилей; пользовательский Lua/raw CLI запрещены.
+  - id: Z2-DEPS-005
+    title: WinDivert, Cygwin и итоговые Windows-бинарники ещё не переинвентаризированы для patched build.
+    required_action: Собрать кандидат из исходников, зафиксировать полный native inventory, SHA-256, подписи и происхождение.
+
+fork_rules:
+  - Ветвить только от exact v1.0.6 commit 221d7dff24bfec0cd5ac0a5070b8acef2008af3d.
+  - Первым обязательным изменением применять exact upstream UAF fix 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d.
+  - Не сливать текущий upstream master автоматически.
+  - Каждый дополнительный upstream commit проходит отдельный diff review и CI до включения.
+  - Поддерживать минимальный NetPilot patchset и журнал происхождения каждого патча.
+  - Собственная версия не должна выдаваться за официальный zapret2; пример схемы версии: 1.0.6-np.1.
+  - Release asset форка должен иметь immutable identity, SHA-256 и воспроизводимое происхождение сборки, где это возможно.
+  - Runtime получает только фиксированный executable и валидированный ArgumentList из allowlist.
+
+required_before_admit:
+  - Полный статический аудит exact source tree после UAF fix.
+  - Решение по resource bounds, auto-hostlist и DNS ipcache.
+  - Сборка из исходников в контролируемом CI без скачивания исполняемых зависимостей на этапе runtime.
+  - Полный Windows x64 inventory EXE/DLL/SYS с SHA-256 и проверкой подписей.
+  - Sanitizer/static-analysis tests для доступных платформ и parser fuzz regression tests.
+  - Изолированные runtime tests: start, stop, crash, cleanup, HTTPS, Discord TCP/UDP, повторный запуск.
+  - Повторный review WinDivert/Cygwin и актуальных advisory/CVE/KEV для exact component set.
+  - Только после всех проверок новый manifest может получить admission_status: ADMIT.
+
+notes:
+  - Исходный zapret2 v1.0.6 остаётся навсегда BLOCK в отдельном manifest и не переопределяется этим кандидатом.
+  - Этот record не разрешает сборку для пользователей, установку, запуск или интеграцию native engine.
+  - REVIEW и BLOCK никогда не трактуются как PASS или ADMIT.
