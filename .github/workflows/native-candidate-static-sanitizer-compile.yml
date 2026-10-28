@@ -89,10 +89,23 @@ jobs:
             OPTIMIZE='-O1 -fanalyzer -Werror=analyzer-use-after-free -Werror=analyzer-double-free -Werror=analyzer-null-dereference -Werror=analyzer-fd-use-after-close' \
             nfqws2 2>&1 | tee ../evidence/gcc-analyzer-build.log
           test -f nfq2/nfqws2
-          if grep -Eq 'warning:.*\[-Wanalyzer-' ../evidence/gcc-analyzer-build.log; then
+
+          # daemonize() intentionally keeps descriptors 0/1/2 open on /dev/null for
+          # the lifetime of the daemon. GCC -fanalyzer reports those three retained
+          # standard descriptors as fd-leak warnings. Allow exactly that known set;
+          # every other analyzer warning remains release-blocking.
+          grep -E 'warning:.*\[-Wanalyzer-' ../evidence/gcc-analyzer-build.log > ../evidence/gcc-analyzer-warning-lines.log || true
+          expected_fd_leaks="$(grep -Ec '^sec\.c:[0-9]+:[0-9]+: warning: leak of file descriptor .*\[-Wanalyzer-fd-leak\]$' ../evidence/gcc-analyzer-warning-lines.log || true)"
+          test "$expected_fd_leaks" -eq 3
+          grep -Fq 'sec.c: In function ‘daemonize’:' ../evidence/gcc-analyzer-build.log
+
+          if grep -Ev '^sec\.c:[0-9]+:[0-9]+: warning: leak of file descriptor .*\[-Wanalyzer-fd-leak\]$' ../evidence/gcc-analyzer-warning-lines.log | grep -q .; then
             echo 'Unexpected GCC analyzer warning remains in candidate build.' >&2
+            grep -Ev '^sec\.c:[0-9]+:[0-9]+: warning: leak of file descriptor .*\[-Wanalyzer-fd-leak\]$' ../evidence/gcc-analyzer-warning-lines.log >&2
             exit 1
           fi
+
+          printf 'expected_daemon_stdio_fd_retention_warnings=%s\n' "$expected_fd_leaks" > ../evidence/gcc-analyzer-expected-warning-summary.txt
           sha256sum nfq2/nfqws2 | awk '{print $1}' > ../evidence/gcc-analyzer-binary.sha256
           rm -f nfq2/nfqws2
           test ! -e nfq2/nfqws2
@@ -127,7 +140,7 @@ jobs:
           set -euo pipefail
           mkdir -p evidence
           {
-            echo 'schema_version=3'
+            echo 'schema_version=4'
             echo 'scope=static-analysis-and-sanitizer-compile-only'
             echo 'candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0004'
             echo 'source_commit=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d'
@@ -136,6 +149,7 @@ jobs:
             echo "analyzer_outcome=$ANALYZER_OUTCOME"
             echo "sanitizer_compile_outcome=$SANITIZER_COMPILE_OUTCOME"
             echo "compiler=$(gcc --version | head -n1)"
+            echo 'expected_analyzer_warning_policy=exactly-three-daemon-stdio-fd-retention-warnings-only'
             echo 'candidate_binary_executed=false'
             echo 'network_interception_enabled=false'
             echo 'driver_installed=false'
