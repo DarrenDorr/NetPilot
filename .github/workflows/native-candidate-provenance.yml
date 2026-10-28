@@ -39,23 +39,15 @@ jobs:
         working-directory: zapret2
         run: |
           set -euo pipefail
-
           expected_head="4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d"
           expected_parent="221d7dff24bfec0cd5ac0a5070b8acef2008af3d"
           expected_tree="5c2a77786cc7089145abe2ca99bcc53a8ed7de15"
-
-          actual_head="$(git rev-parse HEAD)"
-          actual_parent="$(git rev-parse HEAD^)"
-          actual_tree="$(git rev-parse 'HEAD^{tree}')"
-
-          test "$actual_head" = "$expected_head"
-          test "$actual_parent" = "$expected_parent"
-          test "$actual_tree" = "$expected_tree"
-
+          test "$(git rev-parse HEAD)" = "$expected_head"
+          test "$(git rev-parse HEAD^)" = "$expected_parent"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$expected_tree"
           mapfile -t changed_files < <(git diff --name-only "$expected_parent" "$expected_head")
           test "${#changed_files[@]}" -eq 1
           test "${changed_files[0]}" = "nfq2/desync.c"
-
           grep -Fq 'goto reasm_cancel_rediscover;' nfq2/desync.c
           grep -Fq 'rdata_payload = dis->data_payload;' nfq2/desync.c
           grep -Fq 'rlen_payload = dis->len_payload;' nfq2/desync.c
@@ -123,16 +115,17 @@ jobs:
         run: |
           set -euo pipefail
           patch_file="../netpilot/security/native-admission/patches/zapret2-r28/0004-explicit-daemon-stdio-redirection.patch"
-          echo 'df4bef5487febac8c4b3a55c85e939fdd6f57fb7b481d80bcc7962498303e4d0  '"$patch_file" | sha256sum -c -
+          echo 'f32e0c27393bcdfa30aa7e8c58749bb9e70e2a870350f5c3cfa429597a887777  '"$patch_file" | sha256sum -c -
           git apply --check "$patch_file"
           mapfile -t patched_files < <(git apply --numstat "$patch_file" | awk '{print $3}' | sort)
           test "${#patched_files[@]}" -eq 1
           test "${patched_files[0]}" = "nfq2/sec.c"
           git apply "$patch_file"
           grep -Fq 'int nullfd = open("/dev/null", O_RDWR);' nfq2/sec.c
-          grep -Fq 'nullfd != STDIN_FILENO' nfq2/sec.c
-          grep -Fq 'dup2(STDIN_FILENO, STDOUT_FILENO)' nfq2/sec.c
-          grep -Fq 'dup2(STDIN_FILENO, STDERR_FILENO)' nfq2/sec.c
+          grep -Fq 'dup2(nullfd, STDIN_FILENO)' nfq2/sec.c
+          grep -Fq 'dup2(nullfd, STDOUT_FILENO)' nfq2/sec.c
+          grep -Fq 'dup2(nullfd, STDERR_FILENO)' nfq2/sec.c
+          grep -Fq 'nullfd > STDERR_FILENO' nfq2/sec.c
 
       - name: Produce provenance evidence
         shell: bash
@@ -140,24 +133,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ../evidence
-
           patch_0001="../netpilot/security/native-admission/patches/zapret2-r28/0001-explicit-conntrack-feed-result.patch"
           patch_0002="../netpilot/security/native-admission/patches/zapret2-r28/0002-bounded-conntrack-resource-result.patch"
           patch_0003="../netpilot/security/native-admission/patches/zapret2-r28/0003-bounded-delayed-queue-bytes.patch"
           patch_0004="../netpilot/security/native-admission/patches/zapret2-r28/0004-explicit-daemon-stdio-redirection.patch"
-
           {
-            echo "schema_version=4"
+            echo "schema_version=5"
             echo "candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0004"
             echo "repository=https://github.com/bol-van/zapret2"
             echo "head_commit=$(git rev-parse HEAD)"
             echo "parent_commit=$(git rev-parse HEAD^)"
             echo "tree=$(git rev-parse 'HEAD^{tree}')"
-            echo "commit_message=$(git log -1 --pretty=%s)"
-            echo "upstream_changed_files_begin"
-            git diff --name-only HEAD^ HEAD
-            echo "upstream_changed_files_end"
-            echo "desync_c_upstream_sha256=54e3c9d03f62a844ee549e2ddc036c0253147c9aae67d937da8cc29c67a026bd"
             echo "netpilot_patch_0001_sha256=$(sha256sum "$patch_0001" | awk '{print $1}')"
             echo "netpilot_patch_0002_sha256=$(sha256sum "$patch_0002" | awk '{print $1}')"
             echo "netpilot_patch_0003_sha256=$(sha256sum "$patch_0003" | awk '{print $1}')"
@@ -166,7 +152,6 @@ jobs:
             git diff --name-only HEAD | sort
             echo "patched_worktree_files_end"
           } > ../evidence/zapret2-source-anchor.txt
-
           git diff --binary HEAD^ HEAD -- nfq2/desync.c > ../evidence/zapret2-uaf-fix.patch
           cp "$patch_0001" ../evidence/netpilot-0001-explicit-conntrack-feed-result.patch
           cp "$patch_0002" ../evidence/netpilot-0002-bounded-conntrack-resource-result.patch
