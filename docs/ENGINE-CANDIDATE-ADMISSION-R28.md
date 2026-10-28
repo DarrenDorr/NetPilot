@@ -180,7 +180,7 @@ Workflow имеет только `contents: read`, checkout выполняетс
 - `nfq2/desync.c`;
 - `nfq2/lua.c`.
 
-Для головы `5af1ff39f261a51caa4287d990dc43e318d82053` GitHub запустил provenance run `40705736623`; на момент фиксации он был `in_progress`, поэтому PASS ещё не присвоен.
+Для головы `5af1ff39f261a51caa4287d990dc43e318d82053` GitHub запустил provenance run `40705736623`; на момент фиксации он был `in_progress`. Поэтому patch 0001 остаётся `APPLY_CHECK_REQUIRED`, а не PASS, пока run не завершён `success` и artifact не проверен.
 
 ### Следующий R28.2 patch gate
 
