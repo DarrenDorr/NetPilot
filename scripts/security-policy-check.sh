@@ -54,6 +54,23 @@ if [[ -n "$app_ipc_matches" ]]; then
   fail=1
 fi
 
+# R25: пользовательский GUI работает только с Profile API.
+# Legacy Strategy/Automation термины разрешены во внутреннем DashboardService bridge,
+# но не должны возвращаться в ViewModels или Views.
+app_ui_legacy_matches="$(grep -RniE \
+  --include='*.cs' \
+  --include='*.axaml' \
+  --exclude-dir=bin \
+  --exclude-dir=obj \
+  'NetPilot\.Automation|StrategySelection|StrategyRuntime|FindWorkingStrategy|GetStrategyRuntime|FindStrategyCommand|ApplyStrategySelection' \
+  src/NetPilot.App/ViewModels src/NetPilot.App/Views 2>/dev/null || true)"
+
+if [[ -n "$app_ui_legacy_matches" ]]; then
+  printf '%s\n' "$app_ui_legacy_matches"
+  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: GUI должен использовать только engine-neutral Profile API; legacy Strategy/Automation запрещены во ViewModels/Views."
+  fail=1
+fi
+
 # GUI host не должен возвращаться к legacy Zapret strategy runtime.
 # Новый admitted engine обязан подключаться через engine-neutral profile runtime.
 app_windows_program='src/NetPilot.App.Windows/Program.cs'

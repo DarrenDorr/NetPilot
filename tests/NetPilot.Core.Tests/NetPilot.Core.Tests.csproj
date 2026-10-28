@@ -8,6 +8,7 @@
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../../src/NetPilot.App/NetPilot.App.csproj" />
     <ProjectReference Include="../../src/NetPilot.Automation/NetPilot.Automation.csproj" />
     <ProjectReference Include="../../src/NetPilot.Core/NetPilot.Core.csproj" />
     <ProjectReference Include="../../src/NetPilot.Engine.Abstractions/NetPilot.Engine.Abstractions.csproj" />
