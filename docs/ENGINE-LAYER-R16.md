@@ -1,13 +1,13 @@
 # Engine Layer R16 — независимый слой движков Net.Pilot
 
 Дата: 28.10.2026
-Статус: R16.1–R16.3 реализованы; production runtime нового движка ещё не подключён.
+Статус: R16.1–R16.4 реализованы; production runtime нового движка ещё не подключён.
 
 ## Цель
 
 Net.Pilot не должен быть оболочкой над одной конкретной сборкой Zapret, Flowseal или zapret2. Пользователь работает с понятными профилями Net.Pilot, а конкретный сетевой движок остаётся внутренней заменяемой реализацией.
 
-Встроенные продуктовые профили R16.3:
+Встроенные продуктовые профили:
 
 - `standard`;
 - `discord`;
@@ -23,9 +23,11 @@ Net.Pilot не должен быть оболочкой над одной кон
 GUI / Automation
 → `EngineProfileId`
 → `BuiltInEngineProfileCatalog`
+→ `BuiltInEngineProfileCompiler`
+→ `BuiltInEngineProfilePlan`
 → `IEngineProfileRuntime`
 → локальная реализация конкретного admitted-движка
-→ детерминированный компилятор профиля
+→ engine-specific deterministic compiler
 → фиксированный executable + проверенный массив аргументов
 → привилегированный runtime.
 
@@ -45,76 +47,50 @@ GUI / Automation
 - произвольные аргументы процесса;
 - имя исполняемого файла, присланное извне.
 
-Неизвестный `EngineProfileId` обязан отклоняться fail-closed конкретным runtime-каталогом.
-
-## EngineProfileId
-
-R16 вводит канонический идентификатор профиля:
-
-- только строчные ASCII-буквы `a-z`;
-- цифры `0-9`;
-- одиночный дефис между сегментами;
-- максимум 48 символов;
-- никаких пробелов, точек, `/`, `\\`, `:`, `=`, `;` и других символов командных языков.
-
-Сам факт синтаксической корректности ID не означает, что профиль разрешён. Дополнительно ID должен присутствовать во встроенном каталоге и поддерживаться конкретным admitted runtime.
+Неизвестный `EngineProfileId` обязан отклоняться fail-closed.
 
 ## R16.1 — профильный контракт
 
-Добавлены:
+Добавлены `EngineProfileId`, `EngineProfileDescriptor`, `EngineProfileRuntimeState`, `EngineProfileRuntimeException` и `IEngineProfileRuntime`.
 
-- `EngineProfileId`;
-- `EngineProfileDescriptor`;
-- `EngineProfileRuntimeState`;
-- `EngineProfileRuntimeException`;
-- `IEngineProfileRuntime`.
-
-Метод `ActivateProfileAsync` принимает только `EngineProfileId` и `CancellationToken`.
-
-Публичный descriptor намеренно не содержит `Arguments`, `Command`, `Script`, `Lua`, `Path` или `Url`.
+`ActivateProfileAsync` принимает только `EngineProfileId` и `CancellationToken`. Публичный descriptor не содержит `Arguments`, `Command`, `Script`, `Lua`, `Path` или `Url`.
 
 ## R16.2 — переходный Automation adapter
 
-Существующий `StrategySelectionEngine` пока сохраняется, чтобы не ломать рабочую R15-ветку. Для него добавлен `EngineProfileStrategyRuntimeAdapter`.
-
-Его задача:
-
-1. получить типизированные профили из `IEngineProfileRuntime`;
-2. отдать selector только канонические ID;
-3. при обратной активации повторно разобрать строку как `EngineProfileId`;
-4. отклонить командоподобный/path-like ввод до вызова движка;
-5. передать движку только типизированный `EngineProfileId`.
+Добавлен `EngineProfileStrategyRuntimeAdapter`. Существующий selector пока сохраняется ради совместимости R15, но при переходе через новый adapter строка обязана повторно пройти `EngineProfileId.TryParse`.
 
 Строки вроде `--help`, `../profile`, `profile.lua`, `luaexec:code`, `x=1` и `a;b` не могут пройти через адаптер к движку.
 
-R16.2 пока не подменяет `WindowsZapretStrategyRuntime`: legacy runtime R15 остаётся изолированным до завершения admission нового engine path.
+Legacy `WindowsZapretStrategyRuntime` пока не подменяется новым путём.
 
 ## R16.3 — встроенный каталог профилей
 
-Добавлен `BuiltInEngineProfileCatalog`, schema version `1`.
+`BuiltInEngineProfileCatalog`, schema version `1`, хранится в исходном коде и read-only.
 
-Каталог:
+Он содержит только ID и отображаемое имя. Не содержит raw args, путей, URL, Lua/BAT-кода или имён executable. Синтаксически корректный неизвестный ID не становится доверенным.
 
-- находится в исходном коде Net.Pilot;
-- read-only;
-- содержит только ID и отображаемое имя;
-- не содержит raw args, путей, URL, Lua/BAT-кода или имён executable;
-- не принимает удалённые профили;
-- не превращает синтаксически корректный неизвестный ID в доверенный.
+## R16.4 — типизированный план намерения
 
-Текущий набор: `standard`, `discord`, `youtube`, `discord-youtube`.
+Добавлены `BuiltInEngineProfileKind`, `BuiltInEngineProfilePlan` и `BuiltInEngineProfileCompiler`.
 
-Конкретный движок в будущем обязан явно отобразить поддерживаемый built-in профиль в свой детерминированный план исполнения. Наличие профиля в продуктовом каталоге само по себе ничего не запускает.
+Компилятор детерминированно отображает только четыре встроенных профиля в enum-план. Неизвестный ID → `EngineProfileRuntimeException` с кодом `UnknownProfile`.
+
+`BuiltInEngineProfilePlan` содержит только:
+
+- `ProfileId`;
+- `Kind`.
+
+В нём нет executable, пути, arguments, command, Lua, script или URL. Его constructor не является публичным: внешний код не может самостоятельно сконструировать произвольный план.
+
+Это ещё не process launch plan. Конкретный движок в будущем обязан отдельно преобразовать этот типизированный plan в собственный внутренний план запуска и пройти security review.
 
 ## Текущее состояние движков
 
 ### Flowseal / zapret1
 
-Текущий исследованный пакет Flowseal `1.10.4` использует zapret1 `v72.9`.
+Flowseal `1.10.4` использует zapret1 `v72.9`.
 
 Native admission: `BLOCK`.
-
-Причины зафиксированы отдельно в `security/native-admission/flowseal-zapret-1.10.4.yaml`. Данный пакет не должен автоматически активироваться в production Net.Pilot.
 
 ### zapret2
 
@@ -122,39 +98,36 @@ Native admission: `BLOCK`.
 
 Native admission: `REVIEW`, release gate: `BLOCK` до завершения проверки.
 
-Zapret2 не является пользовательской функцией Net.Pilot и не должен отображаться в GUI как обязательная отдельная программа.
-
-Его Lua-возможности считаются внутренней capability upstream и не должны становиться пользовательской/config execution surface.
+Zapret2 не является пользовательской функцией Net.Pilot. Его Lua-возможности не должны становиться пользовательской/config execution surface.
 
 ## Следующие этапы
 
-1. **R16.4 — deterministic compiler contract**
-   - профиль превращается только в типизированный план;
-   - никаких raw args в публичном API;
-   - никаких пользовательских путей к коду;
-   - executable выбирается только внутренним runtime;
+1. **R16.5 — engine-specific plan boundary**
+   - отдельный внутренний adapter для конкретного admitted engine;
+   - только фиксированные executable identities;
+   - только allowlisted typed параметры;
+   - никаких raw args;
    - неизвестный/неподдерживаемый профиль → fail-closed.
 
-2. **R16.5 — adapter конкретного admitted engine**
-   - подключается только после `ADMIT` соответствующего native component set.
-
-3. **R16.6 — GUI**
+2. **R16.6 — GUI**
    - пользователь видит понятный профиль и статус;
    - детали `winws`, WinDivert, Lua/BAT скрыты как внутреннее устройство.
 
+3. До подключения runtime завершить native admission выбранного engine component set.
+
 ## Security invariants
 
-R16 непосредственно поддерживает:
+R16 поддерживает:
 
 - `NETP-INV-002` — IPC не принимает произвольные команды;
 - `NETP-INV-003` — исполняемый компонент выбирается только из admitted inventory;
 - `NETP-INV-005` — конфигурация остаётся данными, а не языком исполнения;
 - `NETP-INV-006` — фиксированный executable + валидированный массив аргументов;
 - `NETP-INV-013` — смена движка требует нового admission;
-- `NETP-INV-016` — неизвестное состояние должно завершаться безопасным отказом.
+- `NETP-INV-016` — неизвестное состояние завершается безопасным отказом.
 
 ## Важная граница
 
-R16.1–R16.3 не разрешают установку или запуск zapret2 и не снимают BLOCK с zapret1.
+R16.1–R16.4 не разрешают установку или запуск zapret2 и не снимают BLOCK с zapret1.
 
 До завершения admission runtime нового движка остаётся fail-closed.
