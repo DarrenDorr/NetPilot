@@ -110,12 +110,13 @@ jobs:
           test -d "$WORK/zapret2" &&
           test "$(command -v make)" = "/usr/bin/make" &&
           test "$(command -v gcc)" = "/usr/bin/gcc" &&
+          test -f "$DEPS/lib/libluajit-5.1.a" &&
+          test -f "$DEPS/include/luajit-2.1/lua.h" &&
           mkdir -p "$WORK/evidence" &&
           cd "$WORK/zapret2" &&
-          export CC=/usr/bin/gcc &&
           export CFLAGS="-DZAPRET_GH_VER=netpilot-r28-windows-compile-smoke -DZAPRET_GH_HASH=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d" &&
           /usr/bin/make -C nfq2 clean 2>&1 | tee "$WORK/evidence/winws-clean.log" &&
-          /usr/bin/make -C nfq2 cygwin CC=/usr/bin/gcc LUA_JIT=1 LUA_CFLAGS="-I$DEPS/include/luajit-2.1" LUA_LIB="-L$DEPS/lib -lluajit-5.1" 2>&1 | tee "$WORK/evidence/winws-build.log" &&
+          /usr/bin/make -C nfq2 CC=/usr/bin/gcc LUA_JIT=1 LUA_CFLAGS="-I$DEPS/include/luajit-2.1" LUA_LIB="-L$DEPS/lib -lluajit-5.1" cygwin 2>&1 | tee "$WORK/evidence/winws-build.log" &&
           test -f nfq2/winws2.exe
 
       - name: Inventory result and remove candidate binary
@@ -152,7 +153,7 @@ jobs:
           $cygwinSize = if (Test-Path $cygwinDll) { (Get-Item $cygwinDll).Length } else { 0 }
 
           @(
-            'schema_version=3'
+            'schema_version=4'
             'scope=windows-x64-compile-smoke-only'
             'candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0003'
             "luajit_build_outcome=$env:LUAJIT_BUILD_OUTCOME"
