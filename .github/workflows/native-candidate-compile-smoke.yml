@@ -49,10 +49,16 @@ jobs:
         run: |
           set -euo pipefail
           patch_dir="../netpilot/security/native-admission/patches/zapret2-r28"
+          echo "af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff  $patch_dir/0001-explicit-conntrack-feed-result.patch" | sha256sum -c -
+          echo "a3531211626ce602a3b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783  $patch_dir/0002-bounded-conntrack-resource-result.patch" | sha256sum -c -
+          echo "33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68  $patch_dir/0003-bounded-delayed-queue-bytes.patch" | sha256sum -c -
+          echo "dd22de05235807f1b2c1400774f6e4605c96c0ebc07b5e5ac4aa56efefd4849c  $patch_dir/0004-explicit-daemon-stdio-redirection.patch" | sha256sum -c -
+
           for patch in \
             0001-explicit-conntrack-feed-result.patch \
             0002-bounded-conntrack-resource-result.patch \
-            0003-bounded-delayed-queue-bytes.patch
+            0003-bounded-delayed-queue-bytes.patch \
+            0004-explicit-daemon-stdio-redirection.patch
           do
             git apply --check "$patch_dir/$patch"
             git apply "$patch_dir/$patch"
@@ -61,6 +67,7 @@ jobs:
           grep -Fq 'CTRACK_FEED_RESOURCE_EXHAUSTED = 2' nfq2/conntrack.h
           grep -Fq 'size_t queued_bytes;' nfq2/packet_queue.h
           grep -Fq 'len > SIZE_MAX - q->queued_bytes' nfq2/packet_queue.c
+          grep -Fq 'dup2(STDIN_FILENO, STDOUT_FILENO)' nfq2/sec.c
 
       - name: Install Ubuntu compile-only dependencies
         shell: bash
@@ -108,9 +115,9 @@ jobs:
           fi
 
           {
-            echo "schema_version=2"
+            echo "schema_version=3"
             echo "scope=compile-smoke-only"
-            echo "candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0003"
+            echo "candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0004"
             echo "compile_outcome=$COMPILE_OUTCOME"
             echo "source_commit=$(git rev-parse HEAD)"
             echo "source_tree=$(git rev-parse 'HEAD^{tree}')"
@@ -123,6 +130,8 @@ jobs:
             echo "patch_0001_sha256=$(sha256sum ../netpilot/security/native-admission/patches/zapret2-r28/0001-explicit-conntrack-feed-result.patch | awk '{print $1}')"
             echo "patch_0002_sha256=$(sha256sum ../netpilot/security/native-admission/patches/zapret2-r28/0002-bounded-conntrack-resource-result.patch | awk '{print $1}')"
             echo "patch_0003_sha256=$(sha256sum ../netpilot/security/native-admission/patches/zapret2-r28/0003-bounded-delayed-queue-bytes.patch | awk '{print $1}')"
+            echo "patch_0004_sha256=$(sha256sum ../netpilot/security/native-admission/patches/zapret2-r28/0004-explicit-daemon-stdio-redirection.patch | awk '{print $1}')"
+            echo "candidate_binary_executed=false"
           } > ../evidence/zapret2-linux-compile-smoke.txt
 
           rm -f nfq2/nfqws2
