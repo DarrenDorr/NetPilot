@@ -22,8 +22,6 @@ public sealed class PrivilegedIpcWorker(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // На первом запуске служба создаёт одноразовый nonce в защищённом Program Files.
-        // Никакие обычные IPC-команды не принимаются, пока установщик не привяжет SID.
         authorizedUserStore.EnsureEnrollmentNonce();
         logger.LogInformation("Служба IPC NetPilot запущена.");
 
@@ -104,12 +102,13 @@ public sealed class PrivilegedIpcWorker(
         if (request.Command != IpcCommand.EnrollAuthorizedUser
             && !authorizedUserStore.IsAuthorized(clientIdentity.UserSid))
         {
+            var isEnrolled = authorizedUserStore.IsEnrolled;
             await SendResponseAsync(
                 pipe,
                 Failure(
                     request,
-                    authorizedUserStore.IsEnrolled ? "UnauthorizedUser" : "EnrollmentRequired",
-                    authorizedUserStore.IsEnrolled
+                    isEnrolled ? "UnauthorizedUser" : "EnrollmentRequired",
+                    isEnrolled
                         ? "Эта учётная запись Windows не является владельцем установки NetPilot."
                         : "Установка NetPilot ещё не привязана к пользовательской учётной записи."),
                 cancellationToken);
@@ -129,7 +128,10 @@ public sealed class PrivilegedIpcWorker(
             try
             {
                 response = request.Command == IpcCommand.EnrollAuthorizedUser
-                    ? DispatchEnrollment(request, clientIdentity.UserSid)
+                    ? DispatchEnrollment(
+                        request,
+                        clientIdentity.UserSid,
+                        clientIdentity.SessionId)
                     : await DispatchAuthorizedAsync(request, clientIdentity.UserSid, operationToken);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -191,11 +193,15 @@ public sealed class PrivilegedIpcWorker(
         await SendResponseAsync(pipe, response, cancellationToken);
     }
 
-    private IpcResponse DispatchEnrollment(IpcRequest request, string clientSid)
+    private IpcResponse DispatchEnrollment(
+        IpcRequest request,
+        string clientSid,
+        uint clientSessionId)
     {
         var result = authorizedUserStore.CompleteEnrollment(
             request.EnrollmentNonce!,
-            clientSid);
+            clientSid,
+            clientSessionId);
 
         return result.Success
             ? Success(
@@ -206,9 +212,14 @@ public sealed class PrivilegedIpcWorker(
             : Failure(
                 request,
                 result.Code,
-                result.Status == AuthorizedUserEnrollmentStatus.InvalidNonce
-                    ? "Одноразовый код регистрации NetPilot отклонён."
-                    : "Регистрация владельца NetPilot больше недоступна.");
+                result.Status switch
+                {
+                    AuthorizedUserEnrollmentStatus.InvalidNonce =>
+                        "Одноразовый код регистрации NetPilot отклонён.",
+                    AuthorizedUserEnrollmentStatus.InvalidSession =>
+                        "Регистрация выполняется не из пользовательской сессии установщика.",
+                    _ => "Регистрация владельца NetPilot больше недоступна."
+                });
     }
 
     private async Task<IpcResponse> DispatchAuthorizedAsync(
