@@ -43,10 +43,16 @@ jobs:
           test "$(git -C zapret2 rev-parse 'HEAD^{tree}')" = "5c2a77786cc7089145abe2ca99bcc53a8ed7de15"
 
           patch_dir="$PWD/netpilot/security/native-admission/patches/zapret2-r28"
+          echo "af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff  $patch_dir/0001-explicit-conntrack-feed-result.patch" | sha256sum -c -
+          echo "a3531211626ce602a3b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783  $patch_dir/0002-bounded-conntrack-resource-result.patch" | sha256sum -c -
+          echo "33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68  $patch_dir/0003-bounded-delayed-queue-bytes.patch" | sha256sum -c -
+          echo "dd22de05235807f1b2c1400774f6e4605c96c0ebc07b5e5ac4aa56efefd4849c  $patch_dir/0004-explicit-daemon-stdio-redirection.patch" | sha256sum -c -
+
           for patch in \
             0001-explicit-conntrack-feed-result.patch \
             0002-bounded-conntrack-resource-result.patch \
-            0003-bounded-delayed-queue-bytes.patch
+            0003-bounded-delayed-queue-bytes.patch \
+            0004-explicit-daemon-stdio-redirection.patch
           do
             git -C zapret2 apply --check "$patch_dir/$patch"
             git -C zapret2 apply "$patch_dir/$patch"
@@ -80,9 +86,13 @@ jobs:
             CC=gcc \
             LUA_JIT=1 \
             MINSIZE= \
-            OPTIMIZE='-O1 -fanalyzer -Werror=analyzer-use-after-free -Werror=analyzer-double-free -Werror=analyzer-null-dereference' \
+            OPTIMIZE='-O1 -fanalyzer -Werror=analyzer-use-after-free -Werror=analyzer-double-free -Werror=analyzer-null-dereference -Werror=analyzer-fd-use-after-close' \
             nfqws2 2>&1 | tee ../evidence/gcc-analyzer-build.log
           test -f nfq2/nfqws2
+          if grep -Eq 'warning:.*\[-Wanalyzer-' ../evidence/gcc-analyzer-build.log; then
+            echo 'Unexpected GCC analyzer warning remains in candidate build.' >&2
+            exit 1
+          fi
           sha256sum nfq2/nfqws2 | awk '{print $1}' > ../evidence/gcc-analyzer-binary.sha256
           rm -f nfq2/nfqws2
           test ! -e nfq2/nfqws2
@@ -117,11 +127,12 @@ jobs:
           set -euo pipefail
           mkdir -p evidence
           {
-            echo 'schema_version=1'
+            echo 'schema_version=2'
             echo 'scope=static-analysis-and-sanitizer-compile-only'
-            echo 'candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0003'
+            echo 'candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0004'
             echo 'source_commit=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d'
             echo 'source_parent=221d7dff24bfec0cd5ac0a5070b8acef2008af3d'
+            echo 'patch_0004_sha256=dd22de05235807f1b2c1400774f6e4605c96c0ebc07b5e5ac4aa56efefd4849c'
             echo "analyzer_outcome=$ANALYZER_OUTCOME"
             echo "sanitizer_compile_outcome=$SANITIZER_COMPILE_OUTCOME"
             echo "compiler=$(gcc --version | head -n1)"
