@@ -59,7 +59,7 @@ jobs:
 
           patch_dir="$PWD/netpilot/security/native-admission/patches/zapret2-r28"
           echo "af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff  $patch_dir/0001-explicit-conntrack-feed-result.patch" | sha256sum -c -
-          echo "a35312116263b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783  $patch_dir/0002-bounded-conntrack-resource-result.patch" | sha256sum -c -
+          echo "a3531211626ce602a3b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783  $patch_dir/0002-bounded-conntrack-resource-result.patch" | sha256sum -c -
           echo "33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68  $patch_dir/0003-bounded-delayed-queue-bytes.patch" | sha256sum -c -
           echo "f32e0c27393bcdfa30aa7e8c58749bb9e70e2a870350f5c3cfa429597a887777  $patch_dir/0004-explicit-daemon-stdio-redirection.patch" | sha256sum -c -
 
