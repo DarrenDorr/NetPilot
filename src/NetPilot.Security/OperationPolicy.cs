@@ -2,13 +2,20 @@ namespace NetPilot.Security;
 
 public sealed class OperationPolicy
 {
-    private static readonly IReadOnlySet<PrivilegedOperation> DefaultAllowed =
-        new HashSet<PrivilegedOperation>();
+    private readonly IReadOnlySet<PrivilegedOperation> _allowed;
+
+    public OperationPolicy(IEnumerable<PrivilegedOperation>? explicitlyAllowed = null)
+    {
+        _allowed = explicitlyAllowed is null
+            ? new HashSet<PrivilegedOperation>()
+            : new HashSet<PrivilegedOperation>(
+                explicitlyAllowed.Where(Enum.IsDefined));
+    }
 
     public bool IsAllowed(PrivilegedOperation operation) =>
-        Enum.IsDefined(operation) && DefaultAllowed.Contains(operation);
+        Enum.IsDefined(operation) && _allowed.Contains(operation);
 
     // Безопасное значение по умолчанию: ни одна привилегированная операция не разрешена.
-    // Каждая будущая операция должна включаться отдельно после реализации авторизации и тестов.
+    // Служба должна явно передать минимальный набор capabilities текущего этапа.
     // API для выполнения произвольного shell-текста намеренно отсутствует.
 }
