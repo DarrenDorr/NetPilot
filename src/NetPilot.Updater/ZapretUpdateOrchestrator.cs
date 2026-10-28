@@ -3,7 +3,8 @@ namespace NetPilot.Updater;
 public sealed record ZapretUpdateApplyResult(
     string Version,
     bool PreviousVersionAvailable,
-    bool TemporaryCleanupCompleted);
+    bool TemporaryCleanupCompleted,
+    ZapretRuntimeRestoreResult RuntimeRestore);
 
 public sealed class ZapretUpdateOrchestrator
 {
@@ -48,6 +49,10 @@ public sealed class ZapretUpdateOrchestrator
         var extractRoot = Path.Combine(_stagingBaseRoot, $"txn-{transactionId}-extract");
 
         ZapretInstallResult installResult;
+        var runtimeState = ZapretUpdateRuntimeState.Stopped;
+        var runtimeCaptured = false;
+        ZapretRuntimeRestoreResult runtimeRestore;
+
         try
         {
             CreateTransactionRoot(downloadRoot);
@@ -81,12 +86,30 @@ public sealed class ZapretUpdateOrchestrator
             // Validate the complete extracted package before interrupting active connectivity.
             ZapretPackageLayoutValidator.ResolvePackageRoot(extractRoot);
 
-            await _runtimeGate.EnsureStoppedForUpdateAsync(cancellationToken);
+            runtimeState = await _runtimeGate.CaptureAndStopAsync(cancellationToken);
+            ValidateRuntimeState(runtimeState);
+            runtimeCaptured = true;
 
-            installResult = await _installer.ApplyAsync(
-                release,
-                extractRoot,
-                cancellationToken);
+            try
+            {
+                installResult = await _installer.ApplyAsync(
+                    release,
+                    extractRoot,
+                    cancellationToken);
+            }
+            catch
+            {
+                if (runtimeCaptured && runtimeState.WasRunning)
+                {
+                    await TryRestoreAfterFailedApplyAsync(runtimeState);
+                }
+
+                throw;
+            }
+
+            // The filesystem transaction has committed. Do not let a caller cancellation leave
+            // a previously running engine stopped half-way through the short restore step.
+            runtimeRestore = await RestoreAfterSuccessfulApplyAsync(runtimeState);
         }
         catch
         {
@@ -101,7 +124,88 @@ public sealed class ZapretUpdateOrchestrator
         return new ZapretUpdateApplyResult(
             installResult.Version,
             installResult.PreviousVersionAvailable,
-            cleanupCompleted);
+            cleanupCompleted,
+            runtimeRestore);
+    }
+
+    private async Task<ZapretRuntimeRestoreResult> RestoreAfterSuccessfulApplyAsync(
+        ZapretUpdateRuntimeState state)
+    {
+        if (!state.WasRunning)
+        {
+            return ZapretRuntimeRestoreResult.NotRequired;
+        }
+
+        var strategyId = state.StrategyId!;
+
+        try
+        {
+            var result = await _runtimeGate.RestoreAsync(state, CancellationToken.None);
+
+            if (result.Status == ZapretRuntimeRestoreStatus.Restored
+                && !string.Equals(result.StrategyId, strategyId, StringComparison.Ordinal))
+            {
+                return ZapretRuntimeRestoreResult.Failed(
+                    strategyId,
+                    "RuntimeRestoreIdentityMismatch");
+            }
+
+            if (result.Status == ZapretRuntimeRestoreStatus.NotRequired)
+            {
+                return ZapretRuntimeRestoreResult.Failed(
+                    strategyId,
+                    "RuntimeRestoreUnexpectedNotRequired");
+            }
+
+            if (result.Status == ZapretRuntimeRestoreStatus.Failed
+                && string.IsNullOrWhiteSpace(result.ErrorCode))
+            {
+                return ZapretRuntimeRestoreResult.Failed(
+                    strategyId,
+                    "RuntimeRestoreFailed");
+            }
+
+            return result;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return ZapretRuntimeRestoreResult.Failed(
+                strategyId,
+                "RuntimeRestoreException");
+        }
+    }
+
+    private async Task TryRestoreAfterFailedApplyAsync(
+        ZapretUpdateRuntimeState state)
+    {
+        try
+        {
+            await _runtimeGate.RestoreAsync(state, CancellationToken.None);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // Preserve the original installation failure. Runtime recovery is best-effort here;
+            // a later diagnostics layer can report a stopped engine separately.
+        }
+    }
+
+    private static void ValidateRuntimeState(ZapretUpdateRuntimeState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+
+        if (state.WasRunning && string.IsNullOrWhiteSpace(state.StrategyId))
+        {
+            throw new UpdateSecurityException(
+                "InvalidRuntimeState",
+                "Запущенный Zapret должен иметь точный идентификатор активной стратегии перед обновлением.");
+        }
+
+        if (!state.WasRunning && state.StrategyId is not null)
+        {
+            throw new UpdateSecurityException(
+                "InvalidRuntimeState",
+                "Остановленный Zapret не должен содержать активную стратегию в runtime snapshot.");
+        }
     }
 
     private async Task RejectNonUpgradeBeforeDownloadAsync(

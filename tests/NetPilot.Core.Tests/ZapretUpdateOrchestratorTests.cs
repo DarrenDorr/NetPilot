@@ -17,15 +17,17 @@ public sealed class ZapretUpdateOrchestratorTests
         Assert.Equal("1.10.4", result.Version);
         Assert.False(result.PreviousVersionAvailable);
         Assert.True(result.TemporaryCleanupCompleted);
+        Assert.Equal(ZapretRuntimeRestoreStatus.NotRequired, result.RuntimeRestore.Status);
         Assert.Equal(1, fixture.ReleaseSource.MetadataCalls);
         Assert.Equal(1, fixture.ReleaseSource.DownloadCalls);
-        Assert.Equal(1, fixture.RuntimeGate.StopCalls);
+        Assert.Equal(1, fixture.RuntimeGate.CaptureCalls);
+        Assert.Equal(0, fixture.RuntimeGate.RestoreCalls);
         Assert.True(File.Exists(Path.Combine(fixture.EngineRoot, "current", "bin", "winws.exe")));
         Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(fixture.EngineRoot, ".staging")));
     }
 
     [Fact]
-    public async Task Upgrade_flows_through_r9_and_preserves_previous_version()
+    public async Task Upgrade_flows_through_r10_and_preserves_previous_version()
     {
         using var fixture = new OrchestratorFixture("1.10.3");
 
@@ -37,7 +39,7 @@ public sealed class ZapretUpdateOrchestratorTests
 
         Assert.Equal("1.10.4", result.Version);
         Assert.True(result.PreviousVersionAvailable);
-        Assert.Equal(2, fixture.RuntimeGate.StopCalls);
+        Assert.Equal(2, fixture.RuntimeGate.CaptureCalls);
 
         Assert.Equal(
             "1.10.4",
@@ -52,24 +54,78 @@ public sealed class ZapretUpdateOrchestratorTests
     }
 
     [Fact]
-    public async Task Same_version_is_rejected_before_download_and_runtime_stop()
+    public async Task Previously_running_strategy_is_restored_after_successful_update()
+    {
+        using var fixture = new OrchestratorFixture("1.10.4");
+        fixture.RuntimeGate.StateToCapture = ZapretUpdateRuntimeState.Running("ALT11");
+
+        var result = await fixture.Orchestrator.ApplyLatestAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(ZapretRuntimeRestoreStatus.Restored, result.RuntimeRestore.Status);
+        Assert.Equal("ALT11", result.RuntimeRestore.StrategyId);
+        Assert.Null(result.RuntimeRestore.ErrorCode);
+        Assert.Equal(1, fixture.RuntimeGate.CaptureCalls);
+        Assert.Equal(1, fixture.RuntimeGate.RestoreCalls);
+        Assert.Equal("ALT11", fixture.RuntimeGate.LastRestoreState?.StrategyId);
+    }
+
+    [Fact]
+    public async Task Restore_failure_is_reported_without_reverting_successful_install()
+    {
+        using var fixture = new OrchestratorFixture("1.10.4");
+        fixture.RuntimeGate.StateToCapture = ZapretUpdateRuntimeState.Running("ALT11");
+        fixture.RuntimeGate.RestoreResult = ZapretRuntimeRestoreResult.Failed(
+            "ALT11",
+            "StrategyUnavailableOrIncompatibleAfterUpdate");
+
+        var result = await fixture.Orchestrator.ApplyLatestAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("1.10.4", result.Version);
+        Assert.Equal(ZapretRuntimeRestoreStatus.Failed, result.RuntimeRestore.Status);
+        Assert.Equal("ALT11", result.RuntimeRestore.StrategyId);
+        Assert.Equal(
+            "StrategyUnavailableOrIncompatibleAfterUpdate",
+            result.RuntimeRestore.ErrorCode);
+        Assert.True(File.Exists(Path.Combine(fixture.EngineRoot, "current", "bin", "winws.exe")));
+        Assert.Equal(1, fixture.RuntimeGate.RestoreCalls);
+    }
+
+    [Fact]
+    public async Task Restore_cannot_claim_a_different_strategy_identity()
+    {
+        using var fixture = new OrchestratorFixture("1.10.4");
+        fixture.RuntimeGate.StateToCapture = ZapretUpdateRuntimeState.Running("ALT11");
+        fixture.RuntimeGate.RestoreResult = ZapretRuntimeRestoreResult.Restored("ALT12");
+
+        var result = await fixture.Orchestrator.ApplyLatestAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(ZapretRuntimeRestoreStatus.Failed, result.RuntimeRestore.Status);
+        Assert.Equal("ALT11", result.RuntimeRestore.StrategyId);
+        Assert.Equal("RuntimeRestoreIdentityMismatch", result.RuntimeRestore.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Same_version_is_rejected_before_download_and_runtime_capture()
     {
         using var fixture = new OrchestratorFixture("1.10.4");
 
         await fixture.Orchestrator.ApplyLatestAsync(TestContext.Current.CancellationToken);
         var downloadsBefore = fixture.ReleaseSource.DownloadCalls;
-        var stopsBefore = fixture.RuntimeGate.StopCalls;
+        var capturesBefore = fixture.RuntimeGate.CaptureCalls;
 
         var exception = await Assert.ThrowsAsync<UpdateSecurityException>(
             () => fixture.Orchestrator.ApplyLatestAsync(TestContext.Current.CancellationToken));
 
         Assert.Equal("VersionAlreadyInstalled", exception.Code);
         Assert.Equal(downloadsBefore, fixture.ReleaseSource.DownloadCalls);
-        Assert.Equal(stopsBefore, fixture.RuntimeGate.StopCalls);
+        Assert.Equal(capturesBefore, fixture.RuntimeGate.CaptureCalls);
     }
 
     [Fact]
-    public async Task Invalid_archive_is_rejected_before_runtime_stop()
+    public async Task Invalid_archive_is_rejected_before_runtime_capture()
     {
         using var fixture = new OrchestratorFixture("1.10.4", validZip: false);
 
@@ -77,12 +133,12 @@ public sealed class ZapretUpdateOrchestratorTests
             () => fixture.Orchestrator.ApplyLatestAsync(TestContext.Current.CancellationToken));
 
         Assert.Equal("InvalidZipArchive", exception.Code);
-        Assert.Equal(0, fixture.RuntimeGate.StopCalls);
+        Assert.Equal(0, fixture.RuntimeGate.CaptureCalls);
         Assert.False(Directory.Exists(Path.Combine(fixture.EngineRoot, "current")));
     }
 
     [Fact]
-    public async Task Tampered_download_is_reverified_and_rejected_before_runtime_stop()
+    public async Task Tampered_download_is_reverified_and_rejected_before_runtime_capture()
     {
         using var fixture = new OrchestratorFixture("1.10.4");
         fixture.ReleaseSource.TamperDownload = true;
@@ -91,7 +147,7 @@ public sealed class ZapretUpdateOrchestratorTests
             () => fixture.Orchestrator.ApplyLatestAsync(TestContext.Current.CancellationToken));
 
         Assert.Equal("DigestMismatch", exception.Code);
-        Assert.Equal(0, fixture.RuntimeGate.StopCalls);
+        Assert.Equal(0, fixture.RuntimeGate.CaptureCalls);
         Assert.False(Directory.Exists(Path.Combine(fixture.EngineRoot, "current")));
     }
 
@@ -105,7 +161,7 @@ public sealed class ZapretUpdateOrchestratorTests
             () => fixture.Orchestrator.ApplyLatestAsync(TestContext.Current.CancellationToken));
 
         Assert.Equal("UntrustedDownloadedAssetPath", exception.Code);
-        Assert.Equal(0, fixture.RuntimeGate.StopCalls);
+        Assert.Equal(0, fixture.RuntimeGate.CaptureCalls);
         Assert.False(Directory.Exists(Path.Combine(fixture.EngineRoot, "current")));
     }
 
@@ -113,14 +169,28 @@ public sealed class ZapretUpdateOrchestratorTests
     public async Task Runtime_gate_failure_does_not_switch_current()
     {
         using var fixture = new OrchestratorFixture("1.10.4");
-        fixture.RuntimeGate.Failure = new InvalidOperationException("engine did not stop");
+        fixture.RuntimeGate.CaptureFailure = new InvalidOperationException("engine did not stop");
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => fixture.Orchestrator.ApplyLatestAsync(TestContext.Current.CancellationToken));
 
-        Assert.Equal(1, fixture.RuntimeGate.StopCalls);
+        Assert.Equal(1, fixture.RuntimeGate.CaptureCalls);
+        Assert.Equal(0, fixture.RuntimeGate.RestoreCalls);
         Assert.False(Directory.Exists(Path.Combine(fixture.EngineRoot, "current")));
         Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(fixture.EngineRoot, ".staging")));
+    }
+
+    [Fact]
+    public async Task Invalid_running_runtime_snapshot_is_rejected_before_install_switch()
+    {
+        using var fixture = new OrchestratorFixture("1.10.4");
+        fixture.RuntimeGate.StateToCapture = new ZapretUpdateRuntimeState(true, null);
+
+        var exception = await Assert.ThrowsAsync<UpdateSecurityException>(
+            () => fixture.Orchestrator.ApplyLatestAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal("InvalidRuntimeState", exception.Code);
+        Assert.False(Directory.Exists(Path.Combine(fixture.EngineRoot, "current")));
     }
 
     private sealed class OrchestratorFixture : IDisposable
@@ -166,14 +236,42 @@ public sealed class ZapretUpdateOrchestratorTests
 
     private sealed class FakeRuntimeGate : IZapretUpdateRuntimeGate
     {
-        public int StopCalls { get; private set; }
-        public Exception? Failure { get; set; }
+        public int CaptureCalls { get; private set; }
+        public int RestoreCalls { get; private set; }
+        public Exception? CaptureFailure { get; set; }
+        public ZapretUpdateRuntimeState StateToCapture { get; set; } =
+            ZapretUpdateRuntimeState.Stopped;
+        public ZapretRuntimeRestoreResult? RestoreResult { get; set; }
+        public ZapretUpdateRuntimeState? LastRestoreState { get; private set; }
 
-        public Task EnsureStoppedForUpdateAsync(CancellationToken cancellationToken = default)
+        public Task<ZapretUpdateRuntimeState> CaptureAndStopAsync(
+            CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            StopCalls++;
-            return Failure is null ? Task.CompletedTask : Task.FromException(Failure);
+            CaptureCalls++;
+
+            return CaptureFailure is null
+                ? Task.FromResult(StateToCapture)
+                : Task.FromException<ZapretUpdateRuntimeState>(CaptureFailure);
+        }
+
+        public Task<ZapretRuntimeRestoreResult> RestoreAsync(
+            ZapretUpdateRuntimeState state,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            RestoreCalls++;
+            LastRestoreState = state;
+
+            if (RestoreResult is not null)
+            {
+                return Task.FromResult(RestoreResult);
+            }
+
+            return Task.FromResult(
+                state.WasRunning
+                    ? ZapretRuntimeRestoreResult.Restored(state.StrategyId!)
+                    : ZapretRuntimeRestoreResult.NotRequired);
         }
     }
 
