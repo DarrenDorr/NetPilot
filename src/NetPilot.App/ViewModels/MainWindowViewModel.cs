@@ -12,6 +12,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly IDashboardService _dashboardService;
     private readonly Dictionary<string, ResourceStatusViewModel> _resourceById;
+    private readonly ResourceHealthHistory _healthHistory = new();
     private readonly AsyncCommand _checkCommand;
     private readonly AsyncCommand _findStrategyCommand;
     private readonly AsyncCommand _installEngineCommand;
@@ -66,6 +67,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public ObservableCollection<ResourceStatusViewModel> Resources { get; }
     public ResourceStatusViewModel Telegram { get; }
+    public ObservableCollection<DiagnosticHistoryItemViewModel> DiagnosticHistory { get; } = [];
 
     public string OverallStatus
     {
@@ -164,6 +166,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         _disposed = true;
+        _healthHistory.Clear();
+        DiagnosticHistory.Clear();
         _dashboardService.Dispose();
     }
 
@@ -277,6 +281,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             }
         }
 
+        RecordHealthHistory(results);
+
         if (results.Count > 0 && results.All(result => result.State == ResourceHealthState.Healthy))
         {
             OverallStatus = "Доступ в порядке";
@@ -298,6 +304,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (!preserveActionText)
         {
             LastAction = "Состояние ресурсов обновлено.";
+        }
+    }
+
+    private void RecordHealthHistory(IReadOnlyList<ResourceHealth> results)
+    {
+        _healthHistory.AddRange(results);
+        DiagnosticHistory.Clear();
+
+        foreach (var entry in _healthHistory.Snapshot().Reverse().Take(12))
+        {
+            var resourceName = _resourceById.TryGetValue(entry.ResourceId, out var resource)
+                ? resource.DisplayName
+                : entry.ResourceId;
+
+            DiagnosticHistory.Add(
+                DiagnosticHistoryItemViewModel.Create(entry, resourceName));
         }
     }
 
