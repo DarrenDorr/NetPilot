@@ -13,11 +13,10 @@ public sealed class PrivilegedIpcWorker(
     WindowsNamedPipeServerFactory pipeFactory,
     WindowsNamedPipePeerAuthenticator peerAuthenticator,
     OperationPolicy operationPolicy,
+    UserResourceOwnership zapretOwnership,
     ZapretEngineController zapretController,
     ILogger<PrivilegedIpcWorker> logger) : BackgroundService
 {
-    private string? _zapretOwnerSid;
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("Служба IPC NetPilot запущена.");
@@ -164,17 +163,17 @@ public sealed class PrivilegedIpcWorker(
             case IpcCommand.ZapretGetStatus:
             {
                 var status = await zapretController.GetStatusAsync(cancellationToken);
-                ReconcileOwner(status);
-
-                var canSeeStrategy = status.State == ZapretProcessState.Running
-                    && string.Equals(_zapretOwnerSid, clientSid, StringComparison.Ordinal);
+                ReconcileOwnership(status);
 
                 return new IpcResponse(
                     IpcProtocol.Version,
                     request.RequestId,
                     true,
                     "Ok",
-                    ZapretStatus: ToIpcStatus(status, canSeeStrategy));
+                    ZapretStatus: ToIpcStatus(
+                        status,
+                        includeStrategy: status.State == ZapretProcessState.Running
+                            && zapretOwnership.IsOwnedBy(clientSid)));
             }
 
             case IpcCommand.ZapretStartStrategy:
@@ -185,10 +184,10 @@ public sealed class PrivilegedIpcWorker(
                 }
 
                 var current = await zapretController.GetStatusAsync(cancellationToken);
-                ReconcileOwner(current);
+                ReconcileOwnership(current);
 
                 if (current.State == ZapretProcessState.Running
-                    && !string.Equals(_zapretOwnerSid, clientSid, StringComparison.Ordinal))
+                    && !zapretOwnership.IsOwnedBy(clientSid))
                 {
                     return Failure(
                         request,
@@ -196,16 +195,35 @@ public sealed class PrivilegedIpcWorker(
                         "Запущенный экземпляр Zapret принадлежит другой пользовательской сессии.");
                 }
 
-                var started = await zapretController.StartAsync(request.StrategyId!, cancellationToken);
-                _zapretOwnerSid ??= clientSid;
+                if (!zapretOwnership.TryAcquire(clientSid))
+                {
+                    return Failure(
+                        request,
+                        "EngineOwnedByAnotherUser",
+                        "Право управления Zapret уже принадлежит другой пользовательской сессии.");
+                }
 
-                return new IpcResponse(
-                    IpcProtocol.Version,
-                    request.RequestId,
-                    true,
-                    "Ok",
-                    "Zapret запущен.",
-                    ZapretStatus: ToIpcStatus(started, includeStrategy: true));
+                try
+                {
+                    var started = await zapretController.StartAsync(request.StrategyId!, cancellationToken);
+                    return new IpcResponse(
+                        IpcProtocol.Version,
+                        request.RequestId,
+                        true,
+                        "Ok",
+                        "Zapret запущен.",
+                        ZapretStatus: ToIpcStatus(started, includeStrategy: true));
+                }
+                catch
+                {
+                    var afterFailure = await zapretController.GetStatusAsync(CancellationToken.None);
+                    if (afterFailure.State == ZapretProcessState.Stopped)
+                    {
+                        zapretOwnership.Clear();
+                    }
+
+                    throw;
+                }
             }
 
             case IpcCommand.ZapretStop:
@@ -216,10 +234,10 @@ public sealed class PrivilegedIpcWorker(
                 }
 
                 var current = await zapretController.GetStatusAsync(cancellationToken);
-                ReconcileOwner(current);
+                ReconcileOwnership(current);
 
                 if (current.State == ZapretProcessState.Running
-                    && !string.Equals(_zapretOwnerSid, clientSid, StringComparison.Ordinal))
+                    && !zapretOwnership.IsOwnedBy(clientSid))
                 {
                     return Failure(
                         request,
@@ -228,7 +246,7 @@ public sealed class PrivilegedIpcWorker(
                 }
 
                 var stopped = await zapretController.StopAsync(cancellationToken);
-                _zapretOwnerSid = null;
+                zapretOwnership.Clear();
 
                 return new IpcResponse(
                     IpcProtocol.Version,
@@ -244,11 +262,11 @@ public sealed class PrivilegedIpcWorker(
         }
     }
 
-    private void ReconcileOwner(ZapretProcessSnapshot status)
+    private void ReconcileOwnership(ZapretProcessSnapshot status)
     {
         if (status.State == ZapretProcessState.Stopped)
         {
-            _zapretOwnerSid = null;
+            zapretOwnership.Clear();
         }
     }
 
