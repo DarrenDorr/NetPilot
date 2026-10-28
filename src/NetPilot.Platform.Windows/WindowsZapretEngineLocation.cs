@@ -2,7 +2,7 @@ namespace NetPilot.Platform.Windows;
 
 public static class WindowsZapretEngineLocation
 {
-    public static string GetDefaultEngineRoot()
+    public static string GetDefaultEngineBaseRoot()
     {
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
         if (string.IsNullOrWhiteSpace(programFiles))
@@ -14,7 +14,15 @@ public static class WindowsZapretEngineLocation
             Path.GetFullPath(programFiles),
             "NetPilot",
             "Engines",
-            "Zapret",
-            "current");
+            "Zapret");
     }
+
+    public static string GetDefaultEngineRoot() =>
+        Path.Combine(GetDefaultEngineBaseRoot(), "current");
+
+    public static string GetDefaultPreviousRoot() =>
+        Path.Combine(GetDefaultEngineBaseRoot(), "previous");
+
+    public static string GetDefaultStagingBaseRoot() =>
+        Path.Combine(GetDefaultEngineBaseRoot(), ".staging");
 }
