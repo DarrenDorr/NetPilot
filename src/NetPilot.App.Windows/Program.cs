@@ -10,11 +10,45 @@ namespace NetPilot.App.Windows;
 
 internal static class Program
 {
+    private const string EnrollmentArgument = "--complete-install-enrollment";
+
     [STAThread]
-    public static void Main(string[] args)
+    public static int Main(string[] args)
     {
+        if (args.Length == 2
+            && string.Equals(args[0], EnrollmentArgument, StringComparison.Ordinal))
+        {
+            return CompleteInstallerEnrollmentAsync(args[1]).GetAwaiter().GetResult();
+        }
+
         AppComposition.Configure(CreateMainWindowViewModel);
-        AppComposition.BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        return AppComposition.BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+    }
+
+    private static async Task<int> CompleteInstallerEnrollmentAsync(string enrollmentNonce)
+    {
+        if (string.IsNullOrWhiteSpace(enrollmentNonce)
+            || enrollmentNonce.Length != 64
+            || enrollmentNonce.Any(static character => !Uri.IsHexDigit(character)))
+        {
+            return 10;
+        }
+
+        try
+        {
+            var client = new WindowsPrivilegedServiceClient();
+            var response = await client.EnrollAuthorizedUserAsync(
+                enrollmentNonce,
+                CancellationToken.None);
+            return response.Success ? 0 : 11;
+        }
+        catch (Exception exception) when (
+            exception is IOException
+                or UnauthorizedAccessException
+                or NetPilot.Ipc.IpcProtocolException)
+        {
+            return 12;
+        }
     }
 
     private static MainWindowViewModel CreateMainWindowViewModel()
@@ -24,10 +58,12 @@ internal static class Program
         var strategyRuntime = new WindowsZapretStrategyRuntime(serviceClient);
         var healthProbe = new PublicResourceHealthProbe(healthChecker);
         var selectionEngine = new StrategySelectionEngine(strategyRuntime, healthProbe);
+        var provisioningService = new WindowsEngineProvisioningService(serviceClient);
         var dashboardService = new DashboardService(
             healthChecker,
             strategyRuntime,
-            selectionEngine);
+            selectionEngine,
+            provisioningService);
 
         return new MainWindowViewModel(dashboardService);
     }
