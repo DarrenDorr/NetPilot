@@ -32,8 +32,11 @@ jobs:
       - name: Build
         run: dotnet build NetPilot.sln --configuration Release --no-restore
 
-      - name: Кроссплатформенные тесты
+      - name: Тесты Core и IPC
         run: dotnet test tests/NetPilot.Core.Tests/NetPilot.Core.Tests.csproj --configuration Release --no-build
+
+      - name: Тесты безопасного парсера Zapret
+        run: dotnet test tests/NetPilot.Engine.Zapret.Tests/NetPilot.Engine.Zapret.Tests.csproj --configuration Release --no-build
 
   windows-security-test:
     runs-on: windows-2025
