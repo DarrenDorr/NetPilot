@@ -77,47 +77,71 @@ jobs:
             libmnl-dev
 
       - name: Compile patched nfqws2 without running it
-        shell: bash
-        working-directory: zapret2
-        run: |
-          set -euo pipefail
-          export CFLAGS="-DZAPRET_GH_VER=netpilot-r28-compile-smoke -DZAPRET_GH_HASH=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d"
-          make -C nfq2 clean
-          make -C nfq2 CC=gcc LUA_JIT=1 nfqws2
-          test -f nfq2/nfqws2
-
-      - name: Produce compile evidence and remove binary
+        id: compile
+        continue-on-error: true
         shell: bash
         working-directory: zapret2
         run: |
           set -euo pipefail
           mkdir -p ../evidence
+          export CFLAGS="-DZAPRET_GH_VER=netpilot-r28-compile-smoke -DZAPRET_GH_HASH=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d"
+          make -C nfq2 clean 2>&1 | tee ../evidence/clean.log
+          make -C nfq2 CC=gcc LUA_JIT=1 nfqws2 2>&1 | tee ../evidence/build.log
+          test -f nfq2/nfqws2
+
+      - name: Produce compile evidence and remove binary
+        if: always()
+        shell: bash
+        working-directory: zapret2
+        env:
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p ../evidence
+
+          binary_sha256="not-produced"
+          binary_size="0"
+          if [ -f nfq2/nfqws2 ]; then
+            binary_sha256="$(sha256sum nfq2/nfqws2 | awk '{print $1}')"
+            binary_size="$(stat -c '%s' nfq2/nfqws2)"
+          fi
 
           {
-            echo "schema_version=1"
+            echo "schema_version=2"
             echo "scope=compile-smoke-only"
             echo "candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0003"
+            echo "compile_outcome=$COMPILE_OUTCOME"
             echo "source_commit=$(git rev-parse HEAD)"
             echo "source_tree=$(git rev-parse 'HEAD^{tree}')"
             echo "runner=ubuntu-24.04"
             echo "compiler=$(gcc --version | head -n1)"
             echo "make=$(make --version | head -n1)"
             echo "pkg_luajit=$(pkg-config --modversion luajit 2>/dev/null || true)"
-            echo "binary_sha256=$(sha256sum nfq2/nfqws2 | awk '{print $1}')"
-            echo "binary_size=$(stat -c '%s' nfq2/nfqws2)"
+            echo "binary_sha256=$binary_sha256"
+            echo "binary_size=$binary_size"
             echo "patch_0001_sha256=$(sha256sum ../netpilot/security/native-admission/patches/zapret2-r28/0001-explicit-conntrack-feed-result.patch | awk '{print $1}')"
             echo "patch_0002_sha256=$(sha256sum ../netpilot/security/native-admission/patches/zapret2-r28/0002-bounded-conntrack-resource-result.patch | awk '{print $1}')"
             echo "patch_0003_sha256=$(sha256sum ../netpilot/security/native-admission/patches/zapret2-r28/0003-bounded-delayed-queue-bytes.patch | awk '{print $1}')"
           } > ../evidence/zapret2-linux-compile-smoke.txt
 
-          sha256sum ../evidence/zapret2-linux-compile-smoke.txt > ../evidence/SHA256SUMS.txt
           rm -f nfq2/nfqws2
           test ! -e nfq2/nfqws2
+          sha256sum ../evidence/* | sort > ../evidence/SHA256SUMS.txt
 
       - name: Upload text evidence only
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: zapret2-r28-compile-smoke-evidence
           path: evidence/
           if-no-files-found: error
           retention-days: 14
+
+      - name: Enforce compile success after evidence upload
+        if: always()
+        shell: bash
+        env:
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+        run: |
+          set -euo pipefail
+          test "$COMPILE_OUTCOME" = "success"
