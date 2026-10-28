@@ -1,0 +1,72 @@
+schema_version: 1
+evidence_id: zapret2-r28.2-linux-compile-smoke
+recorded_at: 2026-10-28
+status: PASS_FOR_COMPILE_SMOKE_ONLY
+admission_effect: NONE
+
+candidate:
+  component_set: zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0003
+  upstream_repository: https://github.com/bol-van/zapret2
+  source_commit: 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d
+  source_tree: 5c2a77786cc7089145abe2ca99bcc53a8ed7de15
+  base_release_commit: 221d7dff24bfec0cd5ac0a5070b8acef2008af3d
+
+patches:
+  - sequence: 1
+    path: security/native-admission/patches/zapret2-r28/0001-explicit-conntrack-feed-result.patch
+    sha256: af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff
+  - sequence: 2
+    path: security/native-admission/patches/zapret2-r28/0002-bounded-conntrack-resource-result.patch
+    sha256: a3531211626ce602a3b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783
+  - sequence: 3
+    path: security/native-admission/patches/zapret2-r28/0003-bounded-delayed-queue-bytes.patch
+    sha256: 33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68
+
+workflow:
+  repository: DarrenDorr/NetPilot
+  workflow: Native Candidate Compile Smoke
+  run_id: 40711782783
+  head_sha: a62fbf98bf8fe2820b374b9d7c4d5073d37dde31
+  conclusion: success
+  permissions: contents-read-only
+  native_execution: false
+  driver_install: false
+  network_state_changes: false
+
+build_environment:
+  runner: ubuntu-24.04
+  compiler: gcc 13.3.0
+  make: GNU Make 4.3
+  luajit_pkg_version: 2.1.1703358377
+  dependency_fix_note: libcap-dev is required for sys/capability.h
+
+compile_output:
+  produced: true
+  executed: false
+  path_in_ephemeral_runner: nfq2/nfqws2
+  sha256: 8bdd22a0f51b7f8c8f2c5e3f7e56536842fec49bcda15bf98c1c574e2dc4adcb
+  size_bytes: 242824
+  removed_after_evidence: true
+  distributed_to_user: false
+
+artifact:
+  artifact_id: 12825849438
+  name: zapret2-r28-compile-smoke-evidence
+  zip_sha256: 9fa6e93d11c820928ce9080bf8c5e0c5e13c8e3bb4812c56fd36590b232cc86e
+  evidence_file_sha256: db2e751608d84d3aa89143f252e917e66b2a2872d6f3a62364d3605b1614fdb1
+  build_log_sha256: 768c7cf1aca5fbc645e3dacb5a129f898ec97210b77be7911516dd190f464bb9
+  clean_log_sha256: 9b21287f30e3ef592b693bb79a4b82f994af3f480119bac2e1e881226bb31a8d
+
+interpretation:
+  - Exact post-UAF-fix source anchor compiles successfully after applying NetPilot patches 0001-0003 on the recorded Linux environment.
+  - This does not prove runtime correctness, Windows compatibility, reproducibility, memory safety or security admission.
+  - No candidate binary was executed or shipped.
+  - The candidate remains REVIEW with release_gate BLOCK and may_execute false.
+
+next_gate:
+  - controlled Windows x64 build without execution
+  - exact Cygwin/toolchain dependency identities
+  - exact WinDivert archive and driver identities before use
+  - full EXE/DLL/SYS inventory with SHA-256 and PE/signature metadata
+  - sanitizer/static/fuzz evidence
+  - isolated runtime R28.3 only after build review
