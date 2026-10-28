@@ -75,21 +75,48 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $setup = Resolve-Path 'artifacts\installer\NetPilot-Setup-0.1.0-alpha-ci-x64.exe'
-          $process = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' -Wait -PassThru
-          if ($process.ExitCode -ne 0) { throw "Setup failed with exit code $($process.ExitCode)" }
+          $setupLog = Join-Path $env:RUNNER_TEMP 'netpilot-setup-smoke.log'
 
-          $service = Get-Service -Name 'NetPilot.Service' -ErrorAction Stop
-          if ($service.Status -ne 'Running') { throw "NetPilot.Service is not running: $($service.Status)" }
+          function Show-SetupLog {
+            if (Test-Path $setupLog) {
+              Write-Host '----- Inno Setup smoke log -----'
+              Get-Content $setupLog -Encoding Unicode -ErrorAction SilentlyContinue
+              Write-Host '----- End Inno Setup smoke log -----'
+            }
+          }
+
+          $setupArgs = @(
+            '/VERYSILENT',
+            '/SUPPRESSMSGBOXES',
+            '/NORESTART',
+            '/SP-',
+            "/LOG=$setupLog"
+          )
+          $process = Start-Process -FilePath $setup -ArgumentList $setupArgs -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            Show-SetupLog
+            throw "Setup failed with exit code $($process.ExitCode)"
+          }
+
+          $service = Get-Service -Name 'NetPilot.Service' -ErrorAction SilentlyContinue
+          if ($null -eq $service) {
+            Show-SetupLog
+            throw 'NetPilot.Service was not registered after Setup.'
+          }
+          if ($service.Status -ne 'Running') {
+            Show-SetupLog
+            throw "NetPilot.Service is not running: $($service.Status)"
+          }
 
           $root = "$env:ProgramFiles\NetPilot"
-          if (-not (Test-Path "$root\App\NetPilot.exe")) { throw 'NetPilot.exe was not installed.' }
-          if (-not (Test-Path "$root\Service\NetPilot.Service.exe")) { throw 'NetPilot.Service.exe was not installed.' }
-          if (-not (Test-Path "$root\Config\authorized-user.sid")) { throw 'Authorized user SID was not enrolled.' }
-          if (Test-Path "$root\Config\enrollment.nonce") { throw 'Enrollment nonce remained after successful enrollment.' }
-          if (Test-Path "$root\Config\enrollment.session") { throw 'Enrollment session marker remained after successful enrollment.' }
+          if (-not (Test-Path "$root\App\NetPilot.exe")) { Show-SetupLog; throw 'NetPilot.exe was not installed.' }
+          if (-not (Test-Path "$root\Service\NetPilot.Service.exe")) { Show-SetupLog; throw 'NetPilot.Service.exe was not installed.' }
+          if (-not (Test-Path "$root\Config\authorized-user.sid")) { Show-SetupLog; throw 'Authorized user SID was not enrolled.' }
+          if (Test-Path "$root\Config\enrollment.nonce") { Show-SetupLog; throw 'Enrollment nonce remained after successful enrollment.' }
+          if (Test-Path "$root\Config\enrollment.session") { Show-SetupLog; throw 'Enrollment session marker remained after successful enrollment.' }
 
           $sid = (Get-Content "$root\Config\authorized-user.sid" -Raw).Trim()
-          if ($sid -notmatch '^S-1-5-') { throw 'Authorized user SID has an unexpected format.' }
+          if ($sid -notmatch '^S-1-5-') { Show-SetupLog; throw 'Authorized user SID has an unexpected format.' }
 
       - name: Installer smoke test - uninstall and service removal
         if: always()
