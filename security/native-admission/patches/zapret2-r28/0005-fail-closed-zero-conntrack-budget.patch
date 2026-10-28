@@ -1,0 +1,12 @@
+diff --git a/nfq2/conntrack.c b/nfq2/conntrack.c
+--- a/nfq2/conntrack.c
++++ b/nfq2/conntrack.c
+@@ -279,7 +279,7 @@ static t_conntrack_feed_result ConntrackPoolFeedPool(t_conntrack_pool **pp, size
+ 	b_rev = dis->tcp && tcp_synack_segment(dis->tcp);
+ 	if ((dis->tcp && tcp_syn_segment(dis->tcp)) || b_rev || dis->udp)
+ 	{
+-		if (max_entries && HASH_COUNT(*pp) >= max_entries)
++		if (!max_entries || HASH_COUNT(*pp) >= max_entries)
+ 			return CTRACK_FEED_RESOURCE_EXHAUSTED;
+ 		if ((ctr = ConntrackNew(pp, b_rev ? &connswp : &conn)))
+ 		{
