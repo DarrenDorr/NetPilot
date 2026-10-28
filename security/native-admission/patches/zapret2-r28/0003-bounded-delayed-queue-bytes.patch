@@ -18,7 +18,7 @@ diff --git a/nfq2/packet_queue.h b/nfq2/packet_queue.h
 diff --git a/nfq2/packet_queue.c b/nfq2/packet_queue.c
 --- a/nfq2/packet_queue.c
 +++ b/nfq2/packet_queue.c
-@@ -6,10 +6,17 @@ void rawpacket_queue_init(struct rawpacket_queue *q, size_t max_packets)
+@@ -6,8 +6,15 @@ void rawpacket_queue_init(struct rawpacket_queue *q, size_t max_packets)
  {
  	q->max_packets = max_packets;
 +	q->max_bytes = 0;
@@ -34,7 +34,7 @@ diff --git a/nfq2/packet_queue.c b/nfq2/packet_queue.c
  bool rawpacket_queue_empty(const struct rawpacket_queue *q)
  {
  	return TAILQ_EMPTY(&q->head);
-@@ -17,7 +24,8 @@ void rawpacket_queue_destroy(struct rawpacket_queue *q)
+@@ -17,8 +24,9 @@ void rawpacket_queue_destroy(struct rawpacket_queue *q)
  {
  	struct rawpacket *rp;
  	while ((rp = rawpacket_dequeue(q)))
@@ -44,7 +44,7 @@ diff --git a/nfq2/packet_queue.c b/nfq2/packet_queue.c
  	}
 +	q->queued_bytes = 0;
  }
-@@ -44,18 +52,23 @@ struct rawpacket *rawpacket_queue(struct rawpacket_queue *q, const uint8_t *packe
+@@ -44,17 +52,24 @@ struct rawpacket *rawpacket_queue(struct rawpacket_queue *q, const uint8_t *packe
  {
  	struct rawpacket *rp;
 +	size_t new_queued_bytes;
@@ -69,7 +69,7 @@ diff --git a/nfq2/packet_queue.c b/nfq2/packet_queue.c
 +	q->queued_bytes = new_queued_bytes;
  	return rp;
  }
-@@ -63,6 +76,11 @@ struct rawpacket *rawpacket_dequeue(struct rawpacket_queue *q)
+@@ -63,5 +78,9 @@ struct rawpacket *rawpacket_dequeue(struct rawpacket_queue *q)
  {
  	struct rawpacket *rp = TAILQ_FIRST(&q->head);
 -	if (rp) TAILQ_REMOVE(&q->head, rp, next);
