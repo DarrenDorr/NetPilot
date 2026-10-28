@@ -1,0 +1,58 @@
+diff --git a/main.c b/main.c
+index b84a4bb..0000000 100644
+--- a/main.c
++++ b/main.c
+@@ -63,7 +63,7 @@ struct params params = {
+ 
+ 
+ static const char help_text[] = {
+-    "    -i, --ip, <ip>            Listening IP, default 0.0.0.0\n"
++    "    -i, --ip, <ip>            Listening IP, loopback only; default 127.0.0.1\n"
+     "    -p, --port <num>          Listening port, default 1080\n"
+     #ifdef DAEMON
+     "    -D, --daemon              Daemonize\n"
+@@ -379,6 +379,24 @@ int get_addr(const char *str, union sockaddr_u *addr)
+ }
+ 
+ 
++static bool netpilot_is_loopback_addr(const union sockaddr_u *addr)
++{
++    if (addr->sa.sa_family == AF_INET) {
++        uint32_t ip = ntohl(addr->in.sin_addr.s_addr);
++        return (ip & 0xff000000u) == 0x7f000000u;
++    }
++    if (addr->sa.sa_family == AF_INET6) {
++        static const uint8_t ipv6_loopback[16] = {
++            0, 0, 0, 0, 0, 0, 0, 0,
++            0, 0, 0, 0, 0, 0, 0, 1
++        };
++        return memcmp(&addr->in6.sin6_addr,
++            ipv6_loopback, sizeof(ipv6_loopback)) == 0;
++    }
++    return false;
++}
++
++
+ int get_default_ttl(void)
+ {
+     int orig_ttl = -1, fd;
+@@ -660,6 +678,10 @@ int main(int argc, char **argv)
+     }
+     //
++    if (get_addr("127.0.0.1", &params.laddr) < 0) {
++        clear_params();
++        return -1;
++    }
+     params.laddr.in.sin_port = htons(1080);
+     if (!ipv6_support()) {
+         params.baddr.sa.sa_family = AF_INET;
+@@ -727,7 +749,8 @@ int main(int argc, char **argv)
+             return 0;
+ 
+         case 'i':
+-            if (get_addr(optarg, &params.laddr) < 0)
++            if (get_addr(optarg, &params.laddr) < 0
++                    || !netpilot_is_loopback_addr(&params.laddr))
+                 invalid = 1;
+             break;
+ 
