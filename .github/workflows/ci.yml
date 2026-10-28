@@ -54,8 +54,14 @@ jobs:
       - name: Restore Windows security tests
         run: dotnet restore tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj
 
+      - name: Restore Windows GUI host
+        run: dotnet restore src/NetPilot.App.Windows/NetPilot.App.Windows.csproj
+
       - name: Build Windows security tests
         run: dotnet build tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj --configuration Release --no-restore
+
+      - name: Build Windows GUI host
+        run: dotnet build src/NetPilot.App.Windows/NetPilot.App.Windows.csproj --configuration Release --no-restore
 
       - name: Windows IPC security tests
         run: dotnet test tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj --configuration Release --no-build
