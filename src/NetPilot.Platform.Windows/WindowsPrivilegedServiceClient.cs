@@ -1,7 +1,6 @@
 using System.IO.Pipes;
 using System.Security.Principal;
 using NetPilot.Ipc;
-using NetPilot.Security;
 
 namespace NetPilot.Platform.Windows;
 
@@ -12,10 +11,19 @@ public sealed class WindowsPrivilegedServiceClient : IPrivilegedServiceClient
     public Task<IpcResponse> PingAsync(CancellationToken cancellationToken = default) =>
         SendAsync(IpcRequest.CreatePing(), cancellationToken);
 
-    public Task<IpcResponse> RequestOperationAsync(
-        PrivilegedOperation operation,
+    public Task<IpcResponse> ListZapretStrategiesAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(IpcRequest.CreateZapretListStrategies(), cancellationToken);
+
+    public Task<IpcResponse> GetZapretStatusAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(IpcRequest.CreateZapretGetStatus(), cancellationToken);
+
+    public Task<IpcResponse> StartZapretStrategyAsync(
+        string strategyId,
         CancellationToken cancellationToken = default) =>
-        SendAsync(IpcRequest.CreateOperation(operation), cancellationToken);
+        SendAsync(IpcRequest.CreateZapretStartStrategy(strategyId), cancellationToken);
+
+    public Task<IpcResponse> StopZapretAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(IpcRequest.CreateZapretStop(), cancellationToken);
 
     private static async Task<IpcResponse> SendAsync(
         IpcRequest request,

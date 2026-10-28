@@ -14,4 +14,20 @@ public sealed class OperationPolicyTests
             Assert.False(policy.IsAllowed(operation));
         }
     }
+
+    [Fact]
+    public void Only_explicitly_enabled_operations_are_allowed()
+    {
+        var policy = new OperationPolicy(
+        [
+            PrivilegedOperation.EngineStart,
+            PrivilegedOperation.EngineStop
+        ]);
+
+        Assert.True(policy.IsAllowed(PrivilegedOperation.EngineStart));
+        Assert.True(policy.IsAllowed(PrivilegedOperation.EngineStop));
+        Assert.False(policy.IsAllowed(PrivilegedOperation.EngineInstall));
+        Assert.False(policy.IsAllowed(PrivilegedOperation.UpdateApply));
+        Assert.False(policy.IsAllowed(PrivilegedOperation.BackupRestore));
+    }
 }

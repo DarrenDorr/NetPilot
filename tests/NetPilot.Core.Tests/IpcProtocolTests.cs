@@ -1,17 +1,38 @@
 using System.Text;
 using NetPilot.Ipc;
-using NetPilot.Security;
 
 namespace NetPilot.Core.Tests;
 
 public sealed class IpcProtocolTests
 {
     [Fact]
-    public void Ping_without_operation_is_valid()
+    public void Ping_without_strategy_is_valid()
     {
         var result = IpcRequestValidator.Validate(IpcRequest.CreatePing());
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void Zapret_start_with_canonical_strategy_id_is_valid()
+    {
+        var result = IpcRequestValidator.Validate(
+            IpcRequest.CreateZapretStartStrategy("ALT11"));
 
         Assert.True(result.IsValid);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("alt11")]
+    [InlineData("ALT 11")]
+    [InlineData("../ALT11")]
+    [InlineData("ALT11.bat")]
+    public void Zapret_start_rejects_noncanonical_strategy_id(string strategyId)
+    {
+        var result = IpcRequestValidator.Validate(
+            IpcRequest.CreateZapretStartStrategy(strategyId));
+
+        Assert.False(result.IsValid);
     }
 
     [Fact]
@@ -20,8 +41,7 @@ public sealed class IpcProtocolTests
         var request = new IpcRequest(
             IpcProtocol.Version + 1,
             Guid.NewGuid(),
-            IpcCommand.Ping,
-            null);
+            IpcCommand.Ping);
 
         var result = IpcRequestValidator.Validate(request);
 
@@ -30,24 +50,24 @@ public sealed class IpcProtocolTests
     }
 
     [Fact]
-    public void Ping_with_privileged_operation_is_rejected()
+    public void Ping_with_strategy_id_is_rejected()
     {
         var request = new IpcRequest(
             IpcProtocol.Version,
             Guid.NewGuid(),
             IpcCommand.Ping,
-            PrivilegedOperation.EngineStart);
+            "ALT11");
 
         var result = IpcRequestValidator.Validate(request);
 
         Assert.False(result.IsValid);
-        Assert.Equal("UnexpectedOperation", result.Code);
+        Assert.Equal("UnexpectedStrategyId", result.Code);
     }
 
     [Fact]
-    public async Task Framing_round_trip_preserves_request()
+    public async Task Framing_round_trip_preserves_typed_request()
     {
-        var request = IpcRequest.CreateOperation(PrivilegedOperation.EngineStart);
+        var request = IpcRequest.CreateZapretStartStrategy("ALT11");
         await using var stream = new MemoryStream();
 
         await IpcFraming.WriteAsync(stream, request, TestContext.Current.CancellationToken);
@@ -80,7 +100,7 @@ public sealed class IpcProtocolTests
     public async Task Numeric_enum_values_are_rejected()
     {
         var json = $$"""
-            {"protocolVersion":{{IpcProtocol.Version}},"requestId":"{{Guid.NewGuid()}}","command":0,"operation":null}
+            {"protocolVersion":{{IpcProtocol.Version}},"requestId":"{{Guid.NewGuid()}}","command":0,"strategyId":null}
             """;
 
         await using var stream = CreateFramedJson(json);
@@ -97,7 +117,7 @@ public sealed class IpcProtocolTests
     public async Task Unknown_json_fields_are_rejected()
     {
         var json = $$"""
-            {"protocolVersion":{{IpcProtocol.Version}},"requestId":"{{Guid.NewGuid()}}","command":"Ping","operation":null,"unexpected":"value"}
+            {"protocolVersion":{{IpcProtocol.Version}},"requestId":"{{Guid.NewGuid()}}","command":"Ping","strategyId":null,"unexpected":"value"}
             """;
 
         await using var stream = CreateFramedJson(json);

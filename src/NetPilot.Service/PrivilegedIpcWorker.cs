@@ -1,6 +1,8 @@
 using System.IO.Pipes;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using NetPilot.Engine.Zapret;
+using NetPilot.Engine.Zapret.Windows;
 using NetPilot.Ipc;
 using NetPilot.Platform.Windows;
 using NetPilot.Security;
@@ -11,6 +13,8 @@ public sealed class PrivilegedIpcWorker(
     WindowsNamedPipeServerFactory pipeFactory,
     WindowsNamedPipePeerAuthenticator peerAuthenticator,
     OperationPolicy operationPolicy,
+    UserResourceOwnership zapretOwnership,
+    ZapretEngineController zapretController,
     ILogger<PrivilegedIpcWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -86,56 +90,203 @@ public sealed class PrivilegedIpcWorker(
         {
             await SendResponseAsync(
                 pipe,
-                new IpcResponse(
-                    IpcProtocol.Version,
-                    request.RequestId,
-                    false,
-                    validation.Code,
-                    validation.Message),
+                Failure(request, validation.Code, validation.Message),
                 requestToken);
             return;
         }
 
-        if (request.Command == IpcCommand.Ping)
+        IpcResponse response;
+        try
         {
-            await SendResponseAsync(
-                pipe,
-                new IpcResponse(
+            response = await DispatchAsync(request, clientIdentity.UserSid, requestToken);
+        }
+        catch (ZapretStrategyParseException exception)
+        {
+            response = Failure(request, exception.Code, exception.Message);
+        }
+        catch (ZapretProcessRunnerException exception)
+        {
+            response = Failure(request, exception.Code, exception.Message);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            response = Failure(
+                request,
+                "ZapretNotInstalled",
+                "Движок Zapret ещё не установлен в защищённый каталог NetPilot.");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            response = Failure(
+                request,
+                "EngineAccessDenied",
+                "Служба не получила безопасный доступ к файлам движка Zapret.");
+        }
+        catch (IOException)
+        {
+            response = Failure(
+                request,
+                "EngineIoError",
+                "Не удалось безопасно прочитать состояние движка Zapret.");
+        }
+
+        await SendResponseAsync(pipe, response, requestToken);
+    }
+
+    private async Task<IpcResponse> DispatchAsync(
+        IpcRequest request,
+        string clientSid,
+        CancellationToken cancellationToken)
+    {
+        switch (request.Command)
+        {
+            case IpcCommand.Ping:
+                return Success(
+                    request,
+                    "Служба NetPilot доступна и IPC-клиент авторизован.");
+
+            case IpcCommand.ZapretListStrategies:
+            {
+                var strategies = zapretController.ListStrategies()
+                    .Select(static strategy =>
+                        new IpcZapretStrategy(strategy.Id, strategy.DisplayName))
+                    .ToArray();
+
+                return new IpcResponse(
                     IpcProtocol.Version,
                     request.RequestId,
                     true,
                     "Ok",
-                    "Служба NetPilot доступна и IPC-клиент авторизован."),
-                requestToken);
-            return;
-        }
+                    Strategies: strategies);
+            }
 
-        if (request.Operation is not { } operation || !operationPolicy.IsAllowed(operation))
-        {
-            await SendResponseAsync(
-                pipe,
-                new IpcResponse(
+            case IpcCommand.ZapretGetStatus:
+            {
+                var status = await zapretController.GetStatusAsync(cancellationToken);
+                ReconcileOwnership(status);
+
+                return new IpcResponse(
                     IpcProtocol.Version,
                     request.RequestId,
-                    false,
-                    "OperationDenied",
-                    "Операция не разрешена политикой безопасности."),
-                requestToken);
-            return;
-        }
+                    true,
+                    "Ok",
+                    ZapretStatus: ToIpcStatus(
+                        status,
+                        includeStrategy: status.State == ZapretProcessState.Running
+                            && zapretOwnership.IsOwnedBy(clientSid)));
+            }
 
-        // В R2 идентичность клиента уже установлена из Windows-токена и не берётся из JSON.
-        // Реальные привилегированные обработчики остаются отключены до отдельного аудита каждой операции.
-        await SendResponseAsync(
-            pipe,
-            new IpcResponse(
-                IpcProtocol.Version,
-                request.RequestId,
-                false,
-                "OperationNotEnabled",
-                "Привилегированные операции будут подключаться только после отдельного аудита каждой операции."),
-            requestToken);
+            case IpcCommand.ZapretStartStrategy:
+            {
+                if (!operationPolicy.IsAllowed(PrivilegedOperation.EngineStart))
+                {
+                    return Failure(request, "OperationDenied", "Запуск движка запрещён политикой безопасности.");
+                }
+
+                var current = await zapretController.GetStatusAsync(cancellationToken);
+                ReconcileOwnership(current);
+
+                if (current.State == ZapretProcessState.Running
+                    && !zapretOwnership.IsOwnedBy(clientSid))
+                {
+                    return Failure(
+                        request,
+                        "EngineOwnedByAnotherUser",
+                        "Запущенный экземпляр Zapret принадлежит другой пользовательской сессии.");
+                }
+
+                if (!zapretOwnership.TryAcquire(clientSid))
+                {
+                    return Failure(
+                        request,
+                        "EngineOwnedByAnotherUser",
+                        "Право управления Zapret уже принадлежит другой пользовательской сессии.");
+                }
+
+                try
+                {
+                    var started = await zapretController.StartAsync(request.StrategyId!, cancellationToken);
+                    return new IpcResponse(
+                        IpcProtocol.Version,
+                        request.RequestId,
+                        true,
+                        "Ok",
+                        "Zapret запущен.",
+                        ZapretStatus: ToIpcStatus(started, includeStrategy: true));
+                }
+                catch
+                {
+                    var afterFailure = await zapretController.GetStatusAsync(CancellationToken.None);
+                    if (afterFailure.State == ZapretProcessState.Stopped)
+                    {
+                        zapretOwnership.Clear();
+                    }
+
+                    throw;
+                }
+            }
+
+            case IpcCommand.ZapretStop:
+            {
+                if (!operationPolicy.IsAllowed(PrivilegedOperation.EngineStop))
+                {
+                    return Failure(request, "OperationDenied", "Остановка движка запрещена политикой безопасности.");
+                }
+
+                var current = await zapretController.GetStatusAsync(cancellationToken);
+                ReconcileOwnership(current);
+
+                if (current.State == ZapretProcessState.Running
+                    && !zapretOwnership.IsOwnedBy(clientSid))
+                {
+                    return Failure(
+                        request,
+                        "EngineOwnedByAnotherUser",
+                        "Нельзя остановить экземпляр Zapret, запущенный другой пользовательской сессией.");
+                }
+
+                var stopped = await zapretController.StopAsync(cancellationToken);
+                zapretOwnership.Clear();
+
+                return new IpcResponse(
+                    IpcProtocol.Version,
+                    request.RequestId,
+                    true,
+                    "Ok",
+                    "Zapret остановлен.",
+                    ZapretStatus: ToIpcStatus(stopped, includeStrategy: false));
+            }
+
+            default:
+                return Failure(request, "UnknownCommand", "Указана неизвестная IPC-команда.");
+        }
     }
+
+    private void ReconcileOwnership(ZapretProcessSnapshot status)
+    {
+        if (status.State == ZapretProcessState.Stopped)
+        {
+            zapretOwnership.Clear();
+        }
+    }
+
+    private static IpcZapretStatus ToIpcStatus(
+        ZapretProcessSnapshot snapshot,
+        bool includeStrategy) =>
+        new(
+            snapshot.State == ZapretProcessState.Running
+                ? IpcZapretProcessState.Running
+                : IpcZapretProcessState.Stopped,
+            includeStrategy ? snapshot.StrategyId : null);
+
+    private static IpcResponse Success(IpcRequest request, string message) =>
+        new(IpcProtocol.Version, request.RequestId, true, "Ok", message);
+
+    private static IpcResponse Failure(
+        IpcRequest request,
+        string code,
+        string? message) =>
+        new(IpcProtocol.Version, request.RequestId, false, code, message);
 
     private static Task SendResponseAsync(
         Stream stream,
