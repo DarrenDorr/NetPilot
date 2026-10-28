@@ -6,13 +6,15 @@ namespace NetPilot.Ipc;
 
 public static class IpcProtocol
 {
-    public const int Version = 2;
-    public const string WindowsPipeName = "NetPilot.Service.v2";
+    public const int Version = 3;
+    public const string WindowsPipeName = "NetPilot.Service.v3";
     public const int MaxMessageBytes = 64 * 1024;
     public const int ConnectTimeoutMilliseconds = 2_000;
     public const int RequestTimeoutMilliseconds = 5_000;
+    public const int EngineInstallTimeoutMilliseconds = 120_000;
     public const int MaxJsonDepth = 16;
     public const int MaxStrategyIdCharacters = 64;
+    public const int EnrollmentNonceCharacters = 64;
 
     internal static JsonSerializerOptions JsonOptions { get; } = CreateJsonOptions();
 
@@ -34,20 +36,30 @@ public static class IpcProtocol
 public enum IpcCommand
 {
     Ping,
+    EnrollAuthorizedUser,
     ZapretListStrategies,
     ZapretGetStatus,
     ZapretStartStrategy,
-    ZapretStop
+    ZapretStop,
+    ZapretInstallLatest
 }
 
 public sealed record IpcRequest(
     int ProtocolVersion,
     Guid RequestId,
     IpcCommand Command,
-    string? StrategyId = null)
+    string? StrategyId = null,
+    string? EnrollmentNonce = null)
 {
     public static IpcRequest CreatePing() =>
         new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.Ping);
+
+    public static IpcRequest CreateEnrollment(string enrollmentNonce) =>
+        new(
+            IpcProtocol.Version,
+            Guid.NewGuid(),
+            IpcCommand.EnrollAuthorizedUser,
+            EnrollmentNonce: enrollmentNonce);
 
     public static IpcRequest CreateZapretListStrategies() =>
         new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.ZapretListStrategies);
@@ -60,6 +72,9 @@ public sealed record IpcRequest(
 
     public static IpcRequest CreateZapretStop() =>
         new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.ZapretStop);
+
+    public static IpcRequest CreateZapretInstallLatest() =>
+        new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.ZapretInstallLatest);
 }
 
 public enum IpcZapretProcessState
@@ -76,6 +91,11 @@ public sealed record IpcZapretStatus(
     IpcZapretProcessState State,
     string? StrategyId = null);
 
+public sealed record IpcZapretInstallResult(
+    string Version,
+    bool Installed,
+    bool TemporaryCleanupCompleted);
+
 public sealed record IpcResponse(
     int ProtocolVersion,
     Guid RequestId,
@@ -83,7 +103,8 @@ public sealed record IpcResponse(
     string Code,
     string? Message = null,
     IReadOnlyList<IpcZapretStrategy>? Strategies = null,
-    IpcZapretStatus? ZapretStatus = null);
+    IpcZapretStatus? ZapretStatus = null,
+    IpcZapretInstallResult? ZapretInstall = null);
 
 public sealed class IpcProtocolException(string code, string message, Exception? innerException = null)
     : Exception(message, innerException)
