@@ -1,6 +1,6 @@
 schema_version: 1
 component_set: flowseal-zapret-1.10.4
-admission_status: REVIEW
+admission_status: BLOCK
 release_gate: BLOCK
 reviewed_at: 2026-10-28
 
@@ -21,6 +21,7 @@ policy:
   executable_from_user_writable_path_allowed: false
   signature_bypass_allowed: false
   version_drift_requires_readmission: true
+  blocked_component_set_must_not_activate: true
 
 executable_native_inventory:
   - bin/winws.exe
@@ -34,15 +35,17 @@ components:
     size_bytes: 203776
     git_blob_sha1: bc2cc0ff325fd92da4130b9d781992ff49355ccc
     sha256: affb4f69d2ea302a7abccd5325d81826e140ddae014f1e070bc4a6c0dd555188
-    exact_version: UNKNOWN
+    exact_version: zapret-v72.9-windows-x86_64
     signature_status: NotSigned
     signer: null
-    publisher: UNKNOWN
-    provenance: CONFIRMED_FROM_IMMUTABLE_FLOWSEAL_RELEASE
-    decision: REVIEW
+    publisher: bol-van/zapret
+    provenance: BYTE_MATCH_OFFICIAL_ZAPRET_V72_9_WINDOWS_X86_64
+    decision: BLOCK
     blockers:
-      - Exact upstream winws/zapret build identity is not yet independently mapped to an authoritative source release.
-      - Unsigned executable policy requires explicit component provenance review before ADMIT.
+      - zapret1 is EOL according to the upstream maintainer.
+      - A reproducible TLS short-input out-of-bounds read was reported against zapret1 v72.12, and the v72.9 source contains the same TLSFindExtLen(data+5,len-5,...) construction without a prior len >= 5 guard.
+      - A reproducible QUIC unaligned 32-bit read was reported against v72.12, and the v72.9 source contains the same ntohl(*(uint32_t*)(data + 1)) construction.
+      - Upstream closed the report without a zapret1 fix because zapret1 is EOL; therefore upgrading only from v72.9 to v72.12 does not resolve the finding.
 
   - path: bin/WinDivert.dll
     role: WinDivert user-mode library
@@ -56,8 +59,8 @@ components:
     provenance: BYTE_MATCH_OFFICIAL_WINDIVERT_V2_2_2_X64
     decision: REVIEW
     blockers:
-      - Current vulnerability/advisory applicability review must be recorded before ADMIT.
-      - DLL is not Authenticode-signed; byte identity therefore remains mandatory.
+      - DLL is not Authenticode-signed; byte identity with the official artifact must remain mandatory.
+      - No directly applicable CVE/KEV was established in the 2026-10-28 review, but absence of a discovered advisory is not proof of safety.
 
   - path: bin/WinDivert64.sys
     role: privileged WinDivert kernel driver
@@ -76,8 +79,8 @@ components:
     provenance: BYTE_MATCH_OFFICIAL_WINDIVERT_V2_2_2_X64
     decision: REVIEW
     blockers:
-      - Current vendor/CVE/KEV applicability review must be recorded for WinDivert 2.2.2 before ADMIT.
-      - Driver signature is valid on the tested Windows runner, but signer-chain policy still requires human security review because the certificate identity is not self-evidently the upstream project name.
+      - Driver signature is valid on the tested Windows runner, but signer-chain identity still requires documented human acceptance for release use.
+      - No directly applicable CVE/KEV was established in the 2026-10-28 review, but absence of a discovered advisory is not proof of safety.
 
   - path: bin/cygwin1.dll
     role: native runtime dependency loaded by winws.exe
@@ -90,29 +93,56 @@ components:
     signature_status: NotSigned
     signer: null
     publisher: Cygwin/Red Hat
-    provenance: CONFIRMED_FROM_IMMUTABLE_FLOWSEAL_RELEASE
-    decision: BLOCK
+    provenance: BYTE_MATCH_OFFICIAL_ZAPRET_V72_9_WINDOWS_X86_64_BUNDLE
+    decision: REVIEW
     blockers:
-      - Cygwin 3.4.10 is an old compatibility branch; official Cygwin documentation identifies it as the final release for Windows 7/8-class systems, while NetPilot targets Windows 10+.
-      - Current supported Cygwin DLL is newer; retaining 3.4.10 therefore needs a documented compatibility reason or replacement with a supported upstream-compatible build.
-      - Component-level advisory review remains incomplete; absence of a discovered CVE is not evidence of safety.
+      - Cygwin 3.4.10 is the last compatibility release for Windows 7/8-era systems; current Cygwin DLL is 3.6.x and NetPilot targets modern Windows.
+      - The DLL byte-matches the official bol-van/zapret v72.9 x64 bundle, but it has not been independently byte-mapped to an official Cygwin package archive.
+      - No directly applicable CVE/KEV was established in the 2026-10-28 review, but absence of a discovered advisory is not proof of safety.
+
+security_findings:
+  - id: NETP-NATIVE-2026-001
+    severity: HIGH
+    status: CONFIRMED_IN_V72_9_SOURCE
+    component: bin/winws.exe
+    title: zapret1 TLS short-input length underflow / out-of-bounds read path
+    evidence:
+      - Upstream issue bol-van/zapret#2147 reports ASan heap-buffer-overflow on v72.12 through fake TLS template/config input.
+      - v72.9 nfq/protocol.c contains TLSFindExtLenOffsetInHandshake(data+5,len-5,off) with no prior len >= 5 guard.
+    release_effect: BLOCK
+
+  - id: NETP-NATIVE-2026-002
+    severity: HIGH
+    status: CONFIRMED_IN_V72_9_SOURCE
+    component: bin/winws.exe
+    title: zapret1 QUIC unaligned 32-bit read
+    evidence:
+      - Upstream issue bol-van/zapret#2147 reports UBSan unaligned read on v72.12.
+      - v72.9 nfq/protocol.c contains ntohl(*(uint32_t*)(data + 1)) in QUICExtractVersion().
+    release_effect: BLOCK
 
 required_before_admit:
-  - Map bin/winws.exe to an authoritative exact upstream zapret/winws release or source revision and record immutable provenance.
-  - Complete current vendor/CVE/OSV/NVD/CISA KEV review for WinDivert 2.2.2 and the exact winws/Cygwin components.
-  - Resolve Cygwin 3.4.10: either document a defensible compatibility requirement with risk acceptance, or update upstream/component while preserving byte-level admission.
-  - Review the WinDivert64.sys signer-chain identity and document why it is acceptable for the official v2.2.2 artifact.
-  - Enforce the approved component inventory and SHA-256 values in the activation/install path only after admission_status becomes ADMIT.
-  - Change admission_status to ADMIT only after independent evidence is attached; do not infer PASS from provenance alone.
+  - Do not activate or release this exact Flowseal 1.10.4 / zapret v72.9 component set.
+  - Select a maintained engine/component line or produce a separately reviewed patched build from authoritative source.
+  - Any patched or replacement winws binary must receive a new immutable version identity, SHA-256, source revision, reproducible provenance where possible, and a fresh native admission review.
+  - Re-run WinDivert and Cygwin admission if their bytes or versions change.
+  - Add activation/install hash enforcement only for a component set whose admission_status is ADMIT.
+  - Perform live UAC/SID/cross-user IPC integration tests before release independently of native admission.
 
 evidence:
   - Official Flowseal GitHub release 1.10.4 is immutable and points to commit 176f56dc3f11ce5915c26abcdde903f93d835b64.
   - Official Flowseal release API reports ZIP SHA-256 291af673bd0238506f9548e0e94ca0abf244000f4c9a06960544fb01c5f97b34.
-  - GitHub Actions Native Admission Evidence run 40657705812 confirmed archive identity, safe path checks, four-file executable/native inventory, component SHA-256 values, PE metadata and Authenticode status without executing downloaded components.
-  - GitHub Actions Native Admission Evidence run 40657903933 byte-compared Flowseal WinDivert.dll and WinDivert64.sys with official basil00/WinDivert v2.2.2 x64 and both matched exactly.
-  - Official Cygwin site reports 3.4.10 as the last compatibility release for Windows 7/8-era systems and a newer supported DLL for current Windows.
+  - Native Admission Evidence run 40657705812 confirmed archive identity, safe-path checks, four-file native inventory, SHA-256 values, PE metadata and Authenticode status without executing downloaded components.
+  - Native Admission Evidence run 40657903933 byte-matched Flowseal WinDivert.dll and WinDivert64.sys to official basil00/WinDivert v2.2.2 x64.
+  - Native Admission Evidence run 40658718831 verified official zapret v72.9 ZIP SHA-256 2d8eef31e4966f32cd25b1ca361b0faa8f3c10cbaa514b8d0b6d82986784dfe7 and byte-matched Flowseal winws.exe and cygwin1.dll to its windows-x86_64 binaries.
+  - Flowseal history identifies the current winws blob as winws v72.9, introduced by commit 41d2bca4d70f62adce42fc0e8d845797e59da757.
+  - Upstream issue bol-van/zapret#2147 documents the parser findings on v72.12; upstream maintainer states zapret1 is EOL and closes without a zapret1 fix.
+  - Direct source review of bol-van/zapret tag v72.9 confirms both reported vulnerable constructions are present.
+  - Official Cygwin site reports current DLL 3.6.x and identifies 3.4.10 as the final release for Windows 7/8-era systems.
+  - WinDivert official release list still identifies v2.2.2 as the latest release as of 2026-10-28.
 
 notes:
   - Git blob SHA-1 is repository identity evidence, not a substitute for component SHA-256.
-  - NotSigned is not automatically REJECT, but it requires stronger immutable provenance and exact hash enforcement.
-  - UNKNOWN/REVIEW/BLOCK fields must never be treated as PASS.
+  - NotSigned is not automatically REJECT; it requires stronger immutable provenance and exact hash enforcement.
+  - A release blocker in one privileged/native component blocks admission of the complete component set.
+  - UNKNOWN/REVIEW/BLOCK must never be treated as PASS.
