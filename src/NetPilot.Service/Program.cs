@@ -15,10 +15,14 @@ builder.Services.AddWindowsService(options =>
 
 builder.Services.AddSingleton(new OperationPolicy(
 [
+    PrivilegedOperation.EngineInstall,
     PrivilegedOperation.EngineStart,
     PrivilegedOperation.EngineStop
 ]));
 
+builder.Services.AddSingleton(serviceProvider =>
+    new WindowsAuthorizedUserStore(
+        WindowsZapretEngineLocation.GetDefaultInstallationRoot()));
 builder.Services.AddSingleton<UserResourceOwnership>();
 builder.Services.AddSingleton<WindowsNamedPipeServerFactory>();
 builder.Services.AddSingleton<WindowsNamedPipePeerAuthenticator>();
