@@ -47,14 +47,15 @@ static_review:
   provenance_workflow: .github/workflows/native-candidate-provenance.yml
   fork_strategy: OWNED_MINIMAL_HARDENED_FORK_CANDIDATE
   full_upstream_master_as_base: REJECT
-  next_gate: R28.2_CONTROLLED_BUILD_AND_PATCH_EVIDENCE
+  next_gate: R28.2_RESOURCE_PATCH_EVIDENCE
 
 patch_series:
   - sequence: 1
     path: security/native-admission/patches/zapret2-r28/0001-explicit-conntrack-feed-result.patch
     purpose: behavior-preserving refactor of ambiguous bool feed result before any resource cap is introduced
-    status: APPLY_CHECK_REQUIRED
+    status: APPLY_CHECK_PASS
     changes_packet_policy: false
+    sha256: af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff
     expected_files:
       - nfq2/conntrack.c
       - nfq2/conntrack.h
@@ -74,9 +75,25 @@ verified_delta:
     status: DESIGN_VERIFIED
     finding: ConntrackPoolFeed()==false в main desync path не означает pass-through; play_prolog продолжает без conntrack и может применить stateless desync.
     effect: Простой count cap с return false отклонён. Resource saturation должен иметь отдельный internal result и явный VERDICT_PASS до dp_find/desync processing.
+  - id: Z2-PATCH-0001-004
+    status: PASS_FOR_APPLICABILITY_ONLY
+    finding: Исправленный patch 0001 успешно прошёл git apply --check против exact tree и allowlist затрагиваемых файлов.
+    limitation: Это подтверждает применимость и provenance patch, но ещё не компиляцию и не runtime behavior.
 
 provenance_gate:
-  workflow_status: REQUIRED_EVIDENCE
+  workflow_status: PASS_FOR_SOURCE_AND_PATCH_APPLICABILITY
+  run_id: 40708142913
+  head_sha: 859c53e1fdd2e3f7ba92e84f82207f84c992ffe7
+  artifact_id: 12824806940
+  artifact_name: zapret2-r28-source-provenance
+  artifact_zip_sha256: 700962c2acb0d9873836bb371a7a6d51459c0951d9796bd5065fd6678787b7b6
+  source_anchor_sha256: dfd059a545ef2d7cbe9e322ab6d5a993a75ab45452cf964c24d3f47e9274e369
+  upstream_uaf_patch_sha256: a6cc3426bd38bf4c38d6c87edec64b3436386a95a2d5cd7d9d935d5d960df38e
+  netpilot_patch_0001_sha256: af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff
+  ci_run_id: 40708142910
+  ci_conclusion: success
+  codeql_run_id: 40708143025
+  codeql_conclusion: success
   execution_scope: source_checkout_and_metadata_only
   native_execution_allowed: false
   driver_install_allowed: false
@@ -87,7 +104,7 @@ provenance_gate:
     - delta contains only nfq2/desync.c
     - expected UAF-fix source assertions
     - patch 0001 git apply check and exact touched-file allowlist
-    - SHA-256 evidence artifact
+    - SHA-256 evidence artifact verified after download
   workflow_actions_pinned_by_full_sha: true
   checkout_credentials_persisted: false
   runner: ubuntu-24.04
@@ -95,7 +112,7 @@ provenance_gate:
 residual_review_blockers:
   - id: Z2-STATE-001
     title: Нет продуктового агрегатного лимита conntrack/ipcache.
-    required_action: Сначала ввести explicit conntrack feed result, отделяющий обычное отсутствие track от resource exhaustion; затем resource saturation main path должен завершаться с VERDICT_PASS до dp_find/desync, без вытеснения активных tracks.
+    required_action: Ввести отдельное RESOURCE_EXHAUSTED state поверх проверенного explicit feed result; затем resource saturation main path должен завершаться с VERDICT_PASS до dp_find/desync, без вытеснения активных tracks.
   - id: Z2-DELAYED-QUEUE-002
     title: Delayed raw packet queue имеет packet-count bound, но нужен отдельный byte budget.
     required_action: Добавить overflow-safe queued-bytes accounting до allocation/copy и regression tests enqueue/dequeue/destroy/saturation, не ослабляя 64-packet cap.
@@ -127,8 +144,7 @@ fork_rules:
   - Runtime получает только фиксированный executable и валидированный ArgumentList из allowlist.
 
 required_before_admit:
-  - Успешное evidence от Native Candidate Provenance workflow для exact source anchor и patch 0001 applicability.
-  - Реализовать behavior-preserving feed-result refactor, затем aggregate conntrack budget и delayed queue byte budget согласно docs/ZAPRET2-CONNTRACK-SATURATION-R28.2.md.
+  - Реализовать и проверить aggregate conntrack budget и delayed queue byte budget согласно docs/ZAPRET2-CONNTRACK-SATURATION-R28.2.md.
   - Controlled source build с pinned immutable actions/toolchain/dependency hashes.
   - Полный Windows x64 inventory EXE/DLL/SYS с SHA-256 и проверкой подписей.
   - Sanitizer/static-analysis tests для доступных платформ и parser fuzz regression tests.
@@ -139,5 +155,6 @@ required_before_admit:
 
 notes:
   - Исходный zapret2 v1.0.6 остаётся навсегда BLOCK в отдельном manifest и не переопределяется этим кандидатом.
+  - Успешный provenance gate не является ADMIT и не разрешает native execution.
   - Этот record не разрешает сборку для пользователей, установку, запуск или интеграцию native engine.
   - REVIEW и BLOCK никогда не трактуются как PASS или ADMIT.
