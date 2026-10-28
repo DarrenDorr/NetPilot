@@ -39,15 +39,10 @@ jobs:
           New-Item -ItemType Directory -Path $extractRoot | Out-Null
 
           Invoke-WebRequest -Uri $uri -OutFile $archivePath -UseBasicParsing -MaximumRedirection 5
-
           $archiveItem = Get-Item -LiteralPath $archivePath
           $archiveSha256 = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($archiveItem.Length -ne $expectedArchiveSize) {
-            throw "Archive size mismatch. Expected $expectedArchiveSize, got $($archiveItem.Length)."
-          }
-          if ($archiveSha256 -ne $expectedArchiveSha256) {
-            throw "Archive SHA-256 mismatch. Expected $expectedArchiveSha256, got $archiveSha256."
-          }
+          if ($archiveItem.Length -ne $expectedArchiveSize) { throw "Archive size mismatch." }
+          if ($archiveSha256 -ne $expectedArchiveSha256) { throw "Archive SHA-256 mismatch." }
 
           Add-Type -AssemblyName System.IO.Compression
           $archive = [System.IO.Compression.ZipFile]::OpenRead($archivePath)
@@ -55,28 +50,13 @@ jobs:
             foreach ($entry in $archive.Entries) {
               $name = $entry.FullName.Replace('\','/')
               if ([string]::IsNullOrWhiteSpace($name)) { continue }
-
-              if ($name.StartsWith('/') -or $name.StartsWith('\') -or $name -match '^[A-Za-z]:' -or $name.Split('/') -contains '..') {
-                throw "Unsafe archive entry path: $name"
-              }
-
+              if ($name.StartsWith('/') -or $name.StartsWith('\') -or $name -match '^[A-Za-z]:' -or $name.Split('/') -contains '..') { throw "Unsafe archive entry path: $name" }
               $unixMode = (($entry.ExternalAttributes -shr 16) -band 0xF000)
-              if ($unixMode -eq 0xA000) {
-                throw "Symlink archive entry is forbidden: $name"
-              }
+              if ($unixMode -eq 0xA000) { throw "Symlink archive entry is forbidden: $name" }
             }
 
-            $nativeInventory = @(
-              'bin/winws.exe',
-              'bin/WinDivert.dll',
-              'bin/WinDivert64.sys',
-              'bin/cygwin1.dll'
-            )
-
-            $allExecutableLike = @($archive.Entries | Where-Object {
-              $_.FullName.Replace('\','/') -match '(?i)\.(exe|dll|sys)$'
-            } | ForEach-Object { $_.FullName.Replace('\','/') } | Sort-Object -Unique)
-
+            $nativeInventory = @('bin/winws.exe','bin/WinDivert.dll','bin/WinDivert64.sys','bin/cygwin1.dll')
+            $allExecutableLike = @($archive.Entries | Where-Object { $_.FullName.Replace('\','/') -match '(?i)\.(exe|dll|sys)$' } | ForEach-Object { $_.FullName.Replace('\','/') } | Sort-Object -Unique)
             Write-Host 'Archive executable/native inventory:'
             $allExecutableLike | ForEach-Object { Write-Host " - $_" }
 
@@ -85,38 +65,28 @@ jobs:
               $suffix = '/' + $relativePath
               $matches = @($archive.Entries | Where-Object {
                 $normalized = $_.FullName.Replace('\','/')
-                [string]::Equals($normalized, $relativePath, [StringComparison]::Ordinal) -or
-                  $normalized.EndsWith($suffix, [StringComparison]::Ordinal)
+                [string]::Equals($normalized, $relativePath, [StringComparison]::Ordinal) -or $normalized.EndsWith($suffix, [StringComparison]::Ordinal)
               })
-
-              if ($matches.Count -eq 0) {
-                throw "Required native component missing: $relativePath"
-              }
-              if ($matches.Count -ne 1) {
-                throw "Required native component is ambiguous: $relativePath; matches=$($matches.Count)"
-              }
+              if ($matches.Count -eq 0) { throw "Required native component missing: $relativePath" }
+              if ($matches.Count -ne 1) { throw "Required native component is ambiguous: $relativePath" }
               $entry = $matches[0]
 
               $targetPath = Join-Path $extractRoot ($relativePath.Replace('/', [IO.Path]::DirectorySeparatorChar))
-              $targetDir = Split-Path -Parent $targetPath
-              New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
-
+              New-Item -ItemType Directory -Force -Path (Split-Path -Parent $targetPath) | Out-Null
               $input = $entry.Open()
               try {
-                $output = [IO.File]::Open($targetPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+                $output = [IO.File]::Open($targetPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
                 try { $input.CopyTo($output) } finally { $output.Dispose() }
               } finally { $input.Dispose() }
 
               $fileItem = Get-Item -LiteralPath $targetPath
-              $hash = (Get-FileHash -LiteralPath $targetPath -Algorithm SHA256).Hash.ToLowerInvariant()
               $signature = Get-AuthenticodeSignature -LiteralPath $targetPath
               $version = $fileItem.VersionInfo
-
               $results += [pscustomobject][ordered]@{
                 path = $relativePath
                 archive_path = $entry.FullName.Replace('\','/')
                 size_bytes = $fileItem.Length
-                sha256 = $hash
+                sha256 = (Get-FileHash -LiteralPath $targetPath -Algorithm SHA256).Hash.ToLowerInvariant()
                 file_version = if ([string]::IsNullOrWhiteSpace($version.FileVersion)) { $null } else { $version.FileVersion }
                 product_version = if ([string]::IsNullOrWhiteSpace($version.ProductVersion)) { $null } else { $version.ProductVersion }
                 company_name = if ([string]::IsNullOrWhiteSpace($version.CompanyName)) { $null } else { $version.CompanyName }
@@ -124,11 +94,10 @@ jobs:
                 signature_status = [string]$signature.Status
                 signer_subject = if ($null -eq $signature.SignerCertificate) { $null } else { $signature.SignerCertificate.Subject }
                 signer_thumbprint = if ($null -eq $signature.SignerCertificate) { $null } else { $signature.SignerCertificate.Thumbprint }
-                signer_not_after = if ($null -eq $signature.SignerCertificate) { $null } else { $signature.SignerCertificate.NotAfter.ToUniversalTime().ToString('o') }
               }
             }
 
-            $evidence = [ordered]@{
+            [ordered]@{
               upstream = 'Flowseal/zapret-discord-youtube'
               release_tag = '1.10.4'
               release_commit = '176f56dc3f11ce5915c26abcdde903f93d835b64'
@@ -136,11 +105,7 @@ jobs:
               archive_size_bytes = $archiveItem.Length
               executable_native_inventory = $allExecutableLike
               components = $results
-            }
-
-            Write-Host '----- NETP NATIVE ADMISSION EVIDENCE BEGIN -----'
-            $evidence | ConvertTo-Json -Depth 8
-            Write-Host '----- NETP NATIVE ADMISSION EVIDENCE END -----'
+            } | ConvertTo-Json -Depth 8 | Write-Host
           }
           finally {
             $archive.Dispose()
@@ -148,8 +113,55 @@ jobs:
             Remove-Item -LiteralPath $archivePath -Force -ErrorAction SilentlyContinue
           }
 
+      - name: Compare Flowseal WinDivert with official WinDivert 2.2.2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          Add-Type -AssemblyName System.IO.Compression
+
+          $flowsealUri = 'https://github.com/Flowseal/zapret-discord-youtube/releases/download/1.10.4/zapret-discord-youtube-1.10.4.zip'
+          $windivertUri = 'https://github.com/basil00/WinDivert/releases/download/v2.2.2/WinDivert-2.2.2-A.zip'
+          $flowsealPath = Join-Path $env:RUNNER_TEMP 'flowseal-1.10.4.zip'
+          $windivertPath = Join-Path $env:RUNNER_TEMP 'windivert-2.2.2-A.zip'
+
+          Invoke-WebRequest -Uri $flowsealUri -OutFile $flowsealPath -UseBasicParsing -MaximumRedirection 5
+          Invoke-WebRequest -Uri $windivertUri -OutFile $windivertPath -UseBasicParsing -MaximumRedirection 5
+
+          function Get-EntryHash([string]$zipPath, [string]$suffix) {
+            $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+            try {
+              $matches = @($zip.Entries | Where-Object { $_.FullName.Replace('\','/').EndsWith($suffix,[StringComparison]::OrdinalIgnoreCase) })
+              if ($matches.Count -ne 1) { throw "Expected exactly one $suffix in $zipPath; found $($matches.Count)." }
+              $stream = $matches[0].Open()
+              try {
+                $sha = [Security.Cryptography.SHA256]::Create()
+                try { return ([Convert]::ToHexString($sha.ComputeHash($stream))).ToLowerInvariant() } finally { $sha.Dispose() }
+              } finally { $stream.Dispose() }
+            } finally { $zip.Dispose() }
+          }
+
+          try {
+            $flowDll = Get-EntryHash $flowsealPath '/bin/WinDivert.dll'
+            $flowSys = Get-EntryHash $flowsealPath '/bin/WinDivert64.sys'
+            $officialDll = Get-EntryHash $windivertPath '/x64/WinDivert.dll'
+            $officialSys = Get-EntryHash $windivertPath '/x64/WinDivert64.sys'
+
+            Write-Host "Flowseal WinDivert.dll: $flowDll"
+            Write-Host "Official v2.2.2 x64 WinDivert.dll: $officialDll"
+            Write-Host "Flowseal WinDivert64.sys: $flowSys"
+            Write-Host "Official v2.2.2 x64 WinDivert64.sys: $officialSys"
+
+            if ($flowDll -ne $officialDll) { throw 'Flowseal WinDivert.dll does not byte-match official WinDivert v2.2.2 x64.' }
+            if ($flowSys -ne $officialSys) { throw 'Flowseal WinDivert64.sys does not byte-match official WinDivert v2.2.2 x64.' }
+            Write-Host 'PASS: Flowseal WinDivert DLL and SYS byte-match official WinDivert v2.2.2 x64.'
+          }
+          finally {
+            Remove-Item -LiteralPath $flowsealPath,$windivertPath -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Evidence interpretation boundary
         shell: pwsh
         run: |
-          Write-Host 'This workflow never executes any downloaded EXE/DLL/SYS.'
-          Write-Host 'Valid Authenticode/driver status, exact version identity and current advisory applicability still require security review before ADMIT.'
+          Write-Host 'Downloaded EXE/DLL/SYS files are never executed by this workflow.'
+          Write-Host 'Current advisory applicability and remaining unsigned component policy still require security review before ADMIT.'
