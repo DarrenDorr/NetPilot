@@ -12,5 +12,6 @@
   <ItemGroup>
     <ProjectReference Include="../../src/NetPilot.Platform.Windows/NetPilot.Platform.Windows.csproj" />
     <ProjectReference Include="../../src/NetPilot.Engine.Zapret.Windows/NetPilot.Engine.Zapret.Windows.csproj" />
+    <ProjectReference Include="../../src/NetPilot.Updater/NetPilot.Updater.csproj" />
   </ItemGroup>
 </Project>
