@@ -17,6 +17,14 @@ public sealed class WindowsPrivilegedServiceClient : IPrivilegedServiceClient
     public Task<IpcResponse> GetZapretStatusAsync(CancellationToken cancellationToken = default) =>
         SendAsync(IpcRequest.CreateZapretGetStatus(), cancellationToken);
 
+    public Task<IpcResponse> GetZapretInstallationStatusAsync(
+        CancellationToken cancellationToken = default) =>
+        SendAsync(IpcRequest.CreateZapretGetInstallationStatus(), cancellationToken);
+
+    public Task<IpcResponse> InstallOrUpdateOfficialZapretLatestAsync(
+        CancellationToken cancellationToken = default) =>
+        SendAsync(IpcRequest.CreateZapretInstallOrUpdateOfficialLatest(), cancellationToken);
+
     public Task<IpcResponse> StartZapretStrategyAsync(
         string strategyId,
         CancellationToken cancellationToken = default) =>
@@ -30,7 +38,8 @@ public sealed class WindowsPrivilegedServiceClient : IPrivilegedServiceClient
         CancellationToken cancellationToken)
     {
         using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        requestTimeout.CancelAfter(IpcProtocol.RequestTimeoutMilliseconds);
+        requestTimeout.CancelAfter(
+            IpcProtocol.GetRequestTimeoutMilliseconds(request.Command));
         var requestToken = requestTimeout.Token;
 
         using var pipe = new NamedPipeClientStream(
@@ -70,6 +79,13 @@ public sealed class WindowsPrivilegedServiceClient : IPrivilegedServiceClient
             throw new IpcProtocolException(
                 "RequestTimeout",
                 "Служба NetPilot не ответила за допустимое время.",
+                exception);
+        }
+        catch (IOException exception)
+        {
+            throw new IpcProtocolException(
+                "ServiceConnectionClosed",
+                "Служба NetPilot закрыла защищённое IPC-соединение до завершения запроса.",
                 exception);
         }
     }

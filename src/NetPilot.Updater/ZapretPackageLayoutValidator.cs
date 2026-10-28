@@ -79,9 +79,30 @@ public static class ZapretPackageLayoutValidator
     {
         RejectReparsePoint(root);
 
-        foreach (var path in Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories))
+        var pending = new Stack<string>();
+        pending.Push(root);
+
+        while (pending.Count > 0)
         {
-            RejectReparsePoint(path);
+            var directory = pending.Pop();
+            foreach (var entry in Directory.EnumerateFileSystemEntries(
+                         directory,
+                         "*",
+                         SearchOption.TopDirectoryOnly))
+            {
+                var attributes = File.GetAttributes(entry);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    throw new UpdateSecurityException(
+                        "ReparsePointRejected",
+                        "В распакованном пакете обнаружен reparse point.");
+                }
+
+                if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    pending.Push(entry);
+                }
+            }
         }
     }
 

@@ -1,8 +1,15 @@
 using NetPilot.Automation;
 using NetPilot.Core.Models;
 using NetPilot.Health;
+using NetPilot.Ipc;
 
 namespace NetPilot.App.Services;
+
+public sealed record ZapretProvisioningOutcome(
+    string Code,
+    string? Message,
+    IpcZapretInstallationStatus Installation,
+    IpcZapretProvisioningResult? Details);
 
 public interface IDashboardService : IDisposable
 {
@@ -16,6 +23,12 @@ public interface IDashboardService : IDisposable
 
     Task<StrategyRuntimeState> GetStrategyRuntimeStateAsync(
         CancellationToken cancellationToken = default);
+
+    Task<IpcZapretInstallationStatus> GetZapretInstallationStatusAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<ZapretProvisioningOutcome> InstallOrUpdateOfficialZapretLatestAsync(
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class DashboardService : IDashboardService
@@ -23,16 +36,19 @@ public sealed class DashboardService : IDashboardService
     private readonly PublicHttpsHealthChecker _healthChecker;
     private readonly IStrategyRuntime _strategyRuntime;
     private readonly StrategySelectionEngine _selectionEngine;
+    private readonly IPrivilegedServiceClient _serviceClient;
     private bool _disposed;
 
     public DashboardService(
         PublicHttpsHealthChecker healthChecker,
         IStrategyRuntime strategyRuntime,
-        StrategySelectionEngine selectionEngine)
+        StrategySelectionEngine selectionEngine,
+        IPrivilegedServiceClient serviceClient)
     {
         _healthChecker = healthChecker ?? throw new ArgumentNullException(nameof(healthChecker));
         _strategyRuntime = strategyRuntime ?? throw new ArgumentNullException(nameof(strategyRuntime));
         _selectionEngine = selectionEngine ?? throw new ArgumentNullException(nameof(selectionEngine));
+        _serviceClient = serviceClient ?? throw new ArgumentNullException(nameof(serviceClient));
     }
 
     public IReadOnlyList<ResourceDefinition> Resources => BuiltInResourceCatalog.All;
@@ -66,6 +82,38 @@ public sealed class DashboardService : IDashboardService
         return _strategyRuntime.GetStateAsync(cancellationToken);
     }
 
+    public async Task<IpcZapretInstallationStatus> GetZapretInstallationStatusAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        var response = await _serviceClient.GetZapretInstallationStatusAsync(cancellationToken);
+        EnsureSuccessful(response);
+
+        return response.ZapretInstallation
+            ?? throw new IpcProtocolException(
+                "MissingInstallationStatus",
+                "Служба NetPilot не вернула состояние установки Zapret.");
+    }
+
+    public async Task<ZapretProvisioningOutcome> InstallOrUpdateOfficialZapretLatestAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        var response = await _serviceClient.InstallOrUpdateOfficialZapretLatestAsync(cancellationToken);
+        EnsureSuccessful(response);
+
+        var installation = response.ZapretInstallation
+            ?? throw new IpcProtocolException(
+                "MissingInstallationStatus",
+                "Служба NetPilot не вернула состояние Zapret после provisioning.");
+
+        return new ZapretProvisioningOutcome(
+            response.Code,
+            response.Message,
+            installation,
+            response.ZapretProvisioning);
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -75,6 +123,16 @@ public sealed class DashboardService : IDashboardService
 
         _disposed = true;
         _healthChecker.Dispose();
+    }
+
+    private static void EnsureSuccessful(IpcResponse response)
+    {
+        if (!response.Success)
+        {
+            throw new IpcProtocolException(
+                response.Code,
+                response.Message ?? "Служба NetPilot отклонила операцию.");
+        }
     }
 
     private void ThrowIfDisposed() =>

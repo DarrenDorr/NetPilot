@@ -5,11 +5,11 @@
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding Title}"
         Width="920"
-        Height="720"
+        Height="760"
         MinWidth="760"
-        MinHeight="600">
+        MinHeight="620">
   <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto" Margin="32" MaxWidth="1040">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto" Margin="32" MaxWidth="1040">
       <Grid ColumnDefinitions="*,Auto">
         <StackPanel Spacing="5">
           <TextBlock Text="{Binding Title}" FontSize="32" FontWeight="SemiBold" />
@@ -48,7 +48,32 @@
         </Grid>
       </Border>
 
-      <StackPanel Grid.Row="2" Margin="0,22,0,0" Spacing="12">
+      <Border Grid.Row="2"
+              Margin="0,16,0,0"
+              Padding="20"
+              CornerRadius="14"
+              BorderThickness="1"
+              BorderBrush="#33808080">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="5">
+            <TextBlock Text="Сетевой движок" FontSize="16" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding EngineInstallationStatus}" FontSize="14" TextWrapping="Wrap" />
+            <TextBlock Text="Источник фиксирован: официальный Flowseal. URL и файлы нельзя подменить через интерфейс."
+                       FontSize="12"
+                       Opacity="0.58"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+
+          <Button Grid.Column="1"
+                  Content="{Binding EngineActionText}"
+                  Command="{Binding ProvisionEngineCommand}"
+                  Padding="18,10"
+                  Margin="24,0,0,0"
+                  VerticalAlignment="Center" />
+        </Grid>
+      </Border>
+
+      <StackPanel Grid.Row="3" Margin="0,22,0,0" Spacing="12">
         <TextBlock Text="Сервисы" FontSize="18" FontWeight="SemiBold" />
 
         <ItemsControl ItemsSource="{Binding Resources}">
@@ -85,7 +110,7 @@
         </ItemsControl>
       </StackPanel>
 
-      <Border Grid.Row="3"
+      <Border Grid.Row="4"
               IsVisible="{Binding IsAdvancedMode}"
               Margin="0,12,0,0"
               Padding="20"

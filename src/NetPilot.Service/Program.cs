@@ -15,8 +15,10 @@ builder.Services.AddWindowsService(options =>
 
 builder.Services.AddSingleton(new OperationPolicy(
 [
+    PrivilegedOperation.EngineInstall,
     PrivilegedOperation.EngineStart,
-    PrivilegedOperation.EngineStop
+    PrivilegedOperation.EngineStop,
+    PrivilegedOperation.UpdateApply
 ]));
 
 builder.Services.AddSingleton<UserResourceOwnership>();
@@ -35,6 +37,9 @@ builder.Services.AddSingleton(serviceProvider =>
         WindowsZapretEngineLocation.GetDefaultEngineBaseRoot(),
         serviceProvider.GetRequiredService<IZapretReleaseSource>(),
         serviceProvider.GetRequiredService<IZapretUpdateRuntimeGate>()));
+builder.Services.AddSingleton(_ =>
+    new ZapretInstallationInspector(
+        WindowsZapretEngineLocation.GetDefaultEngineBaseRoot()));
 builder.Services.AddHostedService<PrivilegedIpcWorker>();
 
 await builder.Build().RunAsync();

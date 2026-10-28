@@ -15,11 +15,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly Dictionary<string, ResourceStatusViewModel> _resourceById;
     private readonly AsyncCommand _checkCommand;
     private readonly AsyncCommand _findStrategyCommand;
+    private readonly AsyncCommand _provisionEngineCommand;
 
     private string _overallStatus = "Готов к проверке";
     private string _overallDetails = "Проверьте доступность сервисов одной кнопкой.";
     private string _engineStatus = "Состояние сетевого движка ещё не получено.";
+    private string _engineInstallationStatus = "Проверяем установку Zapret…";
+    private string _engineActionText = "Установить Zapret";
     private string _lastAction = "Действий ещё не выполнялось.";
+    private bool _isEngineInstalled;
     private bool _isBusy;
     private bool _isAdvancedMode;
     private bool _disposed;
@@ -47,6 +51,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         _findStrategyCommand = new AsyncCommand(
             FindStrategyAsync,
+            () => !IsBusy && IsEngineInstalled,
+            HandleUnexpectedError);
+
+        _provisionEngineCommand = new AsyncCommand(
+            ProvisionEngineAsync,
             () => !IsBusy,
             HandleUnexpectedError);
     }
@@ -77,10 +86,34 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         private set => SetField(ref _engineStatus, value);
     }
 
+    public string EngineInstallationStatus
+    {
+        get => _engineInstallationStatus;
+        private set => SetField(ref _engineInstallationStatus, value);
+    }
+
+    public string EngineActionText
+    {
+        get => _engineActionText;
+        private set => SetField(ref _engineActionText, value);
+    }
+
     public string LastAction
     {
         get => _lastAction;
         private set => SetField(ref _lastAction, value);
+    }
+
+    public bool IsEngineInstalled
+    {
+        get => _isEngineInstalled;
+        private set
+        {
+            if (SetField(ref _isEngineInstalled, value))
+            {
+                _findStrategyCommand.RaiseCanExecuteChanged();
+            }
+        }
     }
 
     public bool IsBusy
@@ -92,6 +125,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             {
                 _checkCommand.RaiseCanExecuteChanged();
                 _findStrategyCommand.RaiseCanExecuteChanged();
+                _provisionEngineCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -104,10 +138,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public ICommand CheckCommand => _checkCommand;
     public ICommand FindStrategyCommand => _findStrategyCommand;
+    public ICommand ProvisionEngineCommand => _provisionEngineCommand;
 
     public async Task InitializeAsync()
     {
         ThrowIfDisposed();
+        await RefreshInstallationStatusAsync(CancellationToken.None);
         await RefreshEngineStatusAsync(CancellationToken.None);
     }
 
@@ -120,6 +156,58 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         _disposed = true;
         _dashboardService.Dispose();
+    }
+
+    private async Task ProvisionEngineAsync()
+    {
+        ThrowIfDisposed();
+        IsBusy = true;
+        var wasInstalled = IsEngineInstalled;
+        OverallStatus = wasInstalled
+            ? "Обновляем официальный Zapret…"
+            : "Устанавливаем официальный Zapret…";
+        OverallDetails = "NetPilot использует только закреплённый официальный источник Flowseal и проверяет пакет до установки.";
+
+        try
+        {
+            var outcome = await _dashboardService.InstallOrUpdateOfficialZapretLatestAsync();
+            ApplyInstallationStatus(outcome.Installation);
+
+            if (string.Equals(outcome.Code, "AlreadyLatest", StringComparison.Ordinal))
+            {
+                OverallStatus = "Zapret уже актуален";
+                OverallDetails = $"Установлена актуальная версия {outcome.Installation.Version}.";
+                LastAction = "Обновление не требовалось; файлы движка не заменялись.";
+            }
+            else if (outcome.Details?.RuntimeRestore == IpcZapretRuntimeRestoreState.Failed)
+            {
+                OverallStatus = "Zapret обновлён, но требуется внимание";
+                OverallDetails = "Новая версия установлена, однако прежнюю активную стратегию не удалось восстановить автоматически.";
+                LastAction = "Автоматическая подмена стратегии не выполнялась.";
+            }
+            else
+            {
+                OverallStatus = wasInstalled ? "Zapret обновлён" : "Zapret установлен";
+                OverallDetails = $"Официальная версия {outcome.Installation.Version} установлена и проверена.";
+                LastAction = outcome.Details?.RuntimeRestore == IpcZapretRuntimeRestoreState.Restored
+                    ? "Обновление завершено; прежняя активная стратегия восстановлена."
+                    : "Установка движка завершена.";
+            }
+
+            await RefreshEngineStatusAsync(CancellationToken.None);
+        }
+        catch (Exception exception) when (IsExpectedOperationalException(exception))
+        {
+            OverallStatus = wasInstalled ? "Обновление не выполнено" : "Установка не выполнена";
+            OverallDetails = GetUserMessage(exception);
+            LastAction = "Provisioning остановлен безопасно; произвольный источник или fallback не использовался.";
+            await RefreshInstallationStatusAsync(CancellationToken.None);
+            await RefreshEngineStatusAsync(CancellationToken.None);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     private async Task CheckNowAsync()
@@ -138,6 +226,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             var results = await _dashboardService.CheckResourcesAsync();
             ApplyHealthResults(results);
+            await RefreshInstallationStatusAsync(CancellationToken.None);
             await RefreshEngineStatusAsync(CancellationToken.None);
             LastAction = "Проверка доступности завершена.";
         }
@@ -200,13 +289,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         if (results.Count > 0 && results.All(result => result.State == ResourceHealthState.Healthy))
         {
-            OverallStatus = "Доступ в порядке";
+            OverallStatus = "Проверенные сервисы работают";
             OverallDetails = "Discord и YouTube отвечают на проверку NetPilot.";
         }
         else if (results.Any(result => result.State == ResourceHealthState.Unavailable))
         {
             OverallStatus = "Есть недоступные сервисы";
-            OverallDetails = "Можно запустить подбор стратегии или повторить проверку позже.";
+            OverallDetails = IsEngineInstalled
+                ? "Можно запустить подбор стратегии или повторить проверку позже."
+                : "Сначала установите Zapret, если для доступа требуется сетевой движок.";
         }
         else
         {
@@ -239,7 +330,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             case StrategySelectionStatus.NotRunning:
                 LastAction = "Zapret сейчас не запущен. Автоматический запуск не выполнялся.";
                 OverallStatus = "Сетевой движок не запущен";
-                OverallDetails = "После установки и запуска движка станет доступен автоматический подбор.";
+                OverallDetails = "Запустите выбранную стратегию после установки движка.";
                 break;
 
             case StrategySelectionStatus.OriginalRestoreFailed:
@@ -254,6 +345,32 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    private async Task RefreshInstallationStatusAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var installation = await _dashboardService.GetZapretInstallationStatusAsync(cancellationToken);
+            ApplyInstallationStatus(installation);
+        }
+        catch (Exception exception) when (IsExpectedOperationalException(exception))
+        {
+            IsEngineInstalled = false;
+            EngineInstallationStatus = "Служба NetPilot недоступна или состояние установки не подтверждено.";
+            EngineActionText = "Установить Zapret";
+        }
+    }
+
+    private void ApplyInstallationStatus(IpcZapretInstallationStatus installation)
+    {
+        IsEngineInstalled = installation.IsInstalled;
+        EngineInstallationStatus = installation.IsInstalled
+            ? $"Zapret установлен · версия {installation.Version}"
+            : "Zapret ещё не установлен";
+        EngineActionText = installation.IsInstalled
+            ? "Обновить Zapret"
+            : "Установить Zapret";
+    }
+
     private async Task RefreshEngineStatusAsync(CancellationToken cancellationToken)
     {
         try
@@ -265,7 +382,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
         catch (Exception exception) when (IsExpectedOperationalException(exception))
         {
-            EngineStatus = "Служба NetPilot недоступна или ещё не установлена.";
+            EngineStatus = "Служба NetPilot недоступна или движок ещё не установлен.";
         }
     }
 
@@ -289,7 +406,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private static string GetUserMessage(Exception exception) =>
         exception switch
         {
-            IpcProtocolException => "Не удалось связаться со службой NetPilot.",
+            IpcProtocolException ipc when ipc.Code == "EngineOwnedByAnotherUser" =>
+                "Zapret сейчас управляется другой Windows-сессией. NetPilot не будет вмешиваться в её соединение.",
+            IpcProtocolException ipc when ipc.Code == "UpdateNetworkError" =>
+                "Не удалось получить официальный релиз Zapret. Текущая установка не заменена.",
+            IpcProtocolException ipc when ipc.Code == "OperationTimeout" =>
+                "Операция превысила безопасный лимит времени и была остановлена.",
+            IpcProtocolException => "Служба NetPilot не смогла выполнить безопасную операцию.",
             StrategyRuntimeException => "Служба не смогла выполнить операцию с сетевой стратегией.",
             HttpRequestException => "Не удалось проверить доступность сети.",
             OperationCanceledException => "Операция была отменена.",
