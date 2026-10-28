@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Runtime.InteropServices;
 using Avalonia;
 using NetPilot.App;
 using NetPilot.App.Services;
@@ -21,7 +23,7 @@ internal static class Program
             return CompleteInstallerEnrollmentAsync(args[1]).GetAwaiter().GetResult();
         }
 
-        AppComposition.Configure(CreateMainWindowViewModel);
+        AppComposition.Configure(CreateMainWindowViewModel, CreateSupportInfo());
         return AppComposition.BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
@@ -59,6 +61,22 @@ internal static class Program
         {
             return 12;
         }
+    }
+
+    private static ApplicationSupportInfo CreateSupportInfo()
+    {
+        var assembly = typeof(Program).Assembly;
+        var version = assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion
+            ?? assembly.GetName().Version?.ToString();
+
+        var platform = new WindowsPlatformInfo().DisplayName;
+        var architecture = RuntimeInformation.ProcessArchitecture
+            .ToString()
+            .ToLowerInvariant();
+
+        return new ApplicationSupportInfo(version, platform, architecture);
     }
 
     private static MainWindowViewModel CreateMainWindowViewModel()

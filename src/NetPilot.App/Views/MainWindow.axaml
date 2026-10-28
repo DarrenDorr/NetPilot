@@ -141,12 +141,25 @@
               BorderBrush="#33808080">
         <StackPanel Spacing="9">
           <TextBlock Text="Техническая информация" FontSize="16" FontWeight="SemiBold" />
-          <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto">
-            <TextBlock Text="Движок" Opacity="0.60" />
-            <TextBlock Grid.Column="1" Text="{Binding EngineStatus}" TextWrapping="Wrap" />
+          <TextBlock Text="Локальные сведения для поддержки. NetPilot не отправляет их автоматически."
+                     FontSize="12"
+                     Opacity="0.58"
+                     TextWrapping="Wrap" />
+          <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+            <TextBlock Text="Версия" Opacity="0.60" />
+            <TextBlock x:Name="SupportVersionText" Grid.Column="1" Text="неизвестно" TextWrapping="Wrap" />
 
-            <TextBlock Grid.Row="1" Text="Последнее действие" Opacity="0.60" Margin="0,7,0,0" />
-            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LastAction}" TextWrapping="Wrap" Margin="0,7,0,0" />
+            <TextBlock Grid.Row="1" Text="Платформа" Opacity="0.60" Margin="0,7,0,0" />
+            <TextBlock x:Name="SupportPlatformText" Grid.Row="1" Grid.Column="1" Text="неизвестно" TextWrapping="Wrap" Margin="0,7,0,0" />
+
+            <TextBlock Grid.Row="2" Text="Архитектура" Opacity="0.60" Margin="0,7,0,0" />
+            <TextBlock x:Name="SupportArchitectureText" Grid.Row="2" Grid.Column="1" Text="неизвестно" TextWrapping="Wrap" Margin="0,7,0,0" />
+
+            <TextBlock Grid.Row="3" Text="Движок" Opacity="0.60" Margin="0,7,0,0" />
+            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding EngineStatus}" TextWrapping="Wrap" Margin="0,7,0,0" />
+
+            <TextBlock Grid.Row="4" Text="Последнее действие" Opacity="0.60" Margin="0,7,0,0" />
+            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding LastAction}" TextWrapping="Wrap" Margin="0,7,0,0" />
           </Grid>
         </StackPanel>
       </Border>
