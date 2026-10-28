@@ -1,0 +1,106 @@
+name: Native Candidate WinDivert Inventory
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/native-candidate-windivert-inventory.yml"
+      - "docs/ZAPRET2-*.md"
+      - "security/native-admission/evidence/**"
+
+permissions:
+  contents: read
+
+jobs:
+  inventory-windivert-x64:
+    name: Inventory exact WinDivert x64 without driver load
+    runs-on: windows-2025
+    timeout-minutes: 10
+
+    steps:
+      - name: Download exact official WinDivert archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $uri = 'https://github.com/basil00/WinDivert/releases/download/v2.2.2/WinDivert-2.2.2-A.zip'
+          $expected = '63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15'
+          $out = Join-Path $PWD 'WinDivert-2.2.2-A.zip'
+          & curl.exe --fail --location --proto '=https' --tlsv1.2 --output $out $uri
+          if ($LASTEXITCODE -ne 0) { throw 'WinDivert download failed' }
+          $actual = (Get-FileHash -Algorithm SHA256 $out).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "WinDivert archive SHA-256 mismatch: $actual" }
+
+      - name: Extract and inventory only exact x64 runtime files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path extracted,evidence | Out-Null
+          Expand-Archive -LiteralPath WinDivert-2.2.2-A.zip -DestinationPath extracted -Force
+
+          $dlls = @(Get-ChildItem extracted -Recurse -File -Filter WinDivert.dll | Where-Object { $_.FullName -match '[\\/]x64[\\/]' })
+          $drivers = @(Get-ChildItem extracted -Recurse -File -Filter WinDivert64.sys | Where-Object { $_.FullName -match '[\\/]x64[\\/]' })
+          if ($dlls.Count -ne 1) { throw "Expected exactly one x64 WinDivert.dll, found $($dlls.Count)" }
+          if ($drivers.Count -ne 1) { throw "Expected exactly one x64 WinDivert64.sys, found $($drivers.Count)" }
+
+          function Write-Inventory([System.IO.FileInfo]$File, [string]$Role, [string]$OutputPath) {
+            $hash = (Get-FileHash -Algorithm SHA256 $File.FullName).Hash.ToLowerInvariant()
+            $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($File.FullName)
+            $sig = Get-AuthenticodeSignature -FilePath $File.FullName
+            $subject = ''
+            $thumbprint = ''
+            if ($sig.SignerCertificate) {
+              $subject = $sig.SignerCertificate.Subject
+              $thumbprint = $sig.SignerCertificate.Thumbprint
+            }
+            @(
+              "role=$Role"
+              "filename=$($File.Name)"
+              "size=$($File.Length)"
+              "sha256=$hash"
+              "file_version=$($info.FileVersion)"
+              "product_version=$($info.ProductVersion)"
+              "company_name=$($info.CompanyName)"
+              "product_name=$($info.ProductName)"
+              "authenticode_status=$($sig.Status)"
+              "signer_subject=$subject"
+              "signer_thumbprint=$thumbprint"
+            ) | Out-File -FilePath $OutputPath -Encoding utf8
+          }
+
+          Write-Inventory $dlls[0] 'user-mode-library' 'evidence\WinDivert.dll.txt'
+          Write-Inventory $drivers[0] 'kernel-driver' 'evidence\WinDivert64.sys.txt'
+
+          @(
+            'schema_version=1'
+            'scope=windivert-x64-inventory-only'
+            'version=2.2.2-A'
+            'archive_sha256=63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15'
+            'files_executed=false'
+            'driver_installed=false'
+            'driver_loaded=false'
+          ) | Out-File -FilePath evidence\windivert-inventory.txt -Encoding ascii
+
+      - name: Remove binary inputs and record text evidence hashes
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Remove-Item -Recurse -Force extracted -ErrorAction SilentlyContinue
+          Remove-Item -Force WinDivert-2.2.2-A.zip -ErrorAction SilentlyContinue
+          if (Test-Path WinDivert-2.2.2-A.zip) { throw 'WinDivert archive was not removed' }
+          if (Test-Path extracted) { throw 'Extracted WinDivert files were not removed' }
+
+          $sumLines = Get-ChildItem evidence -File | Where-Object Name -ne 'SHA256SUMS.txt' | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          }
+          $sumLines | Out-File -FilePath evidence\SHA256SUMS.txt -Encoding ascii
+
+      - name: Upload text evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windivert-2.2.2-a-x64-inventory-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
