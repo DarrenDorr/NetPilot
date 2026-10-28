@@ -1,0 +1,37 @@
+diff --git a/nfq2/sec.c b/nfq2/sec.c
+--- a/nfq2/sec.c
++++ b/nfq2/sec.c
+@@ -372,25 +372,31 @@ void daemonize(void)
+ 	}
+ 	/* redirect fd's 0,1,2 to /dev/null */
+ 	/* stdin */
+-	if (open("/dev/null", O_RDWR)<0)
++	int nullfd = open("/dev/null", O_RDWR);
++	if (nullfd<0)
+ 	{
+ 		// will work only if debug not to console
+ 		DLOG_PERROR("open(stdin)");
+ 		exit(23);
+ 	}
++	if (nullfd != STDIN_FILENO)
++	{
++		close(nullfd);
++		exit(23);
++	}
+ 	/* stdout */
+-	if (dup(0)<0)
++	if (dup2(STDIN_FILENO, STDOUT_FILENO)<0)
+ 	{
+ 		// will work only if debug not to console
+ 		DLOG_PERROR("dup(stdout)");
+ 		exit(24);
+ 	}
+ 	/* stderror */
+-	if (dup(0)<0)
++	if (dup2(STDIN_FILENO, STDERR_FILENO)<0)
+ 	{
+ 		// will work only if debug not to console
+ 		DLOG_PERROR("dup(stderr)");
+ 		exit(25);
+ 	}
+ }
