@@ -41,8 +41,8 @@ jobs:
           Invoke-WebRequest -Uri $uri -OutFile $archivePath -UseBasicParsing -MaximumRedirection 5
           $archiveItem = Get-Item -LiteralPath $archivePath
           $archiveSha256 = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($archiveItem.Length -ne $expectedArchiveSize) { throw "Archive size mismatch." }
-          if ($archiveSha256 -ne $expectedArchiveSha256) { throw "Archive SHA-256 mismatch." }
+          if ($archiveItem.Length -ne $expectedArchiveSize) { throw 'Archive size mismatch.' }
+          if ($archiveSha256 -ne $expectedArchiveSha256) { throw 'Archive SHA-256 mismatch.' }
 
           Add-Type -AssemblyName System.IO.Compression
           $archive = [System.IO.Compression.ZipFile]::OpenRead($archivePath)
@@ -147,17 +147,69 @@ jobs:
             $officialDll = Get-EntryHash $windivertPath '/x64/WinDivert.dll'
             $officialSys = Get-EntryHash $windivertPath '/x64/WinDivert64.sys'
 
-            Write-Host "Flowseal WinDivert.dll: $flowDll"
-            Write-Host "Official v2.2.2 x64 WinDivert.dll: $officialDll"
-            Write-Host "Flowseal WinDivert64.sys: $flowSys"
-            Write-Host "Official v2.2.2 x64 WinDivert64.sys: $officialSys"
-
             if ($flowDll -ne $officialDll) { throw 'Flowseal WinDivert.dll does not byte-match official WinDivert v2.2.2 x64.' }
             if ($flowSys -ne $officialSys) { throw 'Flowseal WinDivert64.sys does not byte-match official WinDivert v2.2.2 x64.' }
             Write-Host 'PASS: Flowseal WinDivert DLL and SYS byte-match official WinDivert v2.2.2 x64.'
           }
           finally {
             Remove-Item -LiteralPath $flowsealPath,$windivertPath -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Compare winws and cygwin with official zapret v72.9
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          Add-Type -AssemblyName System.IO.Compression
+
+          $officialUri = 'https://github.com/bol-van/zapret/releases/download/v72.9/zapret-v72.9.zip'
+          $officialArchiveSha256 = '2d8eef31e4966f32cd25b1ca361b0faa8f3c10cbaa514b8d0b6d82986784dfe7'
+          $officialPath = Join-Path $env:RUNNER_TEMP 'zapret-v72.9.zip'
+          $expectedWinws = 'affb4f69d2ea302a7abccd5325d81826e140ddae014f1e070bc4a6c0dd555188'
+          $expectedCygwin = '103104a52e5293ce418944725df19e2bf81ad9269b9a120d71d39028e821499b'
+
+          Invoke-WebRequest -Uri $officialUri -OutFile $officialPath -UseBasicParsing -MaximumRedirection 5
+          $actualArchiveSha256 = (Get-FileHash -LiteralPath $officialPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualArchiveSha256 -ne $officialArchiveSha256) {
+            throw "Official zapret v72.9 archive SHA-256 mismatch: $actualArchiveSha256"
+          }
+
+          function Get-ZipEntrySha256($entry) {
+            $stream = $entry.Open()
+            try {
+              $sha = [Security.Cryptography.SHA256]::Create()
+              try { return ([Convert]::ToHexString($sha.ComputeHash($stream))).ToLowerInvariant() } finally { $sha.Dispose() }
+            } finally { $stream.Dispose() }
+          }
+
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($officialPath)
+          try {
+            $winwsCandidates = @($zip.Entries | Where-Object { $_.FullName.Replace('\','/').EndsWith('/winws.exe',[StringComparison]::OrdinalIgnoreCase) })
+            $cygwinCandidates = @($zip.Entries | Where-Object { $_.FullName.Replace('\','/').EndsWith('/cygwin1.dll',[StringComparison]::OrdinalIgnoreCase) })
+
+            $matchingWinws = @()
+            foreach ($entry in $winwsCandidates) {
+              $hash = Get-ZipEntrySha256 $entry
+              Write-Host "Official candidate $($entry.FullName): $hash"
+              if ($hash -eq $expectedWinws) { $matchingWinws += $entry.FullName.Replace('\','/') }
+            }
+
+            $matchingCygwin = @()
+            foreach ($entry in $cygwinCandidates) {
+              $hash = Get-ZipEntrySha256 $entry
+              Write-Host "Official candidate $($entry.FullName): $hash"
+              if ($hash -eq $expectedCygwin) { $matchingCygwin += $entry.FullName.Replace('\','/') }
+            }
+
+            if ($matchingWinws.Count -ne 1) { throw "Expected exactly one official v72.9 winws byte-match; found $($matchingWinws.Count)." }
+            if ($matchingCygwin.Count -ne 1) { throw "Expected exactly one official v72.9 cygwin1.dll byte-match; found $($matchingCygwin.Count)." }
+
+            Write-Host "PASS: Flowseal winws.exe byte-matches official zapret v72.9: $($matchingWinws[0])"
+            Write-Host "PASS: Flowseal cygwin1.dll byte-matches official zapret v72.9 bundle: $($matchingCygwin[0])"
+          }
+          finally {
+            $zip.Dispose()
+            Remove-Item -LiteralPath $officialPath -Force -ErrorAction SilentlyContinue
           }
 
       - name: Evidence interpretation boundary
