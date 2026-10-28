@@ -58,6 +58,7 @@ jobs:
         uses: cygwin/cygwin-install-action@006ad0b0946ca6d0a3ea2d4437677fa767392401 # v4 exact commit
         with:
           platform: x86_64
+          site: https://mirrors.kernel.org/sourceware/cygwin/
           check-sig: 'true'
           add-to-path: false
           packages: >-
@@ -121,6 +122,7 @@ jobs:
             "luajit_commit=$luaHead"
             "luajit_tree=$luaTree"
             'runner=windows-2025'
+            'cygwin_site=https://mirrors.kernel.org/sourceware/cygwin/'
             'cygwin_action_commit=006ad0b0946ca6d0a3ea2d4437677fa767392401'
             'cygwin_setup_signature_check=true'
             'native_engine_compiled=false'
@@ -128,10 +130,11 @@ jobs:
             'windivert_driver_installed=false'
           ) | Out-File -FilePath evidence\windows-dependency-intake.txt -Encoding ascii
 
-          Get-ChildItem evidence -File | Sort-Object Name | ForEach-Object {
+          $sumLines = Get-ChildItem evidence -File | Where-Object Name -ne 'SHA256SUMS.txt' | Sort-Object Name | ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
             "$hash  $($_.Name)"
-          } | Out-File -FilePath evidence\SHA256SUMS.txt -Encoding ascii
+          }
+          $sumLines | Out-File -FilePath evidence\SHA256SUMS.txt -Encoding ascii
 
       - name: Upload text evidence only
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
