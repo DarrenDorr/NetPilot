@@ -117,6 +117,35 @@ jobs:
           grep -Fq 'feed_result == CTRACK_FEED_RESOURCE_EXHAUSTED' nfq2/desync.c
           grep -Fq 'ps->verdict = VERDICT_PASS;' nfq2/desync.c
 
+      - name: Verify and apply NetPilot patch 0003
+        shell: bash
+        working-directory: zapret2
+        run: |
+          set -euo pipefail
+
+          patch_file="../netpilot/security/native-admission/patches/zapret2-r28/0003-bounded-delayed-queue-bytes.patch"
+          test -f "$patch_file"
+          git apply --check "$patch_file"
+
+          mapfile -t patched_files < <(git apply --numstat "$patch_file" | awk '{print $3}' | sort)
+          expected_files=(
+            "nfq2/packet_queue.c"
+            "nfq2/packet_queue.h"
+          )
+          test "${#patched_files[@]}" -eq "${#expected_files[@]}"
+          for i in "${!expected_files[@]}"; do
+            test "${patched_files[$i]}" = "${expected_files[$i]}"
+          done
+
+          git apply "$patch_file"
+
+          grep -Fq 'size_t max_bytes;' nfq2/packet_queue.h
+          grep -Fq 'size_t queued_bytes;' nfq2/packet_queue.h
+          grep -Fq 'rawpacket_queue_set_max_bytes' nfq2/packet_queue.h
+          grep -Fq 'new_queued_bytes < q->queued_bytes' nfq2/packet_queue.c
+          grep -Fq 'new_queued_bytes > q->max_bytes' nfq2/packet_queue.c
+          grep -Fq 'q->queued_bytes = new_queued_bytes;' nfq2/packet_queue.c
+
       - name: Produce provenance evidence
         shell: bash
         working-directory: zapret2
@@ -126,9 +155,10 @@ jobs:
 
           patch_0001="../netpilot/security/native-admission/patches/zapret2-r28/0001-explicit-conntrack-feed-result.patch"
           patch_0002="../netpilot/security/native-admission/patches/zapret2-r28/0002-bounded-conntrack-resource-result.patch"
+          patch_0003="../netpilot/security/native-admission/patches/zapret2-r28/0003-bounded-delayed-queue-bytes.patch"
 
           {
-            echo "schema_version=2"
+            echo "schema_version=3"
             echo "candidate=zapret2-v1.0.6-plus-uaf-fix"
             echo "repository=https://github.com/bol-van/zapret2"
             echo "head_commit=$(git rev-parse HEAD)"
@@ -141,6 +171,7 @@ jobs:
             echo "desync_c_upstream_sha256=54e3c9d03f62a844ee549e2ddc036c0253147c9aae67d937da8cc29c67a026bd"
             echo "netpilot_patch_0001_sha256=$(sha256sum "$patch_0001" | awk '{print $1}')"
             echo "netpilot_patch_0002_sha256=$(sha256sum "$patch_0002" | awk '{print $1}')"
+            echo "netpilot_patch_0003_sha256=$(sha256sum "$patch_0003" | awk '{print $1}')"
             echo "patched_worktree_files_begin"
             git diff --name-only HEAD | sort
             echo "patched_worktree_files_end"
@@ -149,6 +180,7 @@ jobs:
           git diff --binary HEAD^ HEAD -- nfq2/desync.c > ../evidence/zapret2-uaf-fix.patch
           cp "$patch_0001" ../evidence/netpilot-0001-explicit-conntrack-feed-result.patch
           cp "$patch_0002" ../evidence/netpilot-0002-bounded-conntrack-resource-result.patch
+          cp "$patch_0003" ../evidence/netpilot-0003-bounded-delayed-queue-bytes.patch
           git diff --binary HEAD > ../evidence/netpilot-patched-worktree.diff
           sha256sum ../evidence/* | sort > ../evidence/SHA256SUMS.txt
 
