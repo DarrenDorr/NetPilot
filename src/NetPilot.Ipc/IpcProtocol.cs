@@ -7,8 +7,8 @@ namespace NetPilot.Ipc;
 
 public static class IpcProtocol
 {
-    public const int Version = 1;
-    public const string WindowsPipeName = "NetPilot.Service.v1";
+    public const int Version = 2;
+    public const string WindowsPipeName = "NetPilot.Service.v2";
     public const int MaxMessageBytes = 64 * 1024;
     public const int ConnectTimeoutMilliseconds = 2_000;
     public const int RequestTimeoutMilliseconds = 5_000;
@@ -34,20 +34,41 @@ public static class IpcProtocol
 public enum IpcCommand
 {
     Ping,
-    ExecutePrivilegedOperation
+    ExecutePrivilegedOperation,
+    ZapretListStrategies,
+    ZapretGetStatus,
+    ZapretStart,
+    ZapretStop
 }
 
 public sealed record IpcRequest(
     int ProtocolVersion,
     Guid RequestId,
     IpcCommand Command,
-    PrivilegedOperation? Operation)
+    PrivilegedOperation? Operation = null,
+    ZapretStartRequest? ZapretStart = null)
 {
     public static IpcRequest CreatePing() =>
-        new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.Ping, null);
+        new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.Ping);
 
     public static IpcRequest CreateOperation(PrivilegedOperation operation) =>
         new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.ExecutePrivilegedOperation, operation);
+
+    public static IpcRequest CreateZapretListStrategies() =>
+        new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.ZapretListStrategies);
+
+    public static IpcRequest CreateZapretGetStatus() =>
+        new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.ZapretGetStatus);
+
+    public static IpcRequest CreateZapretStart(string strategyId) =>
+        new(
+            IpcProtocol.Version,
+            Guid.NewGuid(),
+            IpcCommand.ZapretStart,
+            ZapretStart: new ZapretStartRequest(strategyId));
+
+    public static IpcRequest CreateZapretStop() =>
+        new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.ZapretStop);
 }
 
 public sealed record IpcResponse(
@@ -55,7 +76,8 @@ public sealed record IpcResponse(
     Guid RequestId,
     bool Success,
     string Code,
-    string? Message = null);
+    string? Message = null,
+    ZapretIpcPayload? Zapret = null);
 
 public sealed class IpcProtocolException(string code, string message, Exception? innerException = null)
     : Exception(message, innerException)

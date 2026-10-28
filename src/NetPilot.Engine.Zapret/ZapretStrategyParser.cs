@@ -93,10 +93,11 @@ public static partial class ZapretStrategyParser
         var rawArguments = TokenizeArguments(argumentText);
         var arguments = rawArguments.Select(ParseArgument).ToArray();
         var id = ZapretStrategyCatalog.GetStrategyId(sourceFileName);
+        var displayName = ZapretStrategyCatalog.GetStrategyDisplayName(sourceFileName);
 
         return new ZapretStrategyTemplate(
             id,
-            id == "DEFAULT" ? "Стандартная" : id,
+            displayName,
             sourceFileName,
             arguments);
     }
