@@ -34,6 +34,16 @@ internal static class Program
             return 10;
         }
 
+        // ExecAsOriginalUser обязан вернуть нас к исходному не-elevated пользователю.
+        // Если Setup был вручную запущен уже elevated (например, через "Запуск от имени
+        // администратора"), Inno Setup не может восстановить исходный token. В таком случае
+        // enrollment должен завершиться fail-closed, а не привязать установку к admin SID.
+        var elevationState = WindowsProcessElevation.GetCurrentState();
+        if (!WindowsInstallerEnrollmentPolicy.MayCompleteEnrollment(elevationState))
+        {
+            return 13;
+        }
+
         try
         {
             var client = new WindowsPrivilegedServiceClient();
