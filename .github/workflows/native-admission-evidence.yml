@@ -1,0 +1,146 @@
+name: Native Admission Evidence
+
+on:
+  push:
+    branches: [ feature/engine-bootstrap-r15 ]
+    paths:
+      - '.github/workflows/native-admission-evidence.yml'
+      - 'security/native-admission/flowseal-zapret-1.10.4.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  flowseal-zapret-1104:
+    runs-on: windows-2025
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Collect deterministic native evidence without execution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+
+          $uri = 'https://github.com/Flowseal/zapret-discord-youtube/releases/download/1.10.4/zapret-discord-youtube-1.10.4.zip'
+          $expectedArchiveSha256 = '291af673bd0238506f9548e0e94ca0abf244000f4c9a06960544fb01c5f97b34'
+          $expectedArchiveSize = 1518649
+          $archivePath = Join-Path $env:RUNNER_TEMP 'zapret-discord-youtube-1.10.4.zip'
+          $extractRoot = Join-Path $env:RUNNER_TEMP 'netpilot-native-admission-1.10.4'
+
+          Remove-Item -LiteralPath $archivePath -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $extractRoot | Out-Null
+
+          Invoke-WebRequest -Uri $uri -OutFile $archivePath -UseBasicParsing -MaximumRedirection 5
+
+          $archiveItem = Get-Item -LiteralPath $archivePath
+          $archiveSha256 = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($archiveItem.Length -ne $expectedArchiveSize) {
+            throw "Archive size mismatch. Expected $expectedArchiveSize, got $($archiveItem.Length)."
+          }
+          if ($archiveSha256 -ne $expectedArchiveSha256) {
+            throw "Archive SHA-256 mismatch. Expected $expectedArchiveSha256, got $archiveSha256."
+          }
+
+          Add-Type -AssemblyName System.IO.Compression
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($archivePath)
+          try {
+            foreach ($entry in $archive.Entries) {
+              $name = $entry.FullName.Replace('\','/')
+              if ([string]::IsNullOrWhiteSpace($name)) { continue }
+
+              if ($name.StartsWith('/') -or $name.StartsWith('\') -or $name -match '^[A-Za-z]:' -or $name.Split('/') -contains '..') {
+                throw "Unsafe archive entry path: $name"
+              }
+
+              $unixMode = (($entry.ExternalAttributes -shr 16) -band 0xF000)
+              if ($unixMode -eq 0xA000) {
+                throw "Symlink archive entry is forbidden: $name"
+              }
+            }
+
+            $nativeInventory = @(
+              'bin/winws.exe',
+              'bin/WinDivert.dll',
+              'bin/WinDivert64.sys',
+              'bin/cygwin1.dll'
+            )
+
+            $allExecutableLike = @($archive.Entries | Where-Object {
+              $n = $_.FullName.Replace('\','/')
+              $n -match '(?i)\.(exe|dll|sys)$'
+            } | ForEach-Object { $_.FullName.Replace('\','/') } | Sort-Object -Unique)
+
+            Write-Host 'Archive executable/native inventory:'
+            $allExecutableLike | ForEach-Object { Write-Host " - $_" }
+
+            $results = @()
+            foreach ($relativePath in $nativeInventory) {
+              $entry = $archive.Entries | Where-Object { $_.FullName.Replace('\','/') -ceq $relativePath } | Select-Object -Single
+              if ($null -eq $entry) {
+                throw "Required native component missing: $relativePath"
+              }
+
+              $targetPath = Join-Path $extractRoot ($relativePath.Replace('/', [IO.Path]::DirectorySeparatorChar))
+              $targetDir = Split-Path -Parent $targetPath
+              New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+
+              $input = $entry.Open()
+              try {
+                $output = [IO.File]::Open($targetPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+                try { $input.CopyTo($output) } finally { $output.Dispose() }
+              } finally { $input.Dispose() }
+
+              $fileItem = Get-Item -LiteralPath $targetPath
+              $hash = (Get-FileHash -LiteralPath $targetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+              $signature = Get-AuthenticodeSignature -LiteralPath $targetPath
+              $version = $fileItem.VersionInfo
+
+              $result = [ordered]@{
+                path = $relativePath
+                size_bytes = $fileItem.Length
+                sha256 = $hash
+                file_version = if ([string]::IsNullOrWhiteSpace($version.FileVersion)) { $null } else { $version.FileVersion }
+                product_version = if ([string]::IsNullOrWhiteSpace($version.ProductVersion)) { $null } else { $version.ProductVersion }
+                company_name = if ([string]::IsNullOrWhiteSpace($version.CompanyName)) { $null } else { $version.CompanyName }
+                product_name = if ([string]::IsNullOrWhiteSpace($version.ProductName)) { $null } else { $version.ProductName }
+                signature_status = [string]$signature.Status
+                signer_subject = if ($null -eq $signature.SignerCertificate) { $null } else { $signature.SignerCertificate.Subject }
+                signer_thumbprint = if ($null -eq $signature.SignerCertificate) { $null } else { $signature.SignerCertificate.Thumbprint }
+                signer_not_after = if ($null -eq $signature.SignerCertificate) { $null } else { $signature.SignerCertificate.NotAfter.ToUniversalTime().ToString('o') }
+              }
+              $results += [pscustomobject]$result
+            }
+
+            $evidence = [ordered]@{
+              upstream = 'Flowseal/zapret-discord-youtube'
+              release_tag = '1.10.4'
+              release_commit = '176f56dc3f11ce5915c26abcdde903f93d835b64'
+              archive_sha256 = $archiveSha256
+              archive_size_bytes = $archiveItem.Length
+              executable_native_inventory = $allExecutableLike
+              components = $results
+            }
+
+            Write-Host '----- NETP NATIVE ADMISSION EVIDENCE BEGIN -----'
+            $evidence | ConvertTo-Json -Depth 8
+            Write-Host '----- NETP NATIVE ADMISSION EVIDENCE END -----'
+          }
+          finally {
+            $archive.Dispose()
+            Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $archivePath -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Evidence interpretation boundary
+        shell: pwsh
+        run: |
+          Write-Host 'This workflow never executes any downloaded EXE/DLL/SYS.'
+          Write-Host 'Valid Authenticode/driver status, exact version identity and current advisory applicability still require security review before ADMIT.'
