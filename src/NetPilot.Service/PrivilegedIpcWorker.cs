@@ -6,19 +6,25 @@ using NetPilot.Engine.Zapret.Windows;
 using NetPilot.Ipc;
 using NetPilot.Platform.Windows;
 using NetPilot.Security;
+using NetPilot.Updater;
 
 namespace NetPilot.Service;
 
 public sealed class PrivilegedIpcWorker(
     WindowsNamedPipeServerFactory pipeFactory,
     WindowsNamedPipePeerAuthenticator peerAuthenticator,
+    WindowsAuthorizedUserStore authorizedUserStore,
     OperationPolicy operationPolicy,
     UserResourceOwnership zapretOwnership,
     ZapretEngineController zapretController,
+    ZapretUpdateOrchestrator zapretUpdater,
     ILogger<PrivilegedIpcWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // На первом запуске служба создаёт одноразовый nonce в защищённом Program Files.
+        // Никакие обычные IPC-команды не принимаются, пока установщик не привяжет SID.
+        authorizedUserStore.EnsureEnrollmentNonce();
         logger.LogInformation("Служба IPC NetPilot запущена.");
 
         while (!stoppingToken.IsCancellationRequested)
@@ -52,37 +58,37 @@ public sealed class PrivilegedIpcWorker(
         if (!clientAuthentication.IsAuthenticated || clientAuthentication.Identity is null)
         {
             logger.LogWarning(
-                "IPC-соединение отклонено: клиент не прошёл авторизацию. Код: {Code}.",
+                "IPC-соединение отклонено: клиент не прошёл проверку Windows. Код: {Code}.",
                 clientAuthentication.Code);
             return;
         }
 
         var clientIdentity = clientAuthentication.Identity;
         logger.LogDebug(
-            "IPC-клиент авторизован. PID: {ProcessId}; Session: {SessionId}.",
+            "Локальный IPC-клиент проверен. PID: {ProcessId}; Session: {SessionId}.",
             clientIdentity.ProcessId,
             clientIdentity.SessionId);
 
-        using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        requestTimeout.CancelAfter(IpcProtocol.RequestTimeoutMilliseconds);
-        var requestToken = requestTimeout.Token;
-
         IpcRequest request;
-        try
+        using (var readTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
         {
-            request = await IpcFraming.ReadAsync<IpcRequest>(pipe, requestToken);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            logger.LogWarning("IPC-соединение закрыто: превышено допустимое время ожидания запроса.");
-            return;
-        }
-        catch (IpcProtocolException exception)
-        {
-            logger.LogWarning(
-                "IPC-сообщение отклонено. Код: {Code}. Содержимое сообщения не журналируется.",
-                exception.Code);
-            return;
+            readTimeout.CancelAfter(IpcProtocol.RequestTimeoutMilliseconds);
+            try
+            {
+                request = await IpcFraming.ReadAsync<IpcRequest>(pipe, readTimeout.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning("IPC-соединение закрыто: превышено время ожидания запроса.");
+                return;
+            }
+            catch (IpcProtocolException exception)
+            {
+                logger.LogWarning(
+                    "IPC-сообщение отклонено. Код: {Code}. Содержимое сообщения не журналируется.",
+                    exception.Code);
+                return;
+            }
         }
 
         var validation = IpcRequestValidator.Validate(request);
@@ -91,49 +97,121 @@ public sealed class PrivilegedIpcWorker(
             await SendResponseAsync(
                 pipe,
                 Failure(request, validation.Code, validation.Message),
-                requestToken);
+                cancellationToken);
             return;
         }
 
-        IpcResponse response;
-        try
+        if (request.Command != IpcCommand.EnrollAuthorizedUser
+            && !authorizedUserStore.IsAuthorized(clientIdentity.UserSid))
         {
-            response = await DispatchAsync(request, clientIdentity.UserSid, requestToken);
-        }
-        catch (ZapretStrategyParseException exception)
-        {
-            response = Failure(request, exception.Code, exception.Message);
-        }
-        catch (ZapretProcessRunnerException exception)
-        {
-            response = Failure(request, exception.Code, exception.Message);
-        }
-        catch (DirectoryNotFoundException)
-        {
-            response = Failure(
-                request,
-                "ZapretNotInstalled",
-                "Движок Zapret ещё не установлен в защищённый каталог NetPilot.");
-        }
-        catch (UnauthorizedAccessException)
-        {
-            response = Failure(
-                request,
-                "EngineAccessDenied",
-                "Служба не получила безопасный доступ к файлам движка Zapret.");
-        }
-        catch (IOException)
-        {
-            response = Failure(
-                request,
-                "EngineIoError",
-                "Не удалось безопасно прочитать состояние движка Zapret.");
+            await SendResponseAsync(
+                pipe,
+                Failure(
+                    request,
+                    authorizedUserStore.IsEnrolled ? "UnauthorizedUser" : "EnrollmentRequired",
+                    authorizedUserStore.IsEnrolled
+                        ? "Эта учётная запись Windows не является владельцем установки NetPilot."
+                        : "Установка NetPilot ещё не привязана к пользовательской учётной записи."),
+                cancellationToken);
+            return;
         }
 
-        await SendResponseAsync(pipe, response, requestToken);
+        var operationTimeoutMilliseconds = request.Command == IpcCommand.ZapretInstallLatest
+            ? IpcProtocol.EngineInstallTimeoutMilliseconds
+            : IpcProtocol.RequestTimeoutMilliseconds;
+
+        IpcResponse response;
+        using (var operationTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+        {
+            operationTimeout.CancelAfter(operationTimeoutMilliseconds);
+            var operationToken = operationTimeout.Token;
+
+            try
+            {
+                response = request.Command == IpcCommand.EnrollAuthorizedUser
+                    ? DispatchEnrollment(request, clientIdentity.UserSid)
+                    : await DispatchAuthorizedAsync(request, clientIdentity.UserSid, operationToken);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                response = Failure(
+                    request,
+                    "OperationTimeout",
+                    "Операция NetPilot превысила допустимое время выполнения и была остановлена.");
+            }
+            catch (ZapretStrategyParseException exception)
+            {
+                response = Failure(request, exception.Code, exception.Message);
+            }
+            catch (ZapretProcessRunnerException exception)
+            {
+                response = Failure(request, exception.Code, exception.Message);
+            }
+            catch (UpdateSecurityException exception)
+            {
+                response = Failure(request, exception.Code, exception.Message);
+            }
+            catch (HttpRequestException)
+            {
+                response = Failure(
+                    request,
+                    "EngineDownloadNetworkError",
+                    "Не удалось получить официальный пакет Zapret с GitHub.");
+            }
+            catch (DirectoryNotFoundException)
+            {
+                response = Failure(
+                    request,
+                    "ZapretNotInstalled",
+                    "Движок Zapret ещё не установлен в защищённый каталог NetPilot.");
+            }
+            catch (InvalidDataException)
+            {
+                response = Failure(
+                    request,
+                    "ProtectedConfigurationInvalid",
+                    "Защищённая конфигурация NetPilot повреждена или имеет недопустимый формат.");
+            }
+            catch (UnauthorizedAccessException)
+            {
+                response = Failure(
+                    request,
+                    "EngineAccessDenied",
+                    "Служба не получила безопасный доступ к системным файлам NetPilot.");
+            }
+            catch (IOException)
+            {
+                response = Failure(
+                    request,
+                    "EngineIoError",
+                    "Не удалось безопасно выполнить файловую операцию NetPilot.");
+            }
+        }
+
+        await SendResponseAsync(pipe, response, cancellationToken);
     }
 
-    private async Task<IpcResponse> DispatchAsync(
+    private IpcResponse DispatchEnrollment(IpcRequest request, string clientSid)
+    {
+        var result = authorizedUserStore.CompleteEnrollment(
+            request.EnrollmentNonce!,
+            clientSid);
+
+        return result.Success
+            ? Success(
+                request,
+                result.Status == AuthorizedUserEnrollmentStatus.Enrolled
+                    ? "Пользователь Windows успешно привязан к установке NetPilot."
+                    : "Этот пользователь Windows уже является владельцем установки NetPilot.")
+            : Failure(
+                request,
+                result.Code,
+                result.Status == AuthorizedUserEnrollmentStatus.InvalidNonce
+                    ? "Одноразовый код регистрации NetPilot отклонён."
+                    : "Регистрация владельца NetPilot больше недоступна.");
+    }
+
+    private async Task<IpcResponse> DispatchAuthorizedAsync(
         IpcRequest request,
         string clientSid,
         CancellationToken cancellationToken)
@@ -143,7 +221,34 @@ public sealed class PrivilegedIpcWorker(
             case IpcCommand.Ping:
                 return Success(
                     request,
-                    "Служба NetPilot доступна и IPC-клиент авторизован.");
+                    "Служба NetPilot доступна и пользователь Windows авторизован.");
+
+            case IpcCommand.ZapretGetInstallationStatus:
+            {
+                var engineRoot = WindowsZapretEngineLocation.GetDefaultEngineRoot();
+                if (!Directory.Exists(engineRoot))
+                {
+                    return new IpcResponse(
+                        IpcProtocol.Version,
+                        request.RequestId,
+                        true,
+                        "Ok",
+                        ZapretInstallation: new IpcZapretInstallationStatus(false));
+                }
+
+                var manifest = await EngineInstallationManifest.ReadAsync(
+                    engineRoot,
+                    cancellationToken);
+
+                return new IpcResponse(
+                    IpcProtocol.Version,
+                    request.RequestId,
+                    true,
+                    "Ok",
+                    ZapretInstallation: new IpcZapretInstallationStatus(
+                        true,
+                        manifest.Version));
+            }
 
             case IpcCommand.ZapretListStrategies:
             {
@@ -174,6 +279,45 @@ public sealed class PrivilegedIpcWorker(
                         status,
                         includeStrategy: status.State == ZapretProcessState.Running
                             && zapretOwnership.IsOwnedBy(clientSid)));
+            }
+
+            case IpcCommand.ZapretInstallLatest:
+            {
+                if (!operationPolicy.IsAllowed(PrivilegedOperation.EngineInstall))
+                {
+                    return Failure(
+                        request,
+                        "OperationDenied",
+                        "Установка сетевого движка запрещена политикой безопасности.");
+                }
+
+                if (Directory.Exists(WindowsZapretEngineLocation.GetDefaultEngineRoot()))
+                {
+                    return Failure(
+                        request,
+                        "ZapretAlreadyInstalled",
+                        "Zapret уже установлен. Обновление является отдельной операцией и здесь не выполняется.");
+                }
+
+                var result = await zapretUpdater.ApplyLatestAsync(cancellationToken);
+                if (result.RuntimeRestore.Status != ZapretRuntimeRestoreStatus.NotRequired)
+                {
+                    return Failure(
+                        request,
+                        "UnexpectedRuntimeRestore",
+                        "Первая установка завершилась в неожиданном состоянии движка.");
+                }
+
+                return new IpcResponse(
+                    IpcProtocol.Version,
+                    request.RequestId,
+                    true,
+                    "Ok",
+                    "Официальный пакет Zapret установлен.",
+                    ZapretInstall: new IpcZapretInstallResult(
+                        result.Version,
+                        Installed: true,
+                        result.TemporaryCleanupCompleted));
             }
 
             case IpcCommand.ZapretStartStrategy:
@@ -257,6 +401,12 @@ public sealed class PrivilegedIpcWorker(
                     ZapretStatus: ToIpcStatus(stopped, includeStrategy: false));
             }
 
+            case IpcCommand.EnrollAuthorizedUser:
+                return Failure(
+                    request,
+                    "EnrollmentDispatchError",
+                    "Команда регистрации не должна попадать в обычный обработчик.");
+
             default:
                 return Failure(request, "UnknownCommand", "Указана неизвестная IPC-команда.");
         }
@@ -288,9 +438,13 @@ public sealed class PrivilegedIpcWorker(
         string? message) =>
         new(IpcProtocol.Version, request.RequestId, false, code, message);
 
-    private static Task SendResponseAsync(
+    private static async Task SendResponseAsync(
         Stream stream,
         IpcResponse response,
-        CancellationToken cancellationToken) =>
-        IpcFraming.WriteAsync(stream, response, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        using var responseTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        responseTimeout.CancelAfter(IpcProtocol.RequestTimeoutMilliseconds);
+        await IpcFraming.WriteAsync(stream, response, responseTimeout.Token);
+    }
 }
