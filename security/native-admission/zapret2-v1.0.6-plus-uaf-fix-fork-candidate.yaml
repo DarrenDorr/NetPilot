@@ -42,6 +42,7 @@ policy:
 static_review:
   source_review_document: docs/ZAPRET2-STATIC-ADMISSION-R28.1.md
   resource_hardening_document: docs/ZAPRET2-RESOURCE-HARDENING-R28.1.md
+  saturation_semantics_document: docs/ZAPRET2-CONNTRACK-SATURATION-R28.2.md
   controlled_build_document: docs/ZAPRET2-CONTROLLED-BUILD-R28.2.md
   provenance_workflow: .github/workflows/native-candidate-provenance.yml
   fork_strategy: OWNED_MINIMAL_HARDENED_FORK_CANDIDATE
@@ -57,6 +58,10 @@ verified_delta:
     status: PASS_FOR_KNOWN_UAF_FIX_ONLY
     finding: Патч сбрасывает сохранённое представление reassembly payload после освобождения буфера перед повторным разбором.
     limitation: Это подтверждает исправление ранее найденного UAF, но не является полным security admission всего движка.
+  - id: Z2-SEMANTICS-003
+    status: DESIGN_VERIFIED
+    finding: ConntrackPoolFeed()==false в main desync path не означает pass-through; play_prolog продолжает без conntrack и может применить stateless desync.
+    effect: Простой count cap с return false отклонён. Resource saturation должен иметь отдельный internal result и явный VERDICT_PASS до dp_find/desync processing.
 
 provenance_gate:
   workflow_status: REQUIRED_EVIDENCE
@@ -77,10 +82,10 @@ provenance_gate:
 residual_review_blockers:
   - id: Z2-STATE-001
     title: Нет продуктового агрегатного лимита conntrack/ipcache.
-    required_action: Реализовать и измерить bounded-resource policy; при насыщении новый flow должен fail-safe/pass-through, без произвольного вытеснения активных tracks.
+    required_action: Сначала ввести explicit conntrack feed result, отделяющий обычное отсутствие track от resource exhaustion; затем resource saturation main path должен завершаться с VERDICT_PASS до dp_find/desync, без вытеснения активных tracks.
   - id: Z2-DELAYED-QUEUE-002
     title: Delayed raw packet queue имеет packet-count bound, но нужен отдельный byte budget.
-    required_action: Добавить overflow-safe accounting queued bytes и тесты saturated/failure paths до ADMIT.
+    required_action: Добавить overflow-safe queued-bytes accounting до allocation/copy и regression tests enqueue/dequeue/destroy/saturation, не ослабляя 64-packet cap.
   - id: Z2-HOSTNAME-003
     title: Packet-derived hostname не должен становиться доверенным постоянным содержимым auto-hostlist/log.
     required_action: Persistent auto-hostlist выключен в первом production profile; не включать без отдельной валидации/квот/recovery review.
@@ -110,7 +115,7 @@ fork_rules:
 
 required_before_admit:
   - Успешное evidence от Native Candidate Provenance workflow для exact source anchor.
-  - Реализовать и проверить resource hardening из docs/ZAPRET2-RESOURCE-HARDENING-R28.1.md.
+  - Реализовать behavior-preserving feed-result refactor, затем aggregate conntrack budget и delayed queue byte budget согласно docs/ZAPRET2-CONNTRACK-SATURATION-R28.2.md.
   - Controlled source build с pinned immutable actions/toolchain/dependency hashes.
   - Полный Windows x64 inventory EXE/DLL/SYS с SHA-256 и проверкой подписей.
   - Sanitizer/static-analysis tests для доступных платформ и parser fuzz regression tests.
