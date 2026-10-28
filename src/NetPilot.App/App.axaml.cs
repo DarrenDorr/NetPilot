@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using NetPilot.App.ViewModels;
 using NetPilot.App.Views;
 
 namespace NetPilot.App;
@@ -16,7 +15,7 @@ public sealed partial class App : Application
         {
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainWindowViewModel()
+                DataContext = AppComposition.CreateMainWindowViewModel()
             };
         }
 
