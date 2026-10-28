@@ -1,3 +1,4 @@
+using System.Text;
 using NetPilot.Ipc;
 using NetPilot.Security;
 
@@ -49,10 +50,12 @@ public sealed class IpcProtocolTests
         var request = IpcRequest.CreateOperation(PrivilegedOperation.EngineStart);
         await using var stream = new MemoryStream();
 
-        await IpcFraming.WriteAsync(stream, request);
+        await IpcFraming.WriteAsync(stream, request, TestContext.Current.CancellationToken);
         stream.Position = 0;
 
-        var restored = await IpcFraming.ReadAsync<IpcRequest>(stream);
+        var restored = await IpcFraming.ReadAsync<IpcRequest>(
+            stream,
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(request, restored);
     }
@@ -62,12 +65,58 @@ public sealed class IpcProtocolTests
     {
         await using var stream = new MemoryStream();
         var invalidLength = BitConverter.GetBytes(IpcProtocol.MaxMessageBytes + 1);
-        await stream.WriteAsync(invalidLength);
+        await stream.WriteAsync(invalidLength, TestContext.Current.CancellationToken);
         stream.Position = 0;
 
         var exception = await Assert.ThrowsAsync<IpcProtocolException>(
-            async () => await IpcFraming.ReadAsync<IpcRequest>(stream));
+            async () => await IpcFraming.ReadAsync<IpcRequest>(
+                stream,
+                TestContext.Current.CancellationToken));
 
         Assert.Equal("InvalidMessageLength", exception.Code);
+    }
+
+    [Fact]
+    public async Task Numeric_enum_values_are_rejected()
+    {
+        var json = $$"""
+            {"protocolVersion":{{IpcProtocol.Version}},"requestId":"{{Guid.NewGuid()}}","command":0,"operation":null}
+            """;
+
+        await using var stream = CreateFramedJson(json);
+
+        var exception = await Assert.ThrowsAsync<IpcProtocolException>(
+            async () => await IpcFraming.ReadAsync<IpcRequest>(
+                stream,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal("InvalidJson", exception.Code);
+    }
+
+    [Fact]
+    public async Task Unknown_json_fields_are_rejected()
+    {
+        var json = $$"""
+            {"protocolVersion":{{IpcProtocol.Version}},"requestId":"{{Guid.NewGuid()}}","command":"Ping","operation":null,"unexpected":"value"}
+            """;
+
+        await using var stream = CreateFramedJson(json);
+
+        var exception = await Assert.ThrowsAsync<IpcProtocolException>(
+            async () => await IpcFraming.ReadAsync<IpcRequest>(
+                stream,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal("InvalidJson", exception.Code);
+    }
+
+    private static MemoryStream CreateFramedJson(string json)
+    {
+        var payload = Encoding.UTF8.GetBytes(json);
+        var stream = new MemoryStream();
+        stream.Write(BitConverter.GetBytes(payload.Length));
+        stream.Write(payload);
+        stream.Position = 0;
+        return stream;
     }
 }
