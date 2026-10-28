@@ -34,17 +34,25 @@ jobs:
           path: byedpi
           persist-credentials: false
 
-      - name: Verify source identity and apply reviewed patch
+      - name: Verify source identity and apply reviewed canonical patch
         shell: bash
         run: |
           set -euo pipefail
           test "$(git -C byedpi rev-parse HEAD)" = "7efde1b1296eaaa187b70e951894dde17527489c"
           test "$(git -C byedpi rev-parse 'HEAD^{tree}')" = "8d13f6f5939190cd27ee68696247073a00b3e7dc"
 
-          patch_file="$PWD/netpilot/security/native-admission/patches/byedpi-r28/0001-loopback-only-listener.patch"
-          echo "1b3dfe6659dc39c706a626aaeaf597671ce0ab1b686a7f1898bca9e2a08b1251  $patch_file" | sha256sum -c -
-          git -C byedpi apply --check "$patch_file"
-          git -C byedpi apply "$patch_file"
+          patch_path='security/native-admission/patches/byedpi-r28/0001-loopback-only-listener.patch'
+          expected_blob='9e00f9402fe65720102041c4174fb7f5673291dd'
+          expected_sha256='1b3dfe6659dc39c706a626aaeaf597671ce0ab1b686a7f1898bca9e2a08b1251'
+
+          test "$(git -C netpilot rev-parse "HEAD:$patch_path")" = "$expected_blob"
+          mkdir -p scratch
+          git -C netpilot show "HEAD:$patch_path" > scratch/byedpi-0001.patch
+          actual_sha256="$(sha256sum scratch/byedpi-0001.patch | awk '{print $1}')"
+          test "$actual_sha256" = "$expected_sha256"
+
+          git -C byedpi apply --check "$PWD/scratch/byedpi-0001.patch"
+          git -C byedpi apply "$PWD/scratch/byedpi-0001.patch"
 
           grep -Fq 'Listening IP, loopback only; default 127.0.0.1' byedpi/main.c
           grep -Fq 'netpilot_is_loopback_addr' byedpi/main.c
@@ -100,20 +108,30 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p evidence
+          linux_compiler='not-installed-or-not-observed'
+          windows_compiler='not-installed-or-not-observed'
+          if command -v gcc >/dev/null 2>&1; then
+            linux_compiler="$(gcc --version | head -n1)"
+          fi
+          if command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1; then
+            windows_compiler="$(x86_64-w64-mingw32-gcc --version | head -n1)"
+          fi
           {
-            echo 'schema_version=1'
+            echo 'schema_version=2'
             echo 'scope=byedpi-v0.17.3-loopback-hardening-compile-only'
             echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
             echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
+            echo 'patch_0001_git_blob_sha1=9e00f9402fe65720102041c4174fb7f5673291dd'
             echo 'patch_0001_sha256=1b3dfe6659dc39c706a626aaeaf597671ce0ab1b686a7f1898bca9e2a08b1251'
             echo "linux_compile_outcome=$LINUX_OUTCOME"
             echo "windows_x64_cross_compile_outcome=$WINDOWS_OUTCOME"
-            echo "linux_compiler=$(gcc --version | head -n1)"
-            echo "windows_compiler=$(x86_64-w64-mingw32-gcc --version | head -n1)"
+            echo "linux_compiler=$linux_compiler"
+            echo "windows_compiler=$windows_compiler"
             echo 'candidate_binary_executed=false'
             echo 'listener_opened=false'
             echo 'routing_changed=false'
           } > evidence/byedpi-compile-smoke.txt
+          rm -f scratch/byedpi-0001.patch
           sha256sum evidence/* | sort > evidence/SHA256SUMS-byedpi-compile-smoke.txt
 
       - name: Upload text evidence only
