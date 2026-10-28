@@ -72,20 +72,17 @@ public sealed class StrategySelectionAbortTests
 
     private sealed class CancellingProbe(FakeRuntime runtime) : IResourceHealthProbe
     {
-        private int _originalChecks;
-
         public Task<ResourceHealth> CheckAsync(
             ResourceDefinition resource,
             CancellationToken cancellationToken = default)
         {
             if (runtime.ActiveStrategyId == "ALT11")
             {
-                _originalChecks++;
                 return Task.FromResult(new ResourceHealth(
                     resource.Id,
                     ResourceHealthState.Unavailable,
                     DateTimeOffset.UtcNow,
-                    DiagnosticCode: "NetworkError"));
+                    DiagnosticCode: "TlsHandshakeFailed"));
             }
 
             throw new OperationCanceledException(cancellationToken);
