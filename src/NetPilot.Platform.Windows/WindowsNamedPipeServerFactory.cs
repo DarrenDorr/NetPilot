@@ -30,7 +30,7 @@ public sealed class WindowsNamedPipeServerFactory
 
         security.AddAccessRule(new PipeAccessRule(
             new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
-            PipeAccessRights.ReadWrite,
+            PipeAccessRights.ReadWrite | PipeAccessRights.ReadPermissions,
             AccessControlType.Allow));
 
         return NamedPipeServerStreamAcl.Create(
