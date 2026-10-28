@@ -57,7 +57,7 @@ VersionInfoProductTextVersion={#AppVersion}
 CloseApplications=yes
 RestartApplications=no
 RestartIfNeededByRun=no
-SetupMutex=Global\NetPilot.Setup.R14
+SetupMutex=Global\NetPilot.Setup.R15
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
@@ -66,6 +66,7 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "desktopicon"; Description: "Создать ярлык на рабочем столе"; GroupDescription: "Дополнительные задачи:"; Flags: unchecked
 
 [Dirs]
+Name: "{app}\Config"
 Name: "{app}\Engines"
 Name: "{app}\Engines\Zapret"
 
@@ -84,11 +85,17 @@ Filename: "{app}\App\NetPilot.exe"; Description: "Запустить NetPilot"; 
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\Engines"
+Type: filesandordirs; Name: "{app}\Config"
 
 [Code]
 const
   NetPilotServiceName = '{#ServiceName}';
   NetPilotServiceDisplayName = '{#ServiceDisplayName}';
+
+function GetCurrentProcessId: Cardinal;
+  external 'GetCurrentProcessId@kernel32.dll stdcall';
+function ProcessIdToSessionId(ProcessId: Cardinal; var SessionId: Cardinal): Boolean;
+  external 'ProcessIdToSessionId@kernel32.dll stdcall';
 
 function Quote(const Value: String): String;
 begin
@@ -98,6 +105,21 @@ end;
 function ScExe: String;
 begin
   Result := ExpandConstant('{sys}\sc.exe');
+end;
+
+function AuthorizedSidPath: String;
+begin
+  Result := ExpandConstant('{app}\Config\authorized-user.sid');
+end;
+
+function EnrollmentNoncePath: String;
+begin
+  Result := ExpandConstant('{app}\Config\enrollment.nonce');
+end;
+
+function EnrollmentSessionPath: String;
+begin
+  Result := ExpandConstant('{app}\Config\enrollment.session');
 end;
 
 function RunSc(const Parameters: String; const AllowNonZero: Boolean; var ResultCode: Integer): Boolean;
@@ -165,7 +187,6 @@ begin
 
   for I := 0 to GetArrayLength(Output.StdOut) - 1 do
   begin
-    { Числовое состояние 1 означает SERVICE_STOPPED и не зависит от языка Windows. }
     if Pos(': 1 ', Output.StdOut[I]) > 0 then
     begin
       Result := True;
@@ -187,7 +208,6 @@ begin
   if QueryServiceStopped then
     Exit;
 
-  { 1062 (service not active) допустим; фактическое состояние проверяем ниже. }
   RunSc('stop ' + Quote(NetPilotServiceName), True, ResultCode);
 
   for Attempt := 1 to 40 do
@@ -201,6 +221,17 @@ begin
   Result := False;
 end;
 
+procedure RemoveServiceBestEffort;
+var
+  ResultCode: Integer;
+begin
+  if ServiceExists then
+  begin
+    StopServiceAndWait;
+    RunSc('delete ' + Quote(NetPilotServiceName), True, ResultCode);
+  end;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
@@ -208,6 +239,128 @@ begin
 
   if not StopServiceAndWait then
     Result := 'Не удалось безопасно остановить службу NetPilot. Закройте NetPilot и повторите установку.';
+end;
+
+function PrepareEnrollmentSession: Boolean;
+var
+  SessionId: Cardinal;
+begin
+  Result := True;
+
+  { При обновлении владелец уже зафиксирован и не должен меняться. }
+  if FileExists(AuthorizedSidPath) then
+    Exit;
+
+  ForceDirectories(ExpandConstant('{app}\Config'));
+  SessionId := 0;
+  if (not ProcessIdToSessionId(GetCurrentProcessId, SessionId)) or (SessionId = 0) then
+  begin
+    Log('Не удалось определить интерактивную Windows Session ID установщика.');
+    Result := False;
+    Exit;
+  end;
+
+  Result := SaveStringToFile(
+    EnrollmentSessionPath,
+    IntToStr(SessionId),
+    False);
+
+  if not Result then
+    Log('Не удалось записать защищённую Session ID первичной регистрации.');
+end;
+
+function WaitForFile(const FileName: String; const MustExist: Boolean): Boolean;
+var
+  Attempt: Integer;
+begin
+  for Attempt := 1 to 60 do
+  begin
+    if FileExists(FileName) = MustExist then
+    begin
+      Result := True;
+      Exit;
+    end;
+    Sleep(250);
+  end;
+
+  Result := False;
+end;
+
+function CompleteOriginalUserEnrollment: Boolean;
+var
+  Nonce: AnsiString;
+  ResultCode: Integer;
+  AppExe: String;
+  Parameters: String;
+begin
+  Result := False;
+
+  if FileExists(AuthorizedSidPath) then
+  begin
+    Result := True;
+    Exit;
+  end;
+
+  if not WaitForFile(EnrollmentNoncePath, True) then
+  begin
+    Log('Служба не создала одноразовый nonce регистрации.');
+    Exit;
+  end;
+
+  if not LoadStringFromFile(EnrollmentNoncePath, Nonce) then
+  begin
+    Log('Не удалось прочитать одноразовый nonce регистрации.');
+    Exit;
+  end;
+
+  Nonce := Trim(Nonce);
+  if Length(Nonce) <> 64 then
+  begin
+    Log('Nonce регистрации имеет неожиданную длину.');
+    Exit;
+  end;
+
+  AppExe := ExpandConstant('{app}\App\NetPilot.exe');
+  Parameters := '--complete-install-enrollment ' + Quote(Nonce);
+
+  { Не журналируем nonce вручную; после успешного IPC он немедленно удаляется службой. }
+  if not ExecAsOriginalUser(
+    AppExe,
+    Parameters,
+    ExpandConstant('{app}\App'),
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode) then
+  begin
+    Log('Не удалось запустить пользовательский этап регистрации NetPilot.');
+    Exit;
+  end;
+
+  if ResultCode <> 0 then
+  begin
+    Log('Пользовательский этап регистрации NetPilot завершился с кодом ' + IntToStr(ResultCode) + '.');
+    Exit;
+  end;
+
+  if not WaitForFile(AuthorizedSidPath, True) then
+  begin
+    Log('Служба не сохранила SID владельца NetPilot.');
+    Exit;
+  end;
+
+  if not WaitForFile(EnrollmentNoncePath, False) then
+  begin
+    Log('Одноразовый nonce не был удалён после регистрации.');
+    Exit;
+  end;
+
+  if not WaitForFile(EnrollmentSessionPath, False) then
+  begin
+    Log('Session ID регистрации не была удалена после регистрации.');
+    Exit;
+  end;
+
+  Result := True;
 end;
 
 procedure ConfigureAndStartService;
@@ -243,7 +396,6 @@ begin
     ResultCode) then
     RaiseException('Не удалось настроить описание службы NetPilot.');
 
-  { Доступ к Service Control Manager: только LocalSystem и локальные администраторы. }
   if not RunSc(
     'sdset ' + Quote(NetPilotServiceName) +
     ' D:(A;;GA;;;SY)(A;;GA;;;BA)',
@@ -251,7 +403,6 @@ begin
     ResultCode) then
     RaiseException('Не удалось применить защищённый ACL службы NetPilot.');
 
-  { Две контролируемые попытки перезапуска при аварии, затем остановка. }
   if not RunSc(
     'failure ' + Quote(NetPilotServiceName) +
     ' reset= 86400 actions= restart/5000/restart/15000',
@@ -268,19 +419,22 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
+  begin
+    if not PrepareEnrollmentSession then
+      RaiseException('Не удалось подготовить безопасную привязку пользователя NetPilot.');
+
     ConfigureAndStartService;
+
+    if not CompleteOriginalUserEnrollment then
+    begin
+      RemoveServiceBestEffort;
+      RaiseException('Не удалось безопасно привязать службу NetPilot к текущему пользователю Windows.');
+    end;
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
-var
-  ResultCode: Integer;
 begin
   if CurUninstallStep = usUninstall then
-  begin
-    if ServiceExists then
-    begin
-      StopServiceAndWait;
-      RunSc('delete ' + Quote(NetPilotServiceName), True, ResultCode);
-    end;
-  end;
+    RemoveServiceBestEffort;
 end;
