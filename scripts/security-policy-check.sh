@@ -61,6 +61,39 @@ else
   fi
 fi
 
+# Native admission должен реально влиять на runtime, а не существовать только как документация.
+# Пока нет ни одного component set со статусом ADMIT, службе запрещено выдавать capabilities
+# установки и запуска движка. EngineStop остаётся доступным через специальный fail-closed профиль,
+# чтобы можно было остановить уже существующий legacy-процесс.
+service_program='src/NetPilot.Service/Program.cs'
+admission_dir='security/native-admission'
+
+if [[ ! -d "$admission_dir" ]]; then
+  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: каталог native admission отсутствует."
+  fail=1
+else
+  admitted_files="$(grep -RIlE '^admission_status:[[:space:]]*ADMIT[[:space:]]*$' "$admission_dir" --include='*.yaml' --include='*.yml' 2>/dev/null || true)"
+
+  if [[ -z "$admitted_files" ]]; then
+    if [[ ! -f "$service_program" ]]; then
+      echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: Program.cs службы NetPilot отсутствует."
+      fail=1
+    else
+      if ! grep -qF 'OperationPolicy.CreateNoAdmittedEnginePolicy()' "$service_program"; then
+        echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: без ADMIT служба обязана использовать fail-closed OperationPolicy."
+        fail=1
+      fi
+
+      direct_engine_capabilities="$(grep -nE 'PrivilegedOperation\.(EngineInstall|EngineStart)' "$service_program" || true)"
+      if [[ -n "$direct_engine_capabilities" ]]; then
+        printf '%s\n' "$direct_engine_capabilities"
+        echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: EngineInstall/EngineStart запрещены, пока native admission не содержит ADMIT."
+        fail=1
+      fi
+    fi
+  fi
+fi
+
 if [[ "$fail" -ne 0 ]]; then
   echo "Проверка политики безопасности NetPilot завершилась ошибкой."
   exit 1
