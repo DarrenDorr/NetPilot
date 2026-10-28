@@ -74,8 +74,7 @@ jobs:
             )
 
             $allExecutableLike = @($archive.Entries | Where-Object {
-              $n = $_.FullName.Replace('\','/')
-              $n -match '(?i)\.(exe|dll|sys)$'
+              $_.FullName.Replace('\','/') -match '(?i)\.(exe|dll|sys)$'
             } | ForEach-Object { $_.FullName.Replace('\','/') } | Sort-Object -Unique)
 
             Write-Host 'Archive executable/native inventory:'
@@ -83,10 +82,20 @@ jobs:
 
             $results = @()
             foreach ($relativePath in $nativeInventory) {
-              $entry = $archive.Entries | Where-Object { $_.FullName.Replace('\','/') -ceq $relativePath } | Select-Object -Single
-              if ($null -eq $entry) {
+              $suffix = '/' + $relativePath
+              $matches = @($archive.Entries | Where-Object {
+                $normalized = $_.FullName.Replace('\','/')
+                [string]::Equals($normalized, $relativePath, [StringComparison]::Ordinal) -or
+                  $normalized.EndsWith($suffix, [StringComparison]::Ordinal)
+              })
+
+              if ($matches.Count -eq 0) {
                 throw "Required native component missing: $relativePath"
               }
+              if ($matches.Count -ne 1) {
+                throw "Required native component is ambiguous: $relativePath; matches=$($matches.Count)"
+              }
+              $entry = $matches[0]
 
               $targetPath = Join-Path $extractRoot ($relativePath.Replace('/', [IO.Path]::DirectorySeparatorChar))
               $targetDir = Split-Path -Parent $targetPath
@@ -103,8 +112,9 @@ jobs:
               $signature = Get-AuthenticodeSignature -LiteralPath $targetPath
               $version = $fileItem.VersionInfo
 
-              $result = [ordered]@{
+              $results += [pscustomobject][ordered]@{
                 path = $relativePath
+                archive_path = $entry.FullName.Replace('\','/')
                 size_bytes = $fileItem.Length
                 sha256 = $hash
                 file_version = if ([string]::IsNullOrWhiteSpace($version.FileVersion)) { $null } else { $version.FileVersion }
@@ -116,7 +126,6 @@ jobs:
                 signer_thumbprint = if ($null -eq $signature.SignerCertificate) { $null } else { $signature.SignerCertificate.Thumbprint }
                 signer_not_after = if ($null -eq $signature.SignerCertificate) { $null } else { $signature.SignerCertificate.NotAfter.ToUniversalTime().ToString('o') }
               }
-              $results += [pscustomobject]$result
             }
 
             $evidence = [ordered]@{
