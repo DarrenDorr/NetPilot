@@ -10,19 +10,25 @@ public sealed class ZapretStrategyCatalogTests
     [InlineData("general (ALT11).bat", true)]
     [InlineData("general (ALT42).bat", true)]
     [InlineData("general (EXPERIMENT_2).bat", true)]
+    [InlineData("general (SIMPLE FAKE).bat", true)]
+    [InlineData("general (FAKE TLS AUTO).bat", true)]
     [InlineData("service.bat", false)]
     [InlineData("general evil.bat", false)]
     [InlineData("..\\general (ALT11).bat", false)]
     [InlineData("general (ALT11).cmd", false)]
+    [InlineData("general (BAD!).bat", false)]
     public void Validates_official_strategy_filename_shape(string fileName, bool expected)
     {
         Assert.Equal(expected, ZapretStrategyCatalog.IsOfficialStrategyFileName(fileName));
     }
 
-    [Fact]
-    public void Future_strategy_name_does_not_require_NetPilot_release()
+    [Theory]
+    [InlineData("general (ALT42).bat", "ALT42")]
+    [InlineData("general (SIMPLE FAKE).bat", "SIMPLE_FAKE")]
+    [InlineData("general (FAKE TLS AUTO).bat", "FAKE_TLS_AUTO")]
+    public void Strategy_id_is_stable_and_safe(string fileName, string expectedId)
     {
-        Assert.Equal("ALT42", ZapretStrategyCatalog.GetStrategyId("general (ALT42).bat"));
+        Assert.Equal(expectedId, ZapretStrategyCatalog.GetStrategyId(fileName));
     }
 
     [Fact]
@@ -36,7 +42,7 @@ public sealed class ZapretStrategyCatalogTests
         {
             File.WriteAllText(Path.Combine(root, "general.bat"), "test");
             File.WriteAllText(Path.Combine(root, "general (ALT11).bat"), "test");
-            File.WriteAllText(Path.Combine(root, "general (ALT42).bat"), "test");
+            File.WriteAllText(Path.Combine(root, "general (SIMPLE FAKE).bat"), "test");
             File.WriteAllText(Path.Combine(root, "general evil.bat"), "test");
             File.WriteAllText(Path.Combine(root, "service.bat"), "test");
             File.WriteAllText(Path.Combine(nested.FullName, "general (ALT99).bat"), "test");
@@ -48,7 +54,7 @@ public sealed class ZapretStrategyCatalogTests
             Assert.Equal(3, files.Length);
             Assert.Contains("general.bat", files);
             Assert.Contains("general (ALT11).bat", files);
-            Assert.Contains("general (ALT42).bat", files);
+            Assert.Contains("general (SIMPLE FAKE).bat", files);
             Assert.DoesNotContain("general (ALT99).bat", files);
         }
         finally
