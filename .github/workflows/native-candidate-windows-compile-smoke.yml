@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/native-candidate-windows-compile-smoke.yml"
+      - "scripts/security/install-cygwin-r28.ps1"
       - "security/native-admission/patches/zapret2-r28/**"
       - "docs/ZAPRET2-*.md"
 
@@ -67,27 +68,23 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Patch apply failed: $patch" }
           }
 
-      - name: Install signed Cygwin compiler dependencies
-        uses: cygwin/cygwin-install-action@006ad0b0946ca6d0a3ea2d4437677fa767392401 # v4 exact commit
-        with:
-          platform: x86_64
-          site: https://mirrors.kernel.org/sourceware/cygwin/
-          check-sig: 'true'
-          add-to-path: false
-          packages: >-
-            gcc-core
-            make
-            zlib-devel
+      - name: Install exact hash-pinned Cygwin compiler dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\netpilot\scripts\security\install-cygwin-r28.ps1 | Out-File -FilePath cygwin-bootstrap.txt -Encoding ascii
+          if ($LASTEXITCODE -ne 0) { throw 'Exact Cygwin bootstrap failed' }
 
       - name: Build exact LuaJIT to isolated staging directory
         id: luajit_build
         continue-on-error: true
         shell: C:\cygwin\bin\bash.exe -eo pipefail '{0}'
         run: >-
-          export WORK="$(cygpath -u "$(pwd -W)")" &&
+          export WORK="$(pwd -P)" &&
           export PATH=/usr/bin:/bin &&
           export CYGWIN_NOWINPATH=1 &&
           export DEPS="$WORK/deps" &&
+          case "$WORK" in /cygdrive/*) ;; *) echo "Unexpected Cygwin physical path: $WORK" >&2; exit 1 ;; esac &&
           test -d "$WORK/luajit2" &&
           test "$(command -v make)" = "/usr/bin/make" &&
           test "$(command -v gcc)" = "/usr/bin/gcc" &&
@@ -105,10 +102,11 @@ jobs:
         continue-on-error: true
         shell: C:\cygwin\bin\bash.exe -eo pipefail '{0}'
         run: >-
-          export WORK="$(cygpath -u "$(pwd -W)")" &&
+          export WORK="$(pwd -P)" &&
           export PATH=/usr/bin:/bin &&
           export CYGWIN_NOWINPATH=1 &&
           export DEPS="$WORK/deps/usr/local" &&
+          case "$WORK" in /cygdrive/*) ;; *) echo "Unexpected Cygwin physical path: $WORK" >&2; exit 1 ;; esac &&
           test -d "$WORK/zapret2" &&
           test "$(command -v make)" = "/usr/bin/make" &&
           test "$(command -v gcc)" = "/usr/bin/gcc" &&
@@ -129,6 +127,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path evidence | Out-Null
+          if (Test-Path cygwin-bootstrap.txt) { Move-Item -LiteralPath cygwin-bootstrap.txt -Destination evidence\cygwin-bootstrap.txt -Force }
 
           $exe = Join-Path $PWD 'zapret2\nfq2\winws2.exe'
           $exeHash = 'not-produced'
@@ -153,7 +152,7 @@ jobs:
           $cygwinSize = if (Test-Path $cygwinDll) { (Get-Item $cygwinDll).Length } else { 0 }
 
           @(
-            'schema_version=2'
+            'schema_version=3'
             'scope=windows-x64-compile-smoke-only'
             'candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0003'
             "luajit_build_outcome=$env:LUAJIT_BUILD_OUTCOME"
@@ -161,6 +160,8 @@ jobs:
             'zapret2_commit=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d'
             'luajit_commit=dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc'
             'runner=windows-2025'
+            'cygwin_setup_version=2.940'
+            'cygwin_setup_sha512=fc46e3ead0312ea632251c16334b23caab31c9b38db30db4e5418b43ffeec5c003cc867b4166c8222a622ad107660e2ce6e3d855499d08e695dd13010f43a396'
             'toolchain_path=/usr/bin:/bin'
             'cygwin_site=https://mirrors.kernel.org/sourceware/cygwin/'
             "winws2_sha256=$exeHash"
