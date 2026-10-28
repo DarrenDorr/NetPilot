@@ -36,6 +36,11 @@
           </StackPanel>
 
           <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="24,0,0,0" Spacing="10">
+            <Button Content="Установить сетевой движок"
+                    Command="{Binding InstallEngineCommand}"
+                    IsVisible="{Binding CanInstallEngine}"
+                    Padding="18,10"
+                    HorizontalAlignment="Stretch" />
             <Button Content="Проверить сейчас"
                     Command="{Binding CheckCommand}"
                     Padding="18,10"
