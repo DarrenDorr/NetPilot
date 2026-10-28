@@ -13,7 +13,7 @@ Workflow `.github/workflows/native-candidate-windows-compile-smoke.yml` собр
 - LuaJIT: `openresty/luajit2@dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc`;
 - NetPilot patches: `0001`, `0002`, `0003` из `security/native-admission/patches/zapret2-r28/`;
 - runner: `windows-2025`;
-- Cygwin setup: `2.940`, SHA-512 `fc46e3ead0312ea632251c16334b23caab31c9b38db30db4e5418b43ffeec5c003cc867b4166c822ad107660e2ce6e3d855499d08e695dd13010f43a396`;
+- Cygwin setup: `2.940`, SHA-512 `fc46e3ead0312ea632251c16334b23caab31c9b38db30db4e5418b43ffeec5c003cc867b4166c8222a622ad107660e2ce6e3d855499d08e695dd13010f43a396`;
 - установленный Cygwin runtime в этом run: `3.6.12-1`;
 - GCC: `14.4.0-1`;
 - make: `4.4.1-2`.
