@@ -81,5 +81,12 @@ public sealed class WindowsPrivilegedServiceClient : IPrivilegedServiceClient
                 "Служба NetPilot не ответила за допустимое время.",
                 exception);
         }
+        catch (IOException exception)
+        {
+            throw new IpcProtocolException(
+                "ServiceConnectionClosed",
+                "Служба NetPilot закрыла защищённое IPC-соединение до завершения запроса.",
+                exception);
+        }
     }
 }
