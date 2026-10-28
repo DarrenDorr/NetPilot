@@ -88,6 +88,19 @@ jobs:
           NETPILOT_INSTALLED_SERVICE_TEST: '1'
         run: dotnet test tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj --configuration Release --no-build --filter "Category=InstalledService"
 
+      - name: Diagnostic - IPC authorization code only
+        if: failure()
+        shell: pwsh
+        run: |
+          $events = Get-WinEvent -LogName Application -MaxEvents 250 -ErrorAction SilentlyContinue |
+            Where-Object { $_.Message -like '*IPC-соединение отклонено*' } |
+            Select-Object -First 10 TimeCreated, ProviderName, Message
+          if ($events) {
+            $events | Format-List
+          } else {
+            Write-Host 'События IPC-отказа NetPilot в Application log не найдены.'
+          }
+
       - name: Installer smoke test - uninstall and service removal
         if: always()
         shell: pwsh
