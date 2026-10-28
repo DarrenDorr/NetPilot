@@ -203,13 +203,13 @@ public sealed class PublicHttpsHealthChecker : IDisposable
                 stopwatch.Elapsed,
                 "EndpointRejected");
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException exception)
         {
             return CreateHealth(
                 resourceId,
                 ResourceHealthState.Unavailable,
                 stopwatch.Elapsed,
-                "NetworkError");
+                PublicHealthDiagnosticClassifier.Classify(exception));
         }
 
         return CreateHealth(
