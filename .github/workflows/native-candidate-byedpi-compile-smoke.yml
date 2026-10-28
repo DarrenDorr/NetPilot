@@ -88,7 +88,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential mingw-w64 file
 
-      - name: Compile Linux candidate without execution
+      - name: Compile Linux candidate twice without execution
         id: linux_compile
         continue-on-error: true
         shell: bash
@@ -97,15 +97,24 @@ jobs:
           set -euo pipefail
           mkdir -p ../evidence
           make clean >/dev/null
-          make CC=gcc 2>&1 | tee ../evidence/linux-build.log
+          make CC=gcc 2>&1 | tee ../evidence/linux-build-1.log
           test -f ciadpi
           file ciadpi | tee ../evidence/linux-file.txt
-          sha256sum ciadpi | awk '{print $1}' > ../evidence/linux-binary.sha256
+          linux_sha_1="$(sha256sum ciadpi | awk '{print $1}')"
+          printf '%s\n' "$linux_sha_1" > ../evidence/linux-binary.sha256
+          rm -f ciadpi
+
+          make clean >/dev/null
+          make CC=gcc 2>&1 | tee ../evidence/linux-build-2.log
+          test -f ciadpi
+          linux_sha_2="$(sha256sum ciadpi | awk '{print $1}')"
+          printf '%s\n' "$linux_sha_2" > ../evidence/linux-binary-second-build.sha256
+          test "$linux_sha_1" = "$linux_sha_2"
           rm -f ciadpi
           make clean >/dev/null
           test ! -e ciadpi
 
-      - name: Cross-compile Windows x64 candidate without execution
+      - name: Cross-compile reproducible Windows x64 candidate twice without execution
         id: windows_compile
         continue-on-error: true
         shell: bash
@@ -113,11 +122,22 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ../evidence
+          deterministic_win_ldflags='-Wl,--no-insert-timestamp -lws2_32 -lmswsock'
+
           make clean >/dev/null
-          make windows CC=x86_64-w64-mingw32-gcc 2>&1 | tee ../evidence/windows-build.log
+          make windows CC=x86_64-w64-mingw32-gcc WIN_LDFLAGS="$deterministic_win_ldflags" 2>&1 | tee ../evidence/windows-build-1.log
           test -f ciadpi.exe
           file ciadpi.exe | tee ../evidence/windows-file.txt
-          sha256sum ciadpi.exe | awk '{print $1}' > ../evidence/windows-binary.sha256
+          windows_sha_1="$(sha256sum ciadpi.exe | awk '{print $1}')"
+          printf '%s\n' "$windows_sha_1" > ../evidence/windows-binary.sha256
+          rm -f ciadpi.exe
+
+          make clean >/dev/null
+          make windows CC=x86_64-w64-mingw32-gcc WIN_LDFLAGS="$deterministic_win_ldflags" 2>&1 | tee ../evidence/windows-build-2.log
+          test -f ciadpi.exe
+          windows_sha_2="$(sha256sum ciadpi.exe | awk '{print $1}')"
+          printf '%s\n' "$windows_sha_2" > ../evidence/windows-binary-second-build.sha256
+          test "$windows_sha_1" = "$windows_sha_2"
           rm -f ciadpi.exe
           make clean >/dev/null
           test ! -e ciadpi.exe
@@ -140,7 +160,7 @@ jobs:
             windows_compiler="$(x86_64-w64-mingw32-gcc --version | head -n1)"
           fi
           {
-            echo 'schema_version=5'
+            echo 'schema_version=6'
             echo 'scope=byedpi-v0.17.3-loopback-hardening-compile-only'
             echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
             echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
@@ -150,6 +170,9 @@ jobs:
             echo "windows_x64_cross_compile_outcome=$WINDOWS_OUTCOME"
             echo "linux_compiler=$linux_compiler"
             echo "windows_compiler=$windows_compiler"
+            echo 'linux_reproducibility=two-consecutive-builds-must-match'
+            echo 'windows_reproducibility=two-consecutive-builds-must-match'
+            echo 'windows_linker_determinism_flag=--no-insert-timestamp'
             echo 'candidate_binary_executed=false'
             echo 'listener_opened=false'
             echo 'routing_changed=false'
