@@ -9,7 +9,7 @@
         MinWidth="760"
         MinHeight="600">
   <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto" Margin="32" MaxWidth="1040">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto" Margin="32" MaxWidth="1040">
       <Grid ColumnDefinitions="*,Auto">
         <StackPanel Spacing="5">
           <TextBlock Text="{Binding Title}" FontSize="32" FontWeight="SemiBold" />
@@ -106,6 +106,43 @@
             <TextBlock Grid.Row="1" Text="Последнее действие" Opacity="0.60" Margin="0,7,0,0" />
             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LastAction}" TextWrapping="Wrap" Margin="0,7,0,0" />
           </Grid>
+        </StackPanel>
+      </Border>
+
+      <Border Grid.Row="4"
+              IsVisible="{Binding IsAdvancedMode}"
+              Margin="0,12,0,0"
+              Padding="20"
+              CornerRadius="14"
+              BorderThickness="1"
+              BorderBrush="#33808080">
+        <StackPanel Spacing="10">
+          <StackPanel Spacing="2">
+            <TextBlock Text="История диагностики" FontSize="16" FontWeight="SemiBold" />
+            <TextBlock Text="Только в памяти · показываются последние 12 записей · URL, IP и содержимое трафика не сохраняются"
+                       FontSize="12"
+                       Opacity="0.58"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+
+          <ItemsControl ItemsSource="{Binding DiagnosticHistory}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:DiagnosticHistoryItemViewModel">
+                <Border Padding="10,8"
+                        Margin="0,0,0,6"
+                        CornerRadius="8"
+                        BorderThickness="1"
+                        BorderBrush="#20808080">
+                  <Grid ColumnDefinitions="70,140,120,*">
+                    <TextBlock Text="{Binding TimeText}" Opacity="0.62" />
+                    <TextBlock Grid.Column="1" Text="{Binding ResourceName}" FontWeight="SemiBold" Margin="8,0,0,0" />
+                    <TextBlock Grid.Column="2" Text="{Binding StateText}" Margin="8,0,0,0" />
+                    <TextBlock Grid.Column="3" Text="{Binding DetailsText}" Margin="8,0,0,0" Opacity="0.70" TextWrapping="Wrap" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
         </StackPanel>
       </Border>
     </Grid>
