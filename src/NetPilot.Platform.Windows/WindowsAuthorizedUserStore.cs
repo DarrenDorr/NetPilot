@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Security.Principal;
 
@@ -8,6 +9,7 @@ public enum AuthorizedUserEnrollmentStatus
     Enrolled,
     AlreadyEnrolled,
     InvalidNonce,
+    InvalidSession,
     EnrollmentUnavailable
 }
 
@@ -20,7 +22,7 @@ public sealed record AuthorizedUserEnrollmentResult(
 }
 
 /// <summary>
-/// Хранит единственный разрешённый пользовательский SID и одноразовый nonce регистрации.
+/// Хранит единственный разрешённый пользовательский SID и одноразовые данные регистрации.
 /// Файлы располагаются только под защищённым системным корнем установки NetPilot.
 /// </summary>
 public sealed class WindowsAuthorizedUserStore
@@ -30,12 +32,14 @@ public sealed class WindowsAuthorizedUserStore
 
     private const string AuthorizedSidFileName = "authorized-user.sid";
     private const string EnrollmentNonceFileName = "enrollment.nonce";
+    private const string EnrollmentSessionFileName = "enrollment.session";
 
     private readonly object _sync = new();
     private readonly string _installationRoot;
     private readonly string _configRoot;
     private readonly string _authorizedSidPath;
     private readonly string _enrollmentNoncePath;
+    private readonly string _enrollmentSessionPath;
 
     public WindowsAuthorizedUserStore(string installationRoot)
     {
@@ -46,6 +50,7 @@ public sealed class WindowsAuthorizedUserStore
         _configRoot = Path.Combine(_installationRoot, "Config");
         _authorizedSidPath = Path.Combine(_configRoot, AuthorizedSidFileName);
         _enrollmentNoncePath = Path.Combine(_configRoot, EnrollmentNonceFileName);
+        _enrollmentSessionPath = Path.Combine(_configRoot, EnrollmentSessionFileName);
     }
 
     public string? EnsureEnrollmentNonce()
@@ -57,9 +62,13 @@ public sealed class WindowsAuthorizedUserStore
             var authorizedSid = ReadAuthorizedSidCore();
             if (authorizedSid is not null)
             {
-                TryDeleteNonceCore();
+                TryDeleteEnrollmentArtifactsCore();
                 return null;
             }
+
+            // Session ID создаёт только повышенный установщик до запуска службы.
+            // Без него служба не открывает окно первичной регистрации.
+            ReadExpectedEnrollmentSessionCore();
 
             if (File.Exists(_enrollmentNoncePath))
             {
@@ -125,7 +134,8 @@ public sealed class WindowsAuthorizedUserStore
 
     public AuthorizedUserEnrollmentResult CompleteEnrollment(
         string enrollmentNonce,
-        string authenticatedUserSid)
+        string authenticatedUserSid,
+        uint authenticatedSessionId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(enrollmentNonce);
         ArgumentException.ThrowIfNullOrWhiteSpace(authenticatedUserSid);
@@ -145,6 +155,25 @@ public sealed class WindowsAuthorizedUserStore
                     : new AuthorizedUserEnrollmentResult(
                         AuthorizedUserEnrollmentStatus.EnrollmentUnavailable,
                         "AuthorizedUserAlreadyBound");
+            }
+
+            uint expectedSessionId;
+            try
+            {
+                expectedSessionId = ReadExpectedEnrollmentSessionCore();
+            }
+            catch (InvalidDataException)
+            {
+                return new AuthorizedUserEnrollmentResult(
+                    AuthorizedUserEnrollmentStatus.EnrollmentUnavailable,
+                    "EnrollmentSessionMissingOrInvalid");
+            }
+
+            if (authenticatedSessionId == 0 || authenticatedSessionId != expectedSessionId)
+            {
+                return new AuthorizedUserEnrollmentResult(
+                    AuthorizedUserEnrollmentStatus.InvalidSession,
+                    "EnrollmentSessionMismatch");
             }
 
             if (!File.Exists(_enrollmentNoncePath))
@@ -183,7 +212,7 @@ public sealed class WindowsAuthorizedUserStore
 
                 File.Move(temporaryPath, _authorizedSidPath, overwrite: false);
                 RejectReparsePoint(_authorizedSidPath);
-                File.Delete(_enrollmentNoncePath);
+                TryDeleteEnrollmentArtifactsCore();
             }
             finally
             {
@@ -207,14 +236,17 @@ public sealed class WindowsAuthorizedUserStore
         Directory.CreateDirectory(_configRoot);
         RejectReparsePoint(_configRoot);
 
-        if (File.Exists(_authorizedSidPath))
+        foreach (var path in new[]
+                 {
+                     _authorizedSidPath,
+                     _enrollmentNoncePath,
+                     _enrollmentSessionPath
+                 })
         {
-            RejectReparsePoint(_authorizedSidPath);
-        }
-
-        if (File.Exists(_enrollmentNoncePath))
-        {
-            RejectReparsePoint(_enrollmentNoncePath);
+            if (File.Exists(path))
+            {
+                RejectReparsePoint(path);
+            }
         }
     }
 
@@ -230,15 +262,36 @@ public sealed class WindowsAuthorizedUserStore
         return ParseAllowedInteractiveUserSid(value).Value;
     }
 
-    private void TryDeleteNonceCore()
+    private uint ReadExpectedEnrollmentSessionCore()
     {
-        if (!File.Exists(_enrollmentNoncePath))
+        if (!File.Exists(_enrollmentSessionPath))
         {
-            return;
+            throw new InvalidDataException("Session ID первичной регистрации NetPilot отсутствует.");
         }
 
-        RejectReparsePoint(_enrollmentNoncePath);
-        File.Delete(_enrollmentNoncePath);
+        RejectReparsePoint(_enrollmentSessionPath);
+        var value = File.ReadAllText(_enrollmentSessionPath).Trim();
+        if (!uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var sessionId)
+            || sessionId == 0)
+        {
+            throw new InvalidDataException("Session ID первичной регистрации NetPilot имеет недопустимый формат.");
+        }
+
+        return sessionId;
+    }
+
+    private void TryDeleteEnrollmentArtifactsCore()
+    {
+        foreach (var path in new[] { _enrollmentNoncePath, _enrollmentSessionPath })
+        {
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            RejectReparsePoint(path);
+            File.Delete(path);
+        }
     }
 
     private static SecurityIdentifier ParseAllowedInteractiveUserSid(string value)
