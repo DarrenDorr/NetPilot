@@ -3,7 +3,7 @@ using System.Net.Http.Headers;
 
 namespace NetPilot.Updater;
 
-public sealed class GithubZapretReleaseClient : IDisposable
+public sealed class GithubZapretReleaseClient : IZapretReleaseSource, IDisposable
 {
     private const string GithubApiVersion = "2026-03-10";
     private const string UserAgent = "NetPilot-Updater";
@@ -383,5 +383,8 @@ public sealed class GithubZapretReleaseClient : IDisposable
         }
     }
 
-    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+    private void ThrowIfDisposed()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+    }
 }
