@@ -15,8 +15,8 @@ builder.Services.AddWindowsService(options =>
 
 // На текущем этапе ни Flowseal/zapret1, ни zapret2 не имеют статуса ADMIT.
 // Поэтому установка и запуск сетевого движка запрещены fail-closed.
-// EngineStop оставлен намеренно: служба должна уметь остановить уже существующий
-// legacy-процесс после обновления NetPilot или при аварийном восстановлении.
+// EngineStop оставлен намеренно: runner по-прежнему может безопасно остановить
+// только тот процесс, которым уже владеет, но новый процесс создать не способен.
 builder.Services.AddSingleton(OperationPolicy.CreateNoAdmittedEnginePolicy());
 
 builder.Services.AddSingleton(serviceProvider =>
@@ -25,7 +25,11 @@ builder.Services.AddSingleton(serviceProvider =>
 builder.Services.AddSingleton<UserResourceOwnership>();
 builder.Services.AddSingleton<WindowsNamedPipeServerFactory>();
 builder.Services.AddSingleton<WindowsNamedPipePeerAuthenticator>();
-builder.Services.AddSingleton<IZapretProcessLauncher, SystemZapretProcessLauncher>();
+
+// R20: без ADMIT LocalSystem-служба не получает SystemZapretProcessLauncher.
+// Даже прямой ошибочный StartAsync не может дойти до Process.Start.
+builder.Services.AddSingleton<IZapretProcessLauncher>(
+    NoAdmittedZapretProcessLauncher.Instance);
 builder.Services.AddSingleton<ZapretProcessRunner>();
 builder.Services.AddSingleton(serviceProvider =>
     new ZapretEngineController(

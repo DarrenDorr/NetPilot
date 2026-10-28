@@ -62,7 +62,8 @@ if [[ -f "$app_windows_program" ]] && grep -qF 'new WindowsZapretStrategyRuntime
   fail=1
 fi
 
-# Реальный Process.Start разрешён только в одной отдельно проверяемой точке.
+# Реальный Process.Start разрешён только в одной отдельно проверяемой точке исходного кода.
+# Наличие audited launcher в репозитории не означает, что production DI имеет право его получать.
 allowed_process_launcher='src/NetPilot.Engine.Zapret.Windows/SystemZapretProcessLauncher.cs'
 process_pattern='Process[[:space:]]*\.Start[[:space:]]*\('
 process_matches="$(grep -RniE --include='*.cs' --exclude-dir=bin --exclude-dir=obj "$process_pattern" src 2>/dev/null || true)"
@@ -118,8 +119,8 @@ fi
 
 # Native admission должен реально влиять на runtime, а не существовать только как документация.
 # Пока нет ни одного component set со статусом ADMIT, службе запрещено выдавать capabilities
-# установки и запуска движка. EngineStop остаётся доступным через специальный fail-closed профиль,
-# чтобы можно было остановить уже существующий legacy-процесс.
+# установки и запуска движка. EngineStop остаётся доступным для runner-owned cleanup,
+# но production DI не получает ни сетевой updater transport, ни System process launcher.
 if [[ ! -d "$admission_dir" ]]; then
   echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: каталог native admission отсутствует."
   fail=1
@@ -148,6 +149,16 @@ else
 
       if grep -qF 'GithubZapretReleaseClient' "$service_program"; then
         echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: без ADMIT LocalSystem-служба не должна создавать GitHub updater transport."
+        fail=1
+      fi
+
+      if ! grep -qF 'NoAdmittedZapretProcessLauncher.Instance' "$service_program"; then
+        echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: без ADMIT LocalSystem-служба обязана использовать fail-closed process launcher."
+        fail=1
+      fi
+
+      if grep -qF 'SystemZapretProcessLauncher' "$service_program"; then
+        echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: без ADMIT LocalSystem-служба не должна получать System process launcher."
         fail=1
       fi
 
