@@ -51,26 +51,28 @@ jobs:
           test "$(git -C zapret2 rev-parse HEAD^)" = "221d7dff24bfec0cd5ac0a5070b8acef2008af3d"
           test "$(git -C zapret2 rev-parse 'HEAD^{tree}')" = "5c2a77786cc7089145abe2ca99bcc53a8ed7de15"
           test "$(git -C luajit rev-parse HEAD)" = "dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc"
-          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/harnesses/zapret2-r28/conntrack_budget_harness.c')" = "54286f2c74beadd47fe41283dbe3893005bf14e4"
+          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/harnesses/zapret2-r28/conntrack_budget_harness.c')" = "a506f0764c17f0a17add02dcc058d90fe7960e66"
 
           patch_dir="$PWD/netpilot/security/native-admission/patches/zapret2-r28"
           echo "af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff  $patch_dir/0001-explicit-conntrack-feed-result.patch" | sha256sum -c -
           echo "a3531211626ce602a3b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783  $patch_dir/0002-bounded-conntrack-resource-result.patch" | sha256sum -c -
           echo "33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68  $patch_dir/0003-bounded-delayed-queue-bytes.patch" | sha256sum -c -
           echo "f32e0c27393bcdfa30aa7e8c58749bb9e70e2a870350f5c3cfa429597a887777  $patch_dir/0004-explicit-daemon-stdio-redirection.patch" | sha256sum -c -
+          echo "67cbbfa656c47b7342a8c56ab178716e7890de0f05efc25eed2cc20b299c4ed1  $patch_dir/0005-fail-closed-zero-conntrack-budget.patch" | sha256sum -c -
 
           for patch in \
             0001-explicit-conntrack-feed-result.patch \
             0002-bounded-conntrack-resource-result.patch \
             0003-bounded-delayed-queue-bytes.patch \
-            0004-explicit-daemon-stdio-redirection.patch
+            0004-explicit-daemon-stdio-redirection.patch \
+            0005-fail-closed-zero-conntrack-budget.patch
           do
             git -C zapret2 apply --check "$patch_dir/$patch"
             git -C zapret2 apply "$patch_dir/$patch"
           done
 
           grep -Fq 'CTRACK_FEED_RESOURCE_EXHAUSTED = 2' zapret2/nfq2/conntrack.h
-          grep -Fq 'HASH_COUNT(*pp) >= max_entries' zapret2/nfq2/conntrack.c
+          grep -Fq '!max_entries || HASH_COUNT(*pp) >= max_entries' zapret2/nfq2/conntrack.c
           grep -Fq 'ConntrackPoolSetMaxEntries' zapret2/nfq2/conntrack.c
 
       - name: Install isolated harness dependencies
@@ -170,20 +172,21 @@ jobs:
             binary_sha256="$(sha256sum scratch/conntrack_budget_harness | awk '{print $1}')"
           fi
           {
-            echo 'schema_version=1'
+            echo 'schema_version=2'
             echo 'scope=isolated-conntrack-resource-budget-regression'
-            echo 'candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0004'
+            echo 'candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0005'
             echo 'source_commit=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d'
             echo 'source_tree=5c2a77786cc7089145abe2ca99bcc53a8ed7de15'
             echo 'luajit_headers_commit=dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc'
-            echo 'harness_git_blob_sha1=54286f2c74beadd47fe41283dbe3893005bf14e4'
+            echo 'patch_0005_sha256=67cbbfa656c47b7342a8c56ab178716e7890de0f05efc25eed2cc20b299c4ed1'
+            echo 'harness_git_blob_sha1=a506f0764c17f0a17add02dcc058d90fe7960e66'
             echo "harness_sha256=$harness_sha256"
             echo "instrumented_harness_binary_sha256=$binary_sha256"
             echo "compile_outcome=$COMPILE_OUTCOME"
             echo "regression_outcome=$REGRESSION_OUTCOME"
             echo "no_network_syscalls_outcome=$NO_NETWORK_OUTCOME"
-            echo 'tested_max_entries=3'
-            echo 'tested_semantics=new-flow-over-cap-resource-exhausted;existing-forward-ok;existing-reverse-ok;destroy-empty'
+            echo 'tested_max_entries=3,0,4'
+            echo 'tested_semantics=new-flow-over-cap-resource-exhausted;zero-budget-new-flow-resource-exhausted;existing-forward-ok;existing-reverse-ok;explicit-budget-increase-ok;destroy-empty'
             echo 'candidate_engine_executed=false'
             echo 'windivert_present=false'
             echo 'driver_installed=false'
