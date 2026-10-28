@@ -1,0 +1,63 @@
+schema_version: 1
+evidence_id: windivert-2.2.2-a-x64-inventory
+recorded_at: 2026-10-28
+status: PASS_FOR_INVENTORY_ONLY
+admission_effect: NONE
+
+component_set:
+  name: WinDivert
+  version: 2.2.2-A
+  archive: WinDivert-2.2.2-A.zip
+  archive_sha256: 63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15
+
+components:
+  - path_role: WinDivert.dll
+    role: user-mode-library
+    size_bytes: 47616
+    sha256: c1e060ee19444a259b2162f8af0f3fe8c4428a1c6f694dce20de194ac8d7d9a2
+    authenticode_status: NotSigned
+    signer_subject: null
+    signer_thumbprint: null
+  - path_role: WinDivert64.sys
+    role: kernel-driver
+    size_bytes: 94144
+    sha256: 8da085332782708d8767bcace5327a6ec7283c17cfb85e40b03cd2323a90ddc2
+    file_version: '2.2'
+    product_version: '2.2'
+    company_name: Basil
+    product_name: WinDivert 2.2 driver
+    authenticode_status: Valid
+    signer_subject: 'CN=成都密思听科技有限公司, O=成都密思听科技有限公司, S=四川省, C=CN, OID.2.5.4.15=Private Organization, OID.1.3.6.1.4.1.311.60.2.1.3=CN, SERIALNUMBER=91510107MA7E8Y2876'
+    signer_thumbprint: 043589F75FCE2795E7F2CC3E526D46784D5DDAB3
+
+workflow:
+  repository: DarrenDorr/NetPilot
+  workflow: Native Candidate WinDivert Inventory
+  run_id: 40714519804
+  head_sha: cc1d43f4bbb92a6e0ae3e92eba164e5f4017d561
+  conclusion: success
+  runner: windows-2025
+  files_executed: false
+  driver_installed: false
+  driver_loaded: false
+
+artifact:
+  artifact_id: 12828470022
+  name: windivert-2.2.2-a-x64-inventory-evidence
+  digest_sha256: 46fa301ca149c59b730a664eb5a2492a421ac7bd929ca79782647aa06c1fda2b
+  files:
+    windivert-inventory.txt: 7fd71013ef96003005e666c8f1f2b62a91cf56f769f7cd18473ff3116c18be89
+    WinDivert.dll.txt: b57e898a63bc7d4c6dc0de981d2f1bbca48fd4e73dbee97d7922e256b25efa23
+    WinDivert64.sys.txt: afb78d341530561da0ae9c51320b2dcb7cf9a723e83df750800fdc2c1eea1e72
+
+interpretation:
+  - The x64 DLL and SYS bytes were inventoried from the exact hash-pinned official archive.
+  - The driver carried a valid Authenticode signature on the hosted Windows runner; this is identity evidence, not independent publisher approval.
+  - The user-mode DLL is not Authenticode-signed, so exact archive/component hashes remain mandatory.
+  - No component was executed and the kernel driver was not installed or loaded.
+  - This inventory is not ADMIT and does not authorize bundling or runtime use.
+
+next_gate:
+  - document human acceptance or rejection of the exact driver signer identity
+  - retain exact SHA-256 enforcement at install/activation if this component is ever admitted
+  - perform isolated driver/load/runtime testing only in R28.3 after remaining build and source review gates
