@@ -1,0 +1,27 @@
+schema_version=1
+scope=isolated-packet-queue-sanitizer-regression
+candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0004
+source_commit=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d
+source_tree=5c2a77786cc7089145abe2ca99bcc53a8ed7de15
+patch_0001_sha256=af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff
+patch_0002_sha256=a3531211626ce602a3b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783
+patch_0003_sha256=33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68
+patch_0004_sha256=f32e0c27393bcdfa30aa7e8c58749bb9e70e2a870350f5c3cfa429597a887777
+workflow_run_id=40725210869
+workflow_job_id=122946503505
+workflow_conclusion=success
+runner=ubuntu-24.04
+sanitizers=ASan,UBSan
+compile_flags=-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -Wall -Wextra -Werror
+regression_outcome=success
+no_network_syscalls_outcome=success
+candidate_engine_executed=false
+windivert_present=false
+driver_installed=false
+network_interception_enabled=false
+artifact_id=12831748330
+artifact_name=zapret2-r28-packet-queue-sanitizer-regression-evidence
+artifact_zip_sha256=c6741937eecf81cad86af184e077ec82b50353b74d8cbbdb69994e6575c0e939
+result=PASS_FOR_ISOLATED_PACKET_QUEUE_SANITIZER_REGRESSION_ONLY
+admission_effect=NONE
+release_gate=BLOCK
