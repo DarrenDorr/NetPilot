@@ -370,9 +370,30 @@ public sealed class ZapretTransactionalInstaller
     {
         RejectReparsePoint(root);
 
-        foreach (var entry in Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories))
+        var pending = new Stack<string>();
+        pending.Push(root);
+
+        while (pending.Count > 0)
         {
-            RejectReparsePoint(entry);
+            var directory = pending.Pop();
+            foreach (var entry in Directory.EnumerateFileSystemEntries(
+                         directory,
+                         "*",
+                         SearchOption.TopDirectoryOnly))
+            {
+                var attributes = File.GetAttributes(entry);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    throw new UpdateSecurityException(
+                        "ReparsePointRejected",
+                        "Reparse point в каталоге установки Zapret запрещён.");
+                }
+
+                if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    pending.Push(entry);
+                }
+            }
         }
     }
 
