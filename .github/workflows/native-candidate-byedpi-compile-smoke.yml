@@ -42,7 +42,7 @@ jobs:
           expected_tree='8d13f6f5939190cd27ee68696247073a00b3e7dc'
           patch_path='security/native-admission/patches/byedpi-r28/0001-loopback-only-listener.patch'
           expected_blob='9e00f9402fe65720102041c4174fb7f5673291dd'
-          expected_sha256='1b3dfe6659dc39c706a626aaeaf597671ce0ab1b686a7f1898bca9e2a08b1251'
+          expected_sha256='f7b358d9bf67e8275ed5f6fd700e86832253660911c97f1156c51b28dc5c43f1'
 
           observed_commit="$(git -C byedpi rev-parse HEAD)"
           observed_tree="$(git -C byedpi rev-parse 'HEAD^{tree}')"
@@ -145,7 +145,7 @@ jobs:
             echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
             echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
             echo 'patch_0001_git_blob_sha1=9e00f9402fe65720102041c4174fb7f5673291dd'
-            echo 'patch_0001_sha256=1b3dfe6659dc39c706a626aaeaf597671ce0ab1b686a7f1898bca9e2a08b1251'
+            echo 'patch_0001_sha256=f7b358d9bf67e8275ed5f6fd700e86832253660911c97f1156c51b28dc5c43f1'
             echo "linux_compile_outcome=$LINUX_OUTCOME"
             echo "windows_x64_cross_compile_outcome=$WINDOWS_OUTCOME"
             echo "linux_compiler=$linux_compiler"
