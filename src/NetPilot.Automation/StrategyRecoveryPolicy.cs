@@ -14,14 +14,6 @@ internal readonly record struct StrategyRecoveryDecision(
 
 internal static class StrategyRecoveryPolicy
 {
-    private static readonly HashSet<string> RecoverableDiagnosticCodes =
-        new(StringComparer.Ordinal)
-        {
-            "TcpConnectFailed",
-            "TlsHandshakeFailed",
-            "Timeout"
-        };
-
     public static StrategyRecoveryDecision Evaluate(
         IReadOnlyList<StrategyEvaluation> confirmationEvaluations)
     {
@@ -37,46 +29,17 @@ internal static class StrategyRecoveryPolicy
             return StrategyRecoveryDecision.Allowed;
         }
 
-        if (failures.Any(static result =>
-                string.Equals(result.DiagnosticCode, "EndpointRejected", StringComparison.Ordinal)
-                || string.Equals(result.DiagnosticCode, "NoHealthEndpoints", StringComparison.Ordinal)))
+        return ResourceHealthFailureClassifier.ClassifyAggregate(failures) switch
         {
-            return StrategyRecoveryDecision.Blocked(
-                "RecoverySuppressedSecurityOrConfiguration");
-        }
-
-        if (failures.Any(static result =>
-                string.Equals(result.DiagnosticCode, "DnsResolutionFailed", StringComparison.Ordinal)))
-        {
-            return StrategyRecoveryDecision.Blocked("RecoverySuppressedDnsFailure");
-        }
-
-        if (failures.Any(static result => IsHttpOrRedirectDiagnostic(result.DiagnosticCode)))
-        {
-            return StrategyRecoveryDecision.Blocked("RecoverySuppressedHttpResponse");
-        }
-
-        if (failures.Any(static result =>
-                result.State is ResourceHealthState.Unknown or ResourceHealthState.Checking
-                || string.IsNullOrWhiteSpace(result.DiagnosticCode)
-                || !RecoverableDiagnosticCodes.Contains(result.DiagnosticCode)))
-        {
-            return StrategyRecoveryDecision.Blocked(
-                "RecoverySuppressedUnclassifiedFailure");
-        }
-
-        return StrategyRecoveryDecision.Allowed;
-    }
-
-    private static bool IsHttpOrRedirectDiagnostic(string? diagnosticCode)
-    {
-        if (string.IsNullOrWhiteSpace(diagnosticCode))
-        {
-            return false;
-        }
-
-        return diagnosticCode.StartsWith("Http", StringComparison.Ordinal)
-            || string.Equals(diagnosticCode, "TooManyRedirects", StringComparison.Ordinal)
-            || string.Equals(diagnosticCode, "RedirectWithoutLocation", StringComparison.Ordinal);
+            ResourceHealthFailureClass.RecoverableNetworkPath =>
+                StrategyRecoveryDecision.Allowed,
+            ResourceHealthFailureClass.SecurityOrConfiguration =>
+                StrategyRecoveryDecision.Blocked("RecoverySuppressedSecurityOrConfiguration"),
+            ResourceHealthFailureClass.DnsFailure =>
+                StrategyRecoveryDecision.Blocked("RecoverySuppressedDnsFailure"),
+            ResourceHealthFailureClass.ServiceResponse =>
+                StrategyRecoveryDecision.Blocked("RecoverySuppressedHttpResponse"),
+            _ => StrategyRecoveryDecision.Blocked("RecoverySuppressedUnclassifiedFailure")
+        };
     }
 }
