@@ -49,10 +49,19 @@ public sealed class PrivilegedIpcWorker(
             return;
         }
 
+        using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        requestTimeout.CancelAfter(IpcProtocol.RequestTimeoutMilliseconds);
+        var requestToken = requestTimeout.Token;
+
         IpcRequest request;
         try
         {
-            request = await IpcFraming.ReadAsync<IpcRequest>(pipe, cancellationToken);
+            request = await IpcFraming.ReadAsync<IpcRequest>(pipe, requestToken);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning("IPC-соединение закрыто: превышено допустимое время ожидания запроса.");
+            return;
         }
         catch (IpcProtocolException exception)
         {
@@ -73,7 +82,7 @@ public sealed class PrivilegedIpcWorker(
                     false,
                     validation.Code,
                     validation.Message),
-                cancellationToken);
+                requestToken);
             return;
         }
 
@@ -87,7 +96,7 @@ public sealed class PrivilegedIpcWorker(
                     true,
                     "Ok",
                     "Служба NetPilot доступна."),
-                cancellationToken);
+                requestToken);
             return;
         }
 
@@ -101,11 +110,11 @@ public sealed class PrivilegedIpcWorker(
                     false,
                     "OperationDenied",
                     "Операция не разрешена политикой безопасности."),
-                cancellationToken);
+                requestToken);
             return;
         }
 
-        // В R1 привилегированные действия намеренно не выполняются.
+        // Привилегированные действия намеренно не выполняются до завершения следующего этапа авторизации.
         await SendResponseAsync(
             pipe,
             new IpcResponse(
@@ -113,8 +122,8 @@ public sealed class PrivilegedIpcWorker(
                 request.RequestId,
                 false,
                 "OperationNotEnabled",
-                "Привилегированные операции будут подключаться после проверки IPC-границы."),
-            cancellationToken);
+                "Привилегированные операции будут подключаться только после отдельного аудита каждой операции."),
+            requestToken);
     }
 
     private static bool IsIdentifiedLocalClient(NamedPipeServerStream pipe)
