@@ -180,6 +180,8 @@ Workflow имеет только `contents: read`, checkout выполняетс
 - `nfq2/desync.c`;
 - `nfq2/lua.c`.
 
+На текущей голове PR соответствующий workflow запущен, но его результат считается evidence только после `completed/success`; до этого patch 0001 имеет статус `APPLY_CHECK_REQUIRED`.
+
 ### Следующий R28.2 patch gate
 
 После успешного source/patch provenance:
@@ -246,4 +248,4 @@ ByeDPI controlled patchset/build идёт вторым потоком после
 
 R28.1 static decision зафиксирован для всех трёх кандидатов. Все они остаются `REVIEW / gate BLOCK` и **не исполняются NetPilot**.
 
-R28.2 дошёл до exact source provenance, проверки patch applicability и первого behavior-preserving patch 0001. Следующий технический шаг — подтвердить CI evidence и подготовить resource-exhaustion/count/byte-budget patches без изменения уже проверенной fail-safe semantics.
+R28.2 дошёл до exact source provenance, проверки patch applicability и первого behavior-preserving patch 0001. Следующий технический шаг — получить успешное CI evidence, затем подготовить resource-exhaustion/count/byte-budget patches без нарушения проверенной fail-safe semantics.
