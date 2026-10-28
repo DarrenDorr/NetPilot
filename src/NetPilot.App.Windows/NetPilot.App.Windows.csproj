@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>NetPilot</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../NetPilot.App/NetPilot.App.csproj" />
+    <ProjectReference Include="../NetPilot.Automation/NetPilot.Automation.csproj" />
+    <ProjectReference Include="../NetPilot.Health/NetPilot.Health.csproj" />
+    <ProjectReference Include="../NetPilot.Platform.Windows/NetPilot.Platform.Windows.csproj" />
+  </ItemGroup>
+</Project>
