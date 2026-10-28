@@ -5,7 +5,6 @@ using System.Windows.Input;
 using NetPilot.App.Services;
 using NetPilot.Automation;
 using NetPilot.Core.Models;
-using NetPilot.Ipc;
 
 namespace NetPilot.App.ViewModels;
 
@@ -401,7 +400,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     }
 
     private static bool IsExpectedOperationalException(Exception exception) =>
-        exception is IpcProtocolException
+        exception is EngineProvisioningException
             or StrategyRuntimeException
             or HttpRequestException
             or OperationCanceledException
@@ -410,11 +409,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private static string GetUserMessage(Exception exception) =>
         exception switch
         {
-            IpcProtocolException ipc when ipc.Code == "UnauthorizedUser" =>
+            EngineProvisioningException engine when engine.Code == "UnauthorizedUser" =>
                 "Текущая учётная запись Windows не имеет права управлять этой установкой NetPilot.",
-            IpcProtocolException ipc when ipc.Code == "EnrollmentRequired" =>
+            EngineProvisioningException engine when engine.Code == "EnrollmentRequired" =>
                 "Установка NetPilot не завершила безопасную привязку пользователя. Выполните восстановление установки.",
-            IpcProtocolException => "Не удалось связаться со службой NetPilot или выполнить защищённую операцию.",
+            EngineProvisioningException =>
+                "Не удалось связаться со службой NetPilot или выполнить защищённую операцию.",
             StrategyRuntimeException => "Служба не смогла выполнить операцию с сетевым профилем.",
             HttpRequestException => "Не удалось проверить доступность сети.",
             OperationCanceledException => "Операция была отменена.",

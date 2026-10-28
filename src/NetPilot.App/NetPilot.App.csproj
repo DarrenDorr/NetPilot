@@ -8,6 +8,5 @@
     <ProjectReference Include="../NetPilot.Automation/NetPilot.Automation.csproj" />
     <ProjectReference Include="../NetPilot.Core/NetPilot.Core.csproj" />
     <ProjectReference Include="../NetPilot.Health/NetPilot.Health.csproj" />
-    <ProjectReference Include="../NetPilot.Ipc/NetPilot.Ipc.csproj" />
   </ItemGroup>
 </Project>

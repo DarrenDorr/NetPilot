@@ -38,6 +38,22 @@ check_pattern \
   "строковое ProcessStartInfo.Arguments запрещено; используйте ArgumentList" \
   '\.Arguments[[:space:]]*='
 
+# Общий Avalonia/App слой должен оставаться платформенно-нейтральным.
+# Windows IPC разрешён только в платформенных адаптерах и host-проектах.
+app_ipc_matches="$(grep -RniE \
+  --include='*.cs' \
+  --include='*.csproj' \
+  --exclude-dir=bin \
+  --exclude-dir=obj \
+  'NetPilot\.Ipc|NetPilot\.Ipc\.csproj' \
+  src/NetPilot.App 2>/dev/null || true)"
+
+if [[ -n "$app_ipc_matches" ]]; then
+  printf '%s\n' "$app_ipc_matches"
+  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: NetPilot.App не должен напрямую зависеть от Windows IPC."
+  fail=1
+fi
+
 # Реальный Process.Start разрешён только в одной отдельно проверяемой точке.
 allowed_process_launcher='src/NetPilot.Engine.Zapret.Windows/SystemZapretProcessLauncher.cs'
 process_pattern='Process[[:space:]]*\.Start[[:space:]]*\('

@@ -57,7 +57,7 @@ public sealed class WindowsZapretStrategyRuntimeTests
     }
 
     [Fact]
-    public async Task Running_status_without_strategy_id_is_protocol_error()
+    public async Task Running_status_without_strategy_id_is_neutral_runtime_error()
     {
         var client = new FakeClient
         {
@@ -65,10 +65,28 @@ public sealed class WindowsZapretStrategyRuntimeTests
         };
         var runtime = new WindowsZapretStrategyRuntime(client);
 
-        var exception = await Assert.ThrowsAsync<IpcProtocolException>(
+        var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
             () => runtime.GetStateAsync(TestContext.Current.CancellationToken));
 
         Assert.Equal("MissingRunningStrategyId", exception.Code);
+    }
+
+    [Fact]
+    public async Task Ipc_protocol_error_does_not_escape_platform_adapter()
+    {
+        var client = new FakeClient
+        {
+            StatusException = new IpcProtocolException(
+                "ServerAuthenticationFailed",
+                "Проверка службы не пройдена.")
+        };
+        var runtime = new WindowsZapretStrategyRuntime(client);
+
+        var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
+            () => runtime.GetStateAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal("ServerAuthenticationFailed", exception.Code);
+        Assert.IsType<IpcProtocolException>(exception.InnerException);
     }
 
     [Fact]
@@ -127,6 +145,7 @@ public sealed class WindowsZapretStrategyRuntimeTests
         public IpcResponse StatusResponse { get; set; } = SuccessStatus(IpcZapretProcessState.Stopped);
         public IpcResponse StopResponse { get; set; } = SuccessStatus(IpcZapretProcessState.Stopped);
         public IpcResponse StartResponse { get; set; } = SuccessStatus(IpcZapretProcessState.Running, "ALT11");
+        public Exception? StatusException { get; set; }
 
         public int ListCalls { get; private set; }
         public int StatusCalls { get; private set; }
@@ -171,6 +190,12 @@ public sealed class WindowsZapretStrategyRuntimeTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             StatusCalls++;
+
+            if (StatusException is not null)
+            {
+                return Task.FromException<IpcResponse>(StatusException);
+            }
+
             return Task.FromResult(StatusResponse);
         }
 

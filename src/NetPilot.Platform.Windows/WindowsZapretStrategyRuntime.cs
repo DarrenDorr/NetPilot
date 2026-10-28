@@ -9,14 +9,15 @@ public sealed class WindowsZapretStrategyRuntime(
     public async Task<IReadOnlyList<StrategyDescriptor>> ListStrategiesAsync(
         CancellationToken cancellationToken = default)
     {
-        var response = await serviceClient.ListZapretStrategiesAsync(cancellationToken);
+        var response = await ExecuteIpcAsync(
+            () => serviceClient.ListZapretStrategiesAsync(cancellationToken));
         EnsureSuccess(response);
 
         if (response.Strategies is null)
         {
-            throw new IpcProtocolException(
+            throw new StrategyRuntimeException(
                 "MissingStrategiesPayload",
-                "Служба NetPilot не вернула каталог стратегий Zapret.");
+                "Служба NetPilot не вернула каталог сетевых профилей.");
         }
 
         return response.Strategies
@@ -27,25 +28,26 @@ public sealed class WindowsZapretStrategyRuntime(
     public async Task<StrategyRuntimeState> GetStateAsync(
         CancellationToken cancellationToken = default)
     {
-        var response = await serviceClient.GetZapretStatusAsync(cancellationToken);
+        var response = await ExecuteIpcAsync(
+            () => serviceClient.GetZapretStatusAsync(cancellationToken));
         EnsureSuccess(response);
 
         var status = response.ZapretStatus
-            ?? throw new IpcProtocolException(
-                "MissingZapretStatus",
-                "Служба NetPilot не вернула состояние Zapret.");
+            ?? throw new StrategyRuntimeException(
+                "MissingEngineStatus",
+                "Служба NetPilot не вернула состояние сетевого движка.");
 
         return status.State switch
         {
             IpcZapretProcessState.Stopped => StrategyRuntimeState.Stopped,
             IpcZapretProcessState.Running when !string.IsNullOrWhiteSpace(status.StrategyId) =>
                 StrategyRuntimeState.Running(status.StrategyId),
-            IpcZapretProcessState.Running => throw new IpcProtocolException(
+            IpcZapretProcessState.Running => throw new StrategyRuntimeException(
                 "MissingRunningStrategyId",
-                "Служба скрыла или не вернула идентификатор запущенной стратегии Zapret."),
-            _ => throw new IpcProtocolException(
-                "UnknownZapretState",
-                "Служба вернула неизвестное состояние Zapret.")
+                "Служба не вернула идентификатор активного сетевого профиля."),
+            _ => throw new StrategyRuntimeException(
+                "UnknownEngineState",
+                "Служба вернула неизвестное состояние сетевого движка.")
         };
     }
 
@@ -64,7 +66,8 @@ public sealed class WindowsZapretStrategyRuntime(
 
         if (current.IsRunning)
         {
-            var stopResponse = await serviceClient.StopZapretAsync(cancellationToken);
+            var stopResponse = await ExecuteIpcAsync(
+                () => serviceClient.StopZapretAsync(cancellationToken));
             EnsureSuccess(stopResponse);
 
             if (stopResponse.ZapretStatus is not
@@ -72,15 +75,14 @@ public sealed class WindowsZapretStrategyRuntime(
                     State: IpcZapretProcessState.Stopped
                 })
             {
-                throw new IpcProtocolException(
+                throw new StrategyRuntimeException(
                     "StopStateMismatch",
-                    "После остановки служба не подтвердила состояние Zapret=Stopped.");
+                    "После остановки служба не подтвердила остановленное состояние сетевого движка.");
             }
         }
 
-        var startResponse = await serviceClient.StartZapretStrategyAsync(
-            strategyId,
-            cancellationToken);
+        var startResponse = await ExecuteIpcAsync(
+            () => serviceClient.StartZapretStrategyAsync(strategyId, cancellationToken));
         EnsureSuccess(startResponse);
 
         if (startResponse.ZapretStatus is not
@@ -90,9 +92,38 @@ public sealed class WindowsZapretStrategyRuntime(
             } started
             || !string.Equals(started.StrategyId, strategyId, StringComparison.Ordinal))
         {
-            throw new IpcProtocolException(
+            throw new StrategyRuntimeException(
                 "StartStateMismatch",
-                "После запуска служба не подтвердила ожидаемую стратегию Zapret.");
+                "После запуска служба не подтвердила ожидаемый сетевой профиль.");
+        }
+    }
+
+    private static async Task<IpcResponse> ExecuteIpcAsync(Func<Task<IpcResponse>> operation)
+    {
+        try
+        {
+            return await operation();
+        }
+        catch (IpcProtocolException exception)
+        {
+            throw new StrategyRuntimeException(
+                exception.Code,
+                exception.Message,
+                exception);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            throw new StrategyRuntimeException(
+                "ServiceAccessDenied",
+                "Windows не разрешила доступ к локальной службе NetPilot.",
+                exception);
+        }
+        catch (IOException exception)
+        {
+            throw new StrategyRuntimeException(
+                "ServiceTransportError",
+                "Не удалось безопасно обменяться данными с локальной службой NetPilot.",
+                exception);
         }
     }
 
@@ -104,7 +135,7 @@ public sealed class WindowsZapretStrategyRuntime(
         {
             throw new StrategyRuntimeException(
                 response.Code,
-                response.Message ?? "Служба NetPilot отклонила операцию Zapret.");
+                response.Message ?? "Служба NetPilot отклонила операцию сетевого движка.");
         }
     }
 }

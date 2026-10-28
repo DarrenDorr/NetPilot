@@ -10,11 +10,12 @@ internal sealed class WindowsEngineProvisioningService(
     public async Task<EngineInstallationState> GetInstallationStateAsync(
         CancellationToken cancellationToken = default)
     {
-        var response = await serviceClient.GetZapretInstallationStatusAsync(cancellationToken);
+        var response = await ExecuteIpcAsync(
+            () => serviceClient.GetZapretInstallationStatusAsync(cancellationToken));
         EnsureSuccess(response);
 
         var status = response.ZapretInstallation
-            ?? throw new IpcProtocolException(
+            ?? throw new EngineProvisioningException(
                 "MissingInstallationStatus",
                 "Служба NetPilot не вернула состояние установки сетевого движка.");
 
@@ -33,13 +34,14 @@ internal sealed class WindowsEngineProvisioningService(
     public async Task<EngineInstallResult> InstallLatestAsync(
         CancellationToken cancellationToken = default)
     {
-        var response = await serviceClient.InstallLatestZapretAsync(cancellationToken);
+        var response = await ExecuteIpcAsync(
+            () => serviceClient.InstallLatestZapretAsync(cancellationToken));
         EnsureSuccess(response);
 
         var result = response.ZapretInstall;
         if (result is null || !result.Installed || string.IsNullOrWhiteSpace(result.Version))
         {
-            throw new IpcProtocolException(
+            throw new EngineProvisioningException(
                 "MissingInstallResult",
                 "Служба NetPilot не подтвердила установку сетевого движка.");
         }
@@ -49,11 +51,40 @@ internal sealed class WindowsEngineProvisioningService(
             result.TemporaryCleanupCompleted);
     }
 
+    private static async Task<IpcResponse> ExecuteIpcAsync(Func<Task<IpcResponse>> operation)
+    {
+        try
+        {
+            return await operation();
+        }
+        catch (IpcProtocolException exception)
+        {
+            throw new EngineProvisioningException(
+                exception.Code,
+                exception.Message,
+                exception);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            throw new EngineProvisioningException(
+                "ServiceAccessDenied",
+                "Windows не разрешила доступ к локальной службе NetPilot.",
+                exception);
+        }
+        catch (IOException exception)
+        {
+            throw new EngineProvisioningException(
+                "ServiceTransportError",
+                "Не удалось безопасно обменяться данными с локальной службой NetPilot.",
+                exception);
+        }
+    }
+
     private static void EnsureSuccess(IpcResponse response)
     {
         if (!response.Success)
         {
-            throw new IpcProtocolException(
+            throw new EngineProvisioningException(
                 response.Code,
                 response.Message ?? "Служба NetPilot отклонила операцию установки движка.");
         }
