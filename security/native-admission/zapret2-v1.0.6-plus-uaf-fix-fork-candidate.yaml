@@ -44,16 +44,18 @@ static_review:
   resource_hardening_document: docs/ZAPRET2-RESOURCE-HARDENING-R28.1.md
   saturation_semantics_document: docs/ZAPRET2-CONNTRACK-SATURATION-R28.2.md
   controlled_build_document: docs/ZAPRET2-CONTROLLED-BUILD-R28.2.md
+  windows_compile_smoke_document: docs/ZAPRET2-WINDOWS-COMPILE-SMOKE-R28.2.md
   provenance_workflow: .github/workflows/native-candidate-provenance.yml
+  windows_compile_smoke_workflow: .github/workflows/native-candidate-windows-compile-smoke.yml
   fork_strategy: OWNED_MINIMAL_HARDENED_FORK_CANDIDATE
   full_upstream_master_as_base: REJECT
-  next_gate: R28.2_RESOURCE_PATCH_EVIDENCE
+  next_gate: R28.3_SANITIZER_FUZZ_RESOURCE_AND_ISOLATED_RUNTIME_EVIDENCE
 
 patch_series:
   - sequence: 1
     path: security/native-admission/patches/zapret2-r28/0001-explicit-conntrack-feed-result.patch
     purpose: behavior-preserving refactor of ambiguous bool feed result before any resource cap is introduced
-    status: APPLY_CHECK_PASS
+    status: APPLY_CHECK_AND_WINDOWS_COMPILE_SMOKE_PASS
     changes_packet_policy: false
     sha256: af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff
     expected_files:
@@ -62,23 +64,64 @@ patch_series:
       - nfq2/desync.c
       - nfq2/lua.c
 
+  - sequence: 2
+    path: security/native-admission/patches/zapret2-r28/0002-bounded-conntrack-resource-result.patch
+    purpose: introduce explicit RESOURCE_EXHAUSTED state and aggregate conntrack entry budget with fail-safe VERDICT_PASS before dp_find/desync
+    status: APPLY_CHECK_AND_WINDOWS_COMPILE_SMOKE_PASS
+    git_blob_sha1: 334f917b5d50b30fca8108f05944b11a46ed235b
+    changes_packet_policy: true
+    expected_files:
+      - nfq2/conntrack.c
+      - nfq2/conntrack.h
+      - nfq2/desync.c
+    limitation: production max_entries value is not admitted until empirical workload tests are completed
+
+  - sequence: 3
+    path: security/native-admission/patches/zapret2-r28/0003-bounded-delayed-queue-bytes.patch
+    purpose: add overflow-safe delayed raw-packet queue byte accounting without removing the existing packet-count bound
+    status: APPLY_CHECK_AND_WINDOWS_COMPILE_SMOKE_PASS
+    git_blob_sha1: 425614bf8f23cbe693e3ff2fb18512d052722f03
+    changes_packet_policy: resource_saturation_only
+    expected_files:
+      - nfq2/packet_queue.c
+      - nfq2/packet_queue.h
+    limitation: production max_bytes value is not admitted until empirical workload tests are completed
+
 verified_delta:
   - id: Z2-FORK-BASE-001
     status: PASS_FOR_RELATIONSHIP_ONLY
     finding: Исправление UAF является прямым дочерним коммитом точного релизного коммита v1.0.6.
     evidence: Коммит 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d имеет единственного родителя 221d7dff24bfec0cd5ac0a5070b8acef2008af3d и tree 5c2a77786cc7089145abe2ca99bcc53a8ed7de15.
+
   - id: Z2-FORK-BASE-002
     status: PASS_FOR_KNOWN_UAF_FIX_ONLY
     finding: Патч сбрасывает сохранённое представление reassembly payload после освобождения буфера перед повторным разбором.
     limitation: Это подтверждает исправление ранее найденного UAF, но не является полным security admission всего движка.
+
   - id: Z2-SEMANTICS-003
     status: DESIGN_VERIFIED
     finding: ConntrackPoolFeed()==false в main desync path не означает pass-through; play_prolog продолжает без conntrack и может применить stateless desync.
-    effect: Простой count cap с return false отклонён. Resource saturation должен иметь отдельный internal result и явный VERDICT_PASS до dp_find/desync processing.
+    effect: Простой count cap с return false отклонён. Resource saturation получил отдельный internal result и явный VERDICT_PASS до dp_find/desync processing.
+
   - id: Z2-PATCH-0001-004
-    status: PASS_FOR_APPLICABILITY_ONLY
-    finding: Исправленный patch 0001 успешно прошёл git apply --check против exact tree и allowlist затрагиваемых файлов.
-    limitation: Это подтверждает применимость и provenance patch, но ещё не компиляцию и не runtime behavior.
+    status: PASS_FOR_APPLICABILITY_AND_COMPILE_ONLY
+    finding: Patch 0001 применим к exact source tree и входит в успешный Windows x64 compile-smoke.
+    limitation: Runtime behavior не проверен.
+
+  - id: Z2-PATCH-0002-005
+    status: PASS_FOR_APPLICABILITY_AND_COMPILE_ONLY
+    finding: Patch 0002 вводит отдельный RESOURCE_EXHAUSTED и aggregate entry budget; exact patch вошёл в успешный Windows x64 compile-smoke.
+    limitation: Числовой production budget и runtime saturation behavior ещё не подтверждены workload-тестами.
+
+  - id: Z2-PATCH-0003-006
+    status: PASS_FOR_APPLICABILITY_AND_COMPILE_ONLY
+    finding: Patch 0003 вводит overflow-safe queued-bytes accounting; exact patch вошёл в успешный Windows x64 compile-smoke.
+    limitation: Числовой production byte budget и runtime queue behavior ещё не подтверждены workload-тестами.
+
+  - id: Z2-WINDOWS-COMPILE-007
+    status: PASS_FOR_COMPILE_ONLY
+    finding: Exact post-UAF source + NetPilot patches 0001-0003 + exact LuaJIT commit успешно компилируются в Windows x64 winws2.exe на windows-2025/Cygwin.
+    limitation: Binary не запускался; WinDivert отсутствовал; результат не является ADMIT.
 
 provenance_gate:
   workflow_status: PASS_FOR_SOURCE_AND_PATCH_APPLICABILITY
@@ -97,40 +140,85 @@ provenance_gate:
   execution_scope: source_checkout_and_metadata_only
   native_execution_allowed: false
   driver_install_allowed: false
-  checks:
-    - exact head commit
-    - exact parent commit
-    - exact tree
-    - delta contains only nfq2/desync.c
-    - expected UAF-fix source assertions
-    - patch 0001 git apply check and exact touched-file allowlist
-    - SHA-256 evidence artifact verified after download
   workflow_actions_pinned_by_full_sha: true
   checkout_credentials_persisted: false
   runner: ubuntu-24.04
 
+windows_compile_smoke:
+  status: PASS_FOR_COMPILE_ONLY
+  workflow_run_id: 40718483443
+  workflow_job_id: 122922566162
+  head_sha: 66d5cd72370e1283e5fbaf59e7cced9baf0003c4
+  artifact_id: 12829318738
+  artifact_name: zapret2-r28-windows-x64-compile-smoke-evidence
+  artifact_zip_sha256: 63a445d03202d6b2e548c1dd8f7d9791863d7decaa74338cd8e8084ed5ecbc92
+  evidence_file: security/native-admission/evidence/zapret2-r28/windows-x64-compile-smoke.txt
+  evidence_file_original_sha256: 16f1c974d2b7d5e2b9060b01accf1316c4f93a789ab19fdbaccfc0304563829d
+  checksums_file: security/native-admission/evidence/zapret2-r28/SHA256SUMS.txt
+  source_commit: 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d
+  source_parent: 221d7dff24bfec0cd5ac0a5070b8acef2008af3d
+  luajit_commit: dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc
+  runner: windows-2025
+  cygwin_setup_version: '2.940'
+  cygwin_setup_sha512: fc46e3ead0312ea632251c16334b23caab31c9b38db30db4e5418b43ffeec5c003cc867b4166c8222a622ad107660e2ce6e3d855499d08e695dd13010f43a396
+  observed_cygwin_runtime: 3.6.12-1
+  observed_gcc_core: 14.4.0-1
+  observed_make: 4.4.1-2
+  patch_series_applied:
+    - 0001-explicit-conntrack-feed-result.patch
+    - 0002-bounded-conntrack-resource-result.patch
+    - 0003-bounded-delayed-queue-bytes.patch
+  output:
+    filename: winws2.exe
+    size_bytes: 650240
+    sha256: 869d5e80ec1b5b263b27485ef7c943066becf58e2b69bb463a43bfd064edb28d
+    authenticode_status: NotSigned
+    signer: null
+    file_version: null
+    product_version: null
+  cygwin_runtime_dll:
+    filename: cygwin1.dll
+    size_bytes: 3246645
+    sha256: ed9d5379061e5de79c3375cc62246c2142ea1c97d94f4d16bfbea6fb1b7fc889
+  safety:
+    winws2_executed: false
+    windivert_present: false
+    windivert_driver_installed: false
+    output_binary_persisted_in_repo: false
+    output_binary_removed_after_inventory: true
+
 residual_review_blockers:
   - id: Z2-STATE-001
-    title: Нет продуктового агрегатного лимита conntrack/ipcache.
-    required_action: Ввести отдельное RESOURCE_EXHAUSTED state поверх проверенного explicit feed result; затем resource saturation main path должен завершаться с VERDICT_PASS до dp_find/desync, без вытеснения активных tracks.
+    title: Механизм aggregate conntrack budget уже компилируется, но production value и runtime saturation behavior не доказаны.
+    required_action: Измерить browser/YouTube/Discord/combined/burst/hostile workloads; подтвердить fail-safe VERDICT_PASS при saturation и выбрать лимит по evidence, а не на глаз.
+
   - id: Z2-DELAYED-QUEUE-002
-    title: Delayed raw packet queue имеет packet-count bound, но нужен отдельный byte budget.
-    required_action: Добавить overflow-safe queued-bytes accounting до allocation/copy и regression tests enqueue/dequeue/destroy/saturation, не ослабляя 64-packet cap.
+    title: Механизм delayed queue byte budget уже компилируется, но production value и runtime accounting не доказаны.
+    required_action: Regression/load tests enqueue/dequeue/destroy/saturation и выбор max_bytes по измерениям без ослабления 64-packet cap.
+
   - id: Z2-HOSTNAME-003
     title: Packet-derived hostname не должен становиться доверенным постоянным содержимым auto-hostlist/log.
     required_action: Persistent auto-hostlist выключен в первом production profile; не включать без отдельной валидации/квот/recovery review.
+
   - id: Z2-DNSCACHE-004
     title: Экспериментальный ipcache-hostname не имеет достаточной корреляции DNS-ответов.
     required_action: Функция выключена в первом production profile и не допускается без отдельного review.
+
   - id: Z2-LUA-005
     title: Upstream имеет мощную Lua/CLI поверхность.
     required_action: Пользовательский Lua/raw CLI запрещены; project-owned Lua допустим только при hash pinning и отдельном admission, если вообще понадобится.
+
   - id: Z2-DEPS-006
-    title: WinDivert, Cygwin и итоговые Windows-бинарники ещё не переинвентаризированы для patched build.
-    required_action: Controlled build, полный native inventory, SHA-256, PE/signatures и provenance.
+    title: Controlled winws2/Cygwin compile inventory получен, но WinDivert DLL/SYS и полный production component set ещё не сведены в единый admission.
+    required_action: Точный WinDivert inventory, SHA-256, PE/signatures, driver lifecycle review и затем полный component-set manifest.
+
   - id: Z2-SUPPLY-007
-    title: Upstream Windows build recipe не соответствует строгому immutable pinning NetPilot.
-    required_action: Pin full action SHAs, exact Cygwin/toolchain, Lua/LuaJIT и WinDivert inputs with expected hashes before use; emit build manifest/SBOM.
+    title: Build chain ещё не полностью воспроизводима на уровне всех транзитивных Cygwin packages.
+    required_action: Зафиксировать/проверить exact package identities или воспроизводимый build environment; сохранить SBOM/build manifest; любое drift требует readmission.
+
+  - id: Z2-RUNTIME-008
+    title: Успешная компиляция не даёт runtime evidence.
+    required_action: Sanitizer/fuzz/static-analysis и затем изолированный runtime lab без production activation.
 
 fork_rules:
   - Ветвить только от exact v1.0.6 commit 221d7dff24bfec0cd5ac0a5070b8acef2008af3d.
@@ -144,17 +232,18 @@ fork_rules:
   - Runtime получает только фиксированный executable и валидированный ArgumentList из allowlist.
 
 required_before_admit:
-  - Реализовать и проверить aggregate conntrack budget и delayed queue byte budget согласно docs/ZAPRET2-CONNTRACK-SATURATION-R28.2.md.
-  - Controlled source build с pinned immutable actions/toolchain/dependency hashes.
-  - Полный Windows x64 inventory EXE/DLL/SYS с SHA-256 и проверкой подписей.
-  - Sanitizer/static-analysis tests для доступных платформ и parser fuzz regression tests.
-  - Изолированные runtime tests: start, stop, crash, cleanup, HTTPS, Discord TCP/UDP, повторный запуск.
-  - Измерить resource caps на browser/YouTube/Discord/combined/burst/hostile workload до фиксации production значений.
-  - Повторный review WinDivert/Cygwin и актуальных advisory/CVE/KEV для exact component set.
+  - Провести sanitizer/static-analysis tests и parser/fuzz regression tests на exact patched source.
+  - Провести controlled resource/load tests и выбрать production conntrack/max_bytes значения по измерениям.
+  - Выполнить полный WinDivert DLL/SYS inventory, SHA-256, PE/signature и driver lifecycle review.
+  - Сформировать полный Windows component-set manifest/SBOM и проверить provenance всех runtime dependencies.
+  - Выполнить изолированные runtime tests: start, stop, crash, cleanup, HTTPS, Discord TCP/UDP, повторный запуск.
+  - Повторить advisory/CVE/KEV review для exact component set непосредственно перед admission decision.
+  - Выполнить отдельный HIGH_ASSURANCE/human review перед production activation.
   - Только после всех проверок новый manifest может получить admission_status: ADMIT.
 
 notes:
   - Исходный zapret2 v1.0.6 остаётся навсегда BLOCK в отдельном manifest и не переопределяется этим кандидатом.
-  - Успешный provenance gate не является ADMIT и не разрешает native execution.
-  - Этот record не разрешает сборку для пользователей, установку, запуск или интеграцию native engine.
+  - Успешные provenance/compile gates не являются ADMIT и не разрешают native execution.
+  - NotSigned у controlled winws2 не трактуется автоматически как вредоносность; для production потребуется immutable provenance/hash enforcement и отдельное решение по signing policy.
+  - Этот record не разрешает установку, запуск или production-интеграцию native engine.
   - REVIEW и BLOCK никогда не трактуются как PASS или ADMIT.
