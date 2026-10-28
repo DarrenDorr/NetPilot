@@ -60,12 +60,39 @@ jobs:
           grep -Fq 'rdata_payload = dis->data_payload;' nfq2/desync.c
           grep -Fq 'rlen_payload = dis->len_payload;' nfq2/desync.c
 
+      - name: Verify NetPilot patch 0001 applies only to expected files
+        shell: bash
+        working-directory: zapret2
+        run: |
+          set -euo pipefail
+
+          patch_file="../netpilot/security/native-admission/patches/zapret2-r28/0001-explicit-conntrack-feed-result.patch"
+          test -f "$patch_file"
+          git apply --check "$patch_file"
+
+          mapfile -t patched_files < <(git apply --numstat "$patch_file" | awk '{print $3}' | sort)
+          expected_files=(
+            "nfq2/conntrack.c"
+            "nfq2/conntrack.h"
+            "nfq2/desync.c"
+            "nfq2/lua.c"
+          )
+
+          test "${#patched_files[@]}" -eq "${#expected_files[@]}"
+          for i in "${!expected_files[@]}"; do
+            test "${patched_files[$i]}" = "${expected_files[$i]}"
+          done
+
+          test -z "$(git status --porcelain)"
+
       - name: Produce provenance evidence
         shell: bash
         working-directory: zapret2
         run: |
           set -euo pipefail
           mkdir -p ../evidence
+
+          patch_file="../netpilot/security/native-admission/patches/zapret2-r28/0001-explicit-conntrack-feed-result.patch"
 
           {
             echo "schema_version=1"
@@ -79,9 +106,11 @@ jobs:
             git diff --name-only HEAD^ HEAD
             echo "changed_files_end"
             echo "desync_c_sha256=$(sha256sum nfq2/desync.c | awk '{print $1}')"
+            echo "netpilot_patch_0001_sha256=$(sha256sum "$patch_file" | awk '{print $1}')"
           } > ../evidence/zapret2-source-anchor.txt
 
           git diff --binary HEAD^ HEAD -- nfq2/desync.c > ../evidence/zapret2-uaf-fix.patch
+          cp "$patch_file" ../evidence/netpilot-0001-explicit-conntrack-feed-result.patch
           sha256sum ../evidence/* | sort > ../evidence/SHA256SUMS.txt
 
       - name: Upload provenance evidence only
