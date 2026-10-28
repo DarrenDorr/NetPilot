@@ -255,9 +255,31 @@ public sealed class ZapretUpdateOrchestrator
     private static void ValidateTreeNoReparse(string root)
     {
         RejectReparsePoint(root);
-        foreach (var entry in Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories))
+
+        var pending = new Stack<string>();
+        pending.Push(root);
+
+        while (pending.Count > 0)
         {
-            RejectReparsePoint(entry);
+            var directory = pending.Pop();
+            foreach (var entry in Directory.EnumerateFileSystemEntries(
+                         directory,
+                         "*",
+                         SearchOption.TopDirectoryOnly))
+            {
+                var attributes = File.GetAttributes(entry);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    throw new UpdateSecurityException(
+                        "ReparsePointRejected",
+                        "Reparse point во временном каталоге обновления Zapret запрещён.");
+                }
+
+                if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    pending.Push(entry);
+                }
+            }
         }
     }
 
