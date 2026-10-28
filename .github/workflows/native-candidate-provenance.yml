@@ -1,0 +1,93 @@
+name: Native Candidate Provenance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/native-candidate-provenance.yml"
+      - "security/native-admission/**"
+      - "docs/ENGINE-CANDIDATE-ADMISSION-R28.md"
+      - "docs/ZAPRET2-*.md"
+
+permissions:
+  contents: read
+
+jobs:
+  zapret2-source-anchor:
+    name: Verify zapret2 exact source anchor
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout NetPilot without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: netpilot
+          persist-credentials: false
+
+      - name: Checkout exact zapret2 UAF-fix commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: bol-van/zapret2
+          ref: 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d
+          fetch-depth: 2
+          path: zapret2
+          persist-credentials: false
+
+      - name: Verify immutable source relationship and narrow delta
+        shell: bash
+        working-directory: zapret2
+        run: |
+          set -euo pipefail
+
+          expected_head="4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d"
+          expected_parent="221d7dff24bfec0cd5ac0a5070b8acef2008af3d"
+          expected_tree="5c2a77786cc7089145abe2ca99bcc53a8ed7de15"
+
+          actual_head="$(git rev-parse HEAD)"
+          actual_parent="$(git rev-parse HEAD^)"
+          actual_tree="$(git rev-parse 'HEAD^{tree}')"
+
+          test "$actual_head" = "$expected_head"
+          test "$actual_parent" = "$expected_parent"
+          test "$actual_tree" = "$expected_tree"
+
+          mapfile -t changed_files < <(git diff --name-only "$expected_parent" "$expected_head")
+          test "${#changed_files[@]}" -eq 1
+          test "${changed_files[0]}" = "nfq2/desync.c"
+
+          grep -Fq 'goto reasm_cancel_rediscover;' nfq2/desync.c
+          grep -Fq 'rdata_payload = dis->data_payload;' nfq2/desync.c
+          grep -Fq 'rlen_payload = dis->len_payload;' nfq2/desync.c
+
+      - name: Produce provenance evidence
+        shell: bash
+        working-directory: zapret2
+        run: |
+          set -euo pipefail
+          mkdir -p ../evidence
+
+          {
+            echo "schema_version=1"
+            echo "candidate=zapret2-v1.0.6-plus-uaf-fix"
+            echo "repository=https://github.com/bol-van/zapret2"
+            echo "head_commit=$(git rev-parse HEAD)"
+            echo "parent_commit=$(git rev-parse HEAD^)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "commit_message=$(git log -1 --pretty=%s)"
+            echo "changed_files_begin"
+            git diff --name-only HEAD^ HEAD
+            echo "changed_files_end"
+            echo "desync_c_sha256=$(sha256sum nfq2/desync.c | awk '{print $1}')"
+          } > ../evidence/zapret2-source-anchor.txt
+
+          git diff --binary HEAD^ HEAD -- nfq2/desync.c > ../evidence/zapret2-uaf-fix.patch
+          sha256sum ../evidence/* | sort > ../evidence/SHA256SUMS.txt
+
+      - name: Upload provenance evidence only
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zapret2-r28-source-provenance
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
