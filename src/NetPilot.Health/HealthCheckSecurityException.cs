@@ -1,0 +1,9 @@
+namespace NetPilot.Health;
+
+public sealed class HealthCheckSecurityException(
+    string code,
+    string message,
+    Exception? innerException = null) : Exception(message, innerException)
+{
+    public string Code { get; } = code;
+}
