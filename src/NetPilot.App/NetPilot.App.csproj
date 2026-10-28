@@ -1,15 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Avalonia.Desktop" />
     <PackageReference Include="Avalonia.Themes.Fluent" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../NetPilot.Automation/NetPilot.Automation.csproj" />
     <ProjectReference Include="../NetPilot.Core/NetPilot.Core.csproj" />
-    <ProjectReference Include="../NetPilot.Engine.Abstractions/NetPilot.Engine.Abstractions.csproj" />
-    <ProjectReference Include="../NetPilot.Platform.Abstractions/NetPilot.Platform.Abstractions.csproj" />
+    <ProjectReference Include="../NetPilot.Health/NetPilot.Health.csproj" />
+    <ProjectReference Include="../NetPilot.Ipc/NetPilot.Ipc.csproj" />
   </ItemGroup>
 </Project>
