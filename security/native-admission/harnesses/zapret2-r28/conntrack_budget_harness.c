@@ -196,11 +196,31 @@ int main(void)
     require_true(track == NULL, "rejected flow must not expose a track");
     require_true(pool_count(&pool) == 3, "rejected flow must not grow the pool");
 
-    /* max_entries == 0 intentionally means unlimited for the internal primitive. */
+    /* Zero means unconfigured and must fail closed for new state. */
     ConntrackPoolSetMaxEntries(&pool, 0);
+
+    track = NULL;
+    reverse = true;
+    require_true(ConntrackPoolFeed(&pool, &first.dis, &track, &reverse) == CTRACK_FEED_OK,
+                 "existing flow must remain usable when budget becomes unconfigured");
+    require_true(track != NULL && !reverse,
+                 "existing forward flow direction changed under zero budget");
+    require_true(pool_count(&pool) == 3,
+                 "existing flow under zero budget must not allocate new state");
+
+    track = NULL;
+    reverse = false;
+    require_true(ConntrackPoolFeed(&pool, &fourth.dis, &track, &reverse) == CTRACK_FEED_RESOURCE_EXHAUSTED,
+                 "zero/unconfigured budget must reject a new flow");
+    require_true(track == NULL, "zero-budget rejected flow must not expose a track");
+    require_true(pool_count(&pool) == 3, "zero budget must not grow the pool");
+
+    /* An explicit non-zero budget re-enables bounded state creation. */
+    ConntrackPoolSetMaxEntries(&pool, 4);
     require_true(ConntrackPoolFeed(&pool, &fourth.dis, &track, &reverse) == CTRACK_FEED_OK,
-                 "unlimited internal mode must accept the fourth flow");
-    require_true(pool_count(&pool) == 4, "pool must contain four flows after removing the cap");
+                 "explicit budget of four must accept the fourth flow");
+    require_true(pool_count(&pool) == 4,
+                 "pool must contain four flows after explicit budget increase");
 
     ConntrackPoolDestroy(&pool);
     require_true(pool_count(&pool) == 0, "destroy must free all conntrack entries");
