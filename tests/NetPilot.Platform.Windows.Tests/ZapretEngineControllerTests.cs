@@ -16,14 +16,16 @@ public sealed class ZapretEngineControllerTests
         await using var runner = new ZapretProcessRunner(launcher);
         var controller = new ZapretEngineController(fixture.Root, runner);
 
-        var status = await controller.StartAsync("ALT11");
+        var status = await controller.StartAsync(
+            "ALT11",
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(ZapretProcessState.Running, status.State);
         Assert.NotNull(launcher.LastPlan);
         Assert.Equal("ALT11", launcher.LastPlan!.StrategyId);
         Assert.Equal(Path.Combine(fixture.Root, "bin", "winws.exe"), launcher.LastPlan.ExecutablePath);
-        Assert.Contains("--wf-tcp=443,12", launcher.LastPlan.Arguments);
-        Assert.DoesNotContain(launcher.LastPlan.Arguments, static argument =>
+        Assert.Contains("--wf-tcp=443,12", launcher.LastPlan.ArgumentList);
+        Assert.DoesNotContain(launcher.LastPlan.ArgumentList, static argument =>
             argument.Contains(".bat", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -38,7 +40,9 @@ public sealed class ZapretEngineControllerTests
         var controller = new ZapretEngineController(fixture.Root, runner);
 
         var exception = await Assert.ThrowsAsync<ZapretProcessRunnerException>(
-            () => controller.StartAsync("ALT12"));
+            () => controller.StartAsync(
+                "ALT12",
+                TestContext.Current.CancellationToken));
 
         Assert.Equal("StrategyNotFound", exception.Code);
         Assert.Null(launcher.LastPlan);
@@ -73,7 +77,9 @@ public sealed class ZapretEngineControllerTests
         var controller = new ZapretEngineController(fixture.Root, runner);
 
         var exception = await Assert.ThrowsAsync<ZapretProcessRunnerException>(
-            () => controller.StartAsync("ALT_11"));
+            () => controller.StartAsync(
+                "ALT_11",
+                TestContext.Current.CancellationToken));
 
         Assert.Equal("DuplicateStrategyId", exception.Code);
         Assert.Null(launcher.LastPlan);
