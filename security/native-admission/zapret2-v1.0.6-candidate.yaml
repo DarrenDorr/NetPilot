@@ -7,6 +7,7 @@ reviewed_at: 2026-10-28
 upstream:
   repository: https://github.com/bol-van/zapret2
   release_tag: v1.0.6
+  release_commit: 221d7dff24bfec0cd5ac0a5070b8acef2008af3d
   release_published_at: 2026-10-21T09:38:28Z
   release_immutable: false
   archive:
@@ -23,22 +24,108 @@ policy:
   unknown_is_pass: false
   executable_from_user_writable_path_allowed: false
   version_drift_requires_readmission: true
+  raw_command_line_allowed: false
+  user_supplied_lua_allowed: false
+  user_supplied_lua_paths_allowed: false
+  luaexec_code_from_config_allowed: false
+  only_hash_pinned_project_lua_allowed: true
+  strategy_must_compile_from_typed_allowlisted_profile: true
+
+windows_x64_candidate_runtime:
+  - path: binaries/windows-x86_64/winws2.exe
+    role: packet-processing executable
+    size_bytes: 656384
+    sha256: ba4ceccdea3576da0a0991a50d7893ea911de197281338132dbec02a5b2fcf58
+    signature_status: NotSigned
+    decision: REVIEW
+
+  - path: binaries/windows-x86_64/WinDivert.dll
+    role: WinDivert user-mode library
+    size_bytes: 47616
+    sha256: 16abd6a029e65557c6a309bea7b13bf81fff4e193567582e1cddbf6719f323e0
+    signature_status: NotSigned
+    decision: REVIEW
+    blockers:
+      - This DLL differs from the WinDivert.dll previously byte-matched to official WinDivert v2.2.2 A; exact upstream variant/provenance still must be established.
+
+  - path: binaries/windows-x86_64/WinDivert64.sys
+    role: privileged WinDivert kernel driver
+    size_bytes: 94144
+    sha256: 8da085332782708d8767bcace5327a6ec7283c17cfb85e40b03cd2323a90ddc2
+    pe_file_version: '2.2'
+    pe_product_version: '2.2'
+    pe_company_name: Basil
+    pe_product_name: WinDivert 2.2 driver
+    signature_status: Valid
+    signer_subject: 'CN=成都密思听科技有限公司, O=成都密思听科技有限公司, S=四川省, C=CN, OID.2.5.4.15=Private Organization, OID.1.3.6.1.4.1.311.60.2.1.3=CN, SERIALNUMBER=91510107MA7E8Y2876'
+    signer_thumbprint: 043589F75FCE2795E7F2CC3E526D46784D5DDAB3
+    provenance: SAME_SHA256_AS_PREVIOUSLY_REVIEWED_OFFICIAL_WINDIVERT_V2_2_2_DRIVER
+    decision: REVIEW
+
+  - path: binaries/windows-x86_64/cygwin1.dll
+    role: native runtime dependency
+    size_bytes: 2954293
+    sha256: 103104a52e5293ce418944725df19e2bf81ad9269b9a120d71d39028e821499b
+    exact_version: 3.4.10
+    company_name: Red Hat
+    product_name: Cygwin
+    signature_status: NotSigned
+    provenance: SAME_SHA256_AS_ZAPRET_V72_9_WINDOWS_X86_64_BUNDLE
+    decision: REVIEW
+    blockers:
+      - The maintained zapret2 release still bundles Cygwin 3.4.10; suitability for modern-Windows-only NetPilot remains a review item.
+
+excluded_from_minimal_runtime_by_default:
+  - binaries/windows-x86_64/ip2net.exe
+  - binaries/windows-x86_64/mdig.exe
+  - binaries/windows-x86_64/killall.exe
+  - all windows-x86 binaries
+  - installer/helper scripts not required by NetPilot runtime
+
+security_boundaries:
+  - id: NETP-Z2-BOUNDARY-001
+    title: Arbitrary Lua must not cross the NetPilot strategy boundary
+    status: REQUIRED
+    rationale: zapret2 intentionally supports Lua files and Lua code through command-line options, including --lua-init and luaexec code paths. This upstream capability must not become a user/config/remote execution surface in NetPilot.
+    requirements:
+      - NetPilot strategy/config contains only a typed versioned schema and predefined profile IDs.
+      - User input may never become a raw zapret2 argument string.
+      - User/config/network/LLM input may never populate --lua-init, Lua file paths, or luaexec:code.
+      - Only project-owned Lua modules pinned by exact SHA-256 and shipped in a non-user-writable privileged runtime directory may be referenced.
+      - The service constructs a fixed executable path and validated argument array from allowlisted enums/ranges.
+      - Unknown flags, unknown profile fields and path-bearing values fail closed.
+
+  - id: NETP-Z2-BOUNDARY-002
+    title: Do not ship the full upstream utility set by default
+    status: REQUIRED
+    rationale: NetPilot should minimize privileged attack surface and install only runtime components proven necessary for the selected engine path.
+    requirements:
+      - ip2net.exe, mdig.exe and killall.exe are excluded unless separately justified and admitted.
+      - 32-bit binaries are excluded on the x64 NetPilot Windows target unless a documented requirement is approved.
+
+checks_completed:
+  - PASS: exact release archive SHA-256 and size verified on Windows hosted runner.
+  - PASS: archive paths checked for traversal/absolute paths and symlink entries before extraction.
+  - PASS: all EXE/DLL/SYS files inventoried without executing downloaded code.
+  - PASS: Windows x64 winws2.exe, WinDivert.dll, WinDivert64.sys and cygwin1.dll hashes recorded.
+  - PASS: v1.0.6 tag resolves to commit 221d7dff24bfec0cd5ac0a5070b8acef2008af3d.
+  - PASS: source/docs review confirms zapret2 supports Lua execution through its command/config surface; NetPilot-specific denial boundary is therefore mandatory.
 
 checks_required:
-  - Verify exact release archive SHA-256 and size.
-  - Reject unsafe ZIP entry paths and symlink/reparse-like entries.
-  - Enumerate every EXE/DLL/SYS file in the archive.
-  - Record component SHA-256, PE version metadata and Authenticode status without executing any downloaded file.
-  - Identify the Windows x64 packet-processing executable and all native runtime/driver dependencies.
-  - Establish authoritative upstream provenance for each privileged/native executable component.
-  - Review current upstream issues, advisories, CVE/NVD/OSV/CISA KEV applicability.
-  - Compare command-line/config surface against NetPilot strategy allowlist; do not expose arbitrary upstream command language.
-  - Review cleanup/rollback behavior for crash, stop and uninstall.
+  - Establish authoritative provenance for Windows x64 WinDivert.dll variant and winws2.exe build.
+  - Review current zapret2 upstream issues/security reports and CVE/NVD/OSV/CISA KEV applicability.
+  - Review v1.0.6 parser code for the zapret1 findings class and other obvious unsafe length/alignment patterns in the Windows packet path.
+  - Define and review the exact NetPilot-owned Lua module set, including immutable SHA-256 values.
+  - Define typed allowlisted strategy schema and deterministic compiler to argument arrays; no raw args.
+  - Review cleanup/rollback behavior for crash, stop, service failure and uninstall.
   - Only after all checks may admission_status become ADMIT.
 
 evidence:
   - Official GitHub release API identifies v1.0.6 as published 2026-10-21 and reports zapret2-v1.0.6.zip SHA-256 e141b51b60c895fe9548f4d644365461dcad8155e068d284a9aae1724504237d.
+  - Zapret2 Candidate Evidence run 40659130327 completed successfully and recorded 14 native components across x64/x86 without executing downloaded code.
+  - Source/docs show --lua-init file/code support and luaexec code expressions; this is treated as an upstream capability that NetPilot must deny to untrusted configuration.
 
 notes:
   - This candidate was opened because the existing zapret1 v72.9 component set is BLOCKED and zapret1 is EOL.
-  - This file does not approve installation, execution, bundling or activation of zapret2.
+  - The candidate remains REVIEW/BLOCK for release. Nothing here authorizes installation, execution, bundling or activation of zapret2.
+  - A successful inventory is evidence of identity only, not evidence that the engine is safe.
