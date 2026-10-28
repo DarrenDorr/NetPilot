@@ -6,10 +6,10 @@ namespace NetPilot.Updater;
 /// он возвращает только локально допущенную release identity.
 /// </summary>
 public sealed class AdmittedZapretReleaseSource(
-    IZapretReleaseSource transport,
+    IZapretReleaseTransport transport,
     IZapretReleaseAdmissionCatalog admissionCatalog) : IZapretReleaseSource
 {
-    private readonly IZapretReleaseSource _transport =
+    private readonly IZapretReleaseTransport _transport =
         transport ?? throw new ArgumentNullException(nameof(transport));
     private readonly IZapretReleaseAdmissionCatalog _admissionCatalog =
         admissionCatalog ?? throw new ArgumentNullException(nameof(admissionCatalog));

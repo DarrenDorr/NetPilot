@@ -92,8 +92,18 @@ else
     fail=1
   fi
 
+  if ! grep -qF 'AddSingleton<IZapretReleaseTransport>' "$service_program"; then
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: GitHub download должен быть зарегистрирован через узкий IZapretReleaseTransport."
+    fail=1
+  fi
+
   if ! grep -qF 'new AdmittedZapretReleaseSource(' "$service_program"; then
     echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: privileged updater обязан проходить через AdmittedZapretReleaseSource."
+    fail=1
+  fi
+
+  if ! grep -qF 'GetRequiredService<IZapretReleaseTransport>()' "$service_program"; then
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: admission-wrapper должен получать только узкий download transport."
     fail=1
   fi
 fi
