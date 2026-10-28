@@ -71,6 +71,7 @@ jobs:
         uses: cygwin/cygwin-install-action@006ad0b0946ca6d0a3ea2d4437677fa767392401 # v4 exact commit
         with:
           platform: x86_64
+          site: https://mirrors.kernel.org/sourceware/cygwin/
           check-sig: 'true'
           add-to-path: false
           packages: >-
@@ -150,6 +151,7 @@ jobs:
             'zapret2_commit=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d'
             'luajit_commit=dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc'
             'runner=windows-2025'
+            'cygwin_site=https://mirrors.kernel.org/sourceware/cygwin/'
             "winws2_sha256=$exeHash"
             "winws2_size=$exeSize"
             "winws2_file_version=$fileVersion"
@@ -166,10 +168,11 @@ jobs:
           if (Test-Path $exe) { Remove-Item -Force $exe }
           if (Test-Path $exe) { throw 'Candidate binary was not removed' }
 
-          Get-ChildItem evidence -File | Sort-Object Name | ForEach-Object {
+          $sumLines = Get-ChildItem evidence -File | Where-Object Name -ne 'SHA256SUMS.txt' | Sort-Object Name | ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
             "$hash  $($_.Name)"
-          } | Out-File -FilePath evidence\SHA256SUMS.txt -Encoding ascii
+          }
+          $sumLines | Out-File -FilePath evidence\SHA256SUMS.txt -Encoding ascii
 
       - name: Upload text evidence only
         if: always()
