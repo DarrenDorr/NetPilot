@@ -13,5 +13,6 @@
     <ProjectReference Include="../NetPilot.Automation/NetPilot.Automation.csproj" />
     <ProjectReference Include="../NetPilot.Health/NetPilot.Health.csproj" />
     <ProjectReference Include="../NetPilot.Platform.Windows/NetPilot.Platform.Windows.csproj" />
+    <ProjectReference Include="../NetPilot.Security/NetPilot.Security.csproj" />
   </ItemGroup>
 </Project>

@@ -1,5 +1,6 @@
 using NetPilot.App.Services;
 using NetPilot.Ipc;
+using NetPilot.Security;
 
 namespace NetPilot.App.Windows;
 
@@ -15,9 +16,18 @@ internal sealed class WindowsEngineProvisioningService(
         var status = response.ZapretInstallation
             ?? throw new IpcProtocolException(
                 "MissingInstallationStatus",
-                "Служба NetPilot не вернула состояние установки Zapret.");
+                "Служба NetPilot не вернула состояние установки сетевого движка.");
 
-        return new EngineInstallationState(status.IsInstalled, status.Version);
+        // Клиент и служба собираются из одного admission-профиля. При отсутствии
+        // ADMIT безопасные значения — запрет установки и запуска. Сама служба
+        // остаётся окончательной границей и повторно проверяет OperationPolicy.
+        var runtimePolicy = OperationPolicy.CreateNoAdmittedEnginePolicy();
+
+        return new EngineInstallationState(
+            status.IsInstalled,
+            status.Version,
+            CanInstall: runtimePolicy.IsAllowed(PrivilegedOperation.EngineInstall),
+            CanStart: runtimePolicy.IsAllowed(PrivilegedOperation.EngineStart));
     }
 
     public async Task<EngineInstallResult> InstallLatestAsync(
@@ -31,7 +41,7 @@ internal sealed class WindowsEngineProvisioningService(
         {
             throw new IpcProtocolException(
                 "MissingInstallResult",
-                "Служба NetPilot не подтвердила установку Zapret.");
+                "Служба NetPilot не подтвердила установку сетевого движка.");
         }
 
         return new EngineInstallResult(

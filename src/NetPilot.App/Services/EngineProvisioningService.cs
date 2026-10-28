@@ -2,7 +2,9 @@ namespace NetPilot.App.Services;
 
 public sealed record EngineInstallationState(
     bool IsInstalled,
-    string? Version = null);
+    string? Version = null,
+    bool CanInstall = false,
+    bool CanStart = false);
 
 public sealed record EngineInstallResult(
     string Version,
