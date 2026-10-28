@@ -1,7 +1,7 @@
 # Engine Layer R16 — независимый слой движков Net.Pilot
 
 Дата: 28.10.2026
-Статус: архитектурный переход начат, runtime-переключение ещё не выполнено.
+Статус: R16.1 завершён, R16.2 добавляет безопасный переходный адаптер; production runtime нового движка ещё не подключён.
 
 ## Цель
 
@@ -57,13 +57,35 @@ R16 вводит канонический идентификатор профи�
 
 Сам факт синтаксической корректности ID не означает, что профиль разрешён. Runtime обязан дополнительно проверить наличие ID в собственном локальном allowlist.
 
-## IEngineProfileRuntime
+## R16.1 — профильный контракт
 
-Новый контракт получает для активации только `EngineProfileId` и `CancellationToken`.
+Добавлены:
 
-Он намеренно не принимает `string command`, `arguments`, `path`, `script`, `lua` или похожие значения.
+- `EngineProfileId`;
+- `EngineProfileDescriptor`;
+- `EngineProfileRuntimeState`;
+- `EngineProfileRuntimeException`;
+- `IEngineProfileRuntime`.
 
-Это позволяет переводить GUI и Automation на engine-neutral API до выбора окончательного production-движка.
+Метод `ActivateProfileAsync` принимает только `EngineProfileId` и `CancellationToken`.
+
+Публичный descriptor намеренно не содержит `Arguments`, `Command`, `Script`, `Lua`, `Path` или `Url`.
+
+## R16.2 — переходный Automation adapter
+
+Существующий `StrategySelectionEngine` пока сохраняется, чтобы не ломать рабочую R15-ветку. Для него добавляется `EngineProfileStrategyRuntimeAdapter`.
+
+Его задача:
+
+1. получить типизированные профили из `IEngineProfileRuntime`;
+2. отдать selector только канонические ID;
+3. при обратной активации повторно разобрать строку как `EngineProfileId`;
+4. отклонить командоподобный/path-like ввод до вызова движка;
+5. передать движку только типизированный `EngineProfileId`.
+
+Таким образом строки вроде `--help`, `../profile`, `profile.lua`, `luaexec:code`, `x=1` и `a;b` не могут пройти через адаптер к движку.
+
+R16.2 пока не подменяет `WindowsZapretStrategyRuntime`: legacy runtime R15 остаётся изолированным до завершения admission нового engine path.
 
 ## Текущее состояние движков
 
@@ -85,35 +107,25 @@ Zapret2 не является пользовательской функцией 
 
 Его Lua-возможности считаются внутренней capability upstream и не должны становиться пользовательской/config execution surface.
 
-## План миграции
+## Следующие этапы
 
-1. **R16.1 — контракт профилей**
-   - `EngineProfileId`;
-   - `EngineProfileDescriptor`;
-   - `EngineProfileRuntimeState`;
-   - `IEngineProfileRuntime`;
-   - security unit tests.
-
-2. **R16.2 — engine-neutral Automation adapter**
-   - существующий selector перестаёт зависеть от понятия Zapret/BAT;
-   - работает только с профилями Net.Pilot.
-
-3. **R16.3 — локальный каталог профилей**
+1. **R16.3 — локальный каталог профилей**
    - фиксированные ID;
    - schema/version;
    - только заранее проверенные поля;
-   - неизвестные поля/ID → отказ.
+   - неизвестные поля/ID → отказ;
+   - каталог не содержит executable path, raw args или код.
 
-4. **R16.4 — deterministic compiler**
+2. **R16.4 — deterministic compiler**
    - профиль превращается в фиксированный набор типизированных параметров;
    - никаких raw args;
    - никаких пользовательских путей к коду;
    - executable выбирается только внутренним runtime.
 
-5. **R16.5 — adapter конкретного admitted engine**
+3. **R16.5 — adapter конкретного admitted engine**
    - подключается только после `ADMIT` соответствующего native component set.
 
-6. **R16.6 — GUI**
+4. **R16.6 — GUI**
    - пользователь видит понятный профиль и статус;
    - детали `winws`, WinDivert, Lua/BAT скрыты как внутреннее устройство.
 
@@ -128,8 +140,8 @@ R16 непосредственно поддерживает:
 - `NETP-INV-013` — смена движка требует нового admission;
 - `NETP-INV-016` — неизвестное состояние должно завершаться безопасным отказом.
 
-## Важная граница R16.1
+## Важная граница
 
-Добавление нейтрального контракта не разрешает установку или запуск zapret2 и не снимает BLOCK с zapret1.
+R16.1/R16.2 не разрешают установку или запуск zapret2 и не снимают BLOCK с zapret1.
 
-До завершения admission runtime должен оставаться fail-closed для нового движка.
+До завершения admission runtime нового движка остаётся fail-closed.

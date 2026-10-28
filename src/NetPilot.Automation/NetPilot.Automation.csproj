@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="../NetPilot.Core/NetPilot.Core.csproj" />
+    <ProjectReference Include="../NetPilot.Engine.Abstractions/NetPilot.Engine.Abstractions.csproj" />
     <ProjectReference Include="../NetPilot.Health/NetPilot.Health.csproj" />
   </ItemGroup>
 </Project>

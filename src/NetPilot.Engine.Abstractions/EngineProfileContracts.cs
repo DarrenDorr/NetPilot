@@ -129,6 +129,32 @@ public sealed record EngineProfileRuntimeState
     }
 }
 
+public sealed class EngineProfileRuntimeException(
+    string code,
+    string message,
+    Exception? innerException = null) : Exception(message, innerException)
+{
+    public string Code { get; } = ValidateCode(code);
+
+    private static string ValidateCode(string code)
+    {
+        if (string.IsNullOrWhiteSpace(code)
+            || code.Length > 64
+            || code.Any(static character =>
+                character is not (>= 'A' and <= 'Z')
+                    and not (>= 'a' and <= 'z')
+                    and not (>= '0' and <= '9')
+                    and not '.'
+                    and not '_'
+                    and not '-'))
+        {
+            throw new ArgumentException("Недопустимый диагностический код runtime.", nameof(code));
+        }
+
+        return code;
+    }
+}
+
 /// <summary>
 /// Движок получает только идентификатор заранее известного профиля.
 /// Конкретная реализация обязана разрешить его через собственный локальный allowlist
