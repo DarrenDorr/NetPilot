@@ -45,6 +45,7 @@ public enum StrategySelectionStatus
     NotRunning,
     CurrentHealthy,
     TransientFailure,
+    RecoveryNotApplicable,
     Switched,
     NoWorkingAlternative,
     OriginalRestoreFailed

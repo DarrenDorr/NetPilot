@@ -79,6 +79,17 @@ public sealed class StrategySelectionEngine
             }
         }
 
+        var recoveryDecision = StrategyRecoveryPolicy.Evaluate(evaluations);
+        if (!recoveryDecision.MayTryAlternativeProfiles)
+        {
+            return new StrategySelectionResult(
+                StrategySelectionStatus.RecoveryNotApplicable,
+                originalStrategyId,
+                originalStrategyId,
+                evaluations,
+                recoveryDecision.DiagnosticCode);
+        }
+
         var candidates = strategies
             .Where(strategy =>
                 !string.Equals(strategy.Id, originalStrategyId, StringComparison.Ordinal))

@@ -64,10 +64,10 @@ public sealed class StrategySelectionEngineTests
         var runtime = new FakeRuntime("ALT11", "ALT11", "ALT12", "ALT13");
         var probe = new ScriptedProbe(runtime, static (strategy, _) => strategy switch
         {
-            "ALT11" => Unavailable(),
+            "ALT11" => Unavailable("TlsHandshakeFailed"),
             "ALT12" => Healthy(80),
             "ALT13" => Healthy(450),
-            _ => Unavailable()
+            _ => Unavailable("TlsHandshakeFailed")
         });
         var engine = CreateEngine(runtime, probe);
 
@@ -175,6 +175,101 @@ public sealed class StrategySelectionEngineTests
         Assert.Empty(runtime.Activations);
     }
 
+    [Fact]
+    public async Task Dns_failure_does_not_activate_alternative_profiles()
+    {
+        var runtime = new FakeRuntime("ALT11", "ALT11", "ALT12", "ALT13");
+        var probe = new ScriptedProbe(
+            runtime,
+            static (_, _) => Unavailable("DnsResolutionFailed"));
+        var engine = CreateEngine(runtime, probe);
+
+        var result = await engine.EvaluateAndRecoverAsync(
+            Resources,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(StrategySelectionStatus.RecoveryNotApplicable, result.Status);
+        Assert.Equal("RecoverySuppressedDnsFailure", result.DiagnosticCode);
+        Assert.Equal("ALT11", result.SelectedStrategyId);
+        Assert.Empty(runtime.Activations);
+    }
+
+    [Fact]
+    public async Task Http_response_does_not_activate_alternative_profiles()
+    {
+        var runtime = new FakeRuntime("ALT11", "ALT11", "ALT12");
+        var probe = new ScriptedProbe(
+            runtime,
+            static (_, _) => Unavailable("Http503"));
+        var engine = CreateEngine(runtime, probe);
+
+        var result = await engine.EvaluateAndRecoverAsync(
+            Resources,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(StrategySelectionStatus.RecoveryNotApplicable, result.Status);
+        Assert.Equal("RecoverySuppressedHttpResponse", result.DiagnosticCode);
+        Assert.Empty(runtime.Activations);
+    }
+
+    [Fact]
+    public async Task Unknown_diagnostic_fails_closed_without_switching()
+    {
+        var runtime = new FakeRuntime("ALT11", "ALT11", "ALT12");
+        var probe = new ScriptedProbe(
+            runtime,
+            static (_, _) => Unavailable("UnexpectedFutureDiagnostic"));
+        var engine = CreateEngine(runtime, probe);
+
+        var result = await engine.EvaluateAndRecoverAsync(
+            Resources,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(StrategySelectionStatus.RecoveryNotApplicable, result.Status);
+        Assert.Equal("RecoverySuppressedUnclassifiedFailure", result.DiagnosticCode);
+        Assert.Empty(runtime.Activations);
+    }
+
+    [Fact]
+    public async Task Endpoint_rejection_does_not_activate_alternative_profiles()
+    {
+        var runtime = new FakeRuntime("ALT11", "ALT11", "ALT12");
+        var probe = new ScriptedProbe(
+            runtime,
+            static (_, _) => Unavailable("EndpointRejected"));
+        var engine = CreateEngine(runtime, probe);
+
+        var result = await engine.EvaluateAndRecoverAsync(
+            Resources,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(StrategySelectionStatus.RecoveryNotApplicable, result.Status);
+        Assert.Equal("RecoverySuppressedSecurityOrConfiguration", result.DiagnosticCode);
+        Assert.Empty(runtime.Activations);
+    }
+
+    [Theory]
+    [InlineData("TcpConnectFailed")]
+    [InlineData("TlsHandshakeFailed")]
+    [InlineData("Timeout")]
+    public async Task Explicitly_recoverable_network_failure_may_test_profiles(string diagnosticCode)
+    {
+        var runtime = new FakeRuntime("ALT11", "ALT11", "ALT12");
+        var probe = new ScriptedProbe(runtime, (strategy, _) =>
+            string.Equals(strategy, "ALT11", StringComparison.Ordinal)
+                ? Unavailable(diagnosticCode)
+                : Healthy());
+        var engine = CreateEngine(runtime, probe);
+
+        var result = await engine.EvaluateAndRecoverAsync(
+            Resources,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(StrategySelectionStatus.Switched, result.Status);
+        Assert.Equal("ALT12", result.SelectedStrategyId);
+        Assert.NotEmpty(runtime.Activations);
+    }
+
     private static StrategySelectionEngine CreateEngine(
         FakeRuntime runtime,
         ScriptedProbe probe) =>
@@ -194,13 +289,13 @@ public sealed class StrategySelectionEngineTests
             DateTimeOffset.UtcNow,
             TimeSpan.FromMilliseconds(milliseconds));
 
-    private static ResourceHealth Unavailable() =>
+    private static ResourceHealth Unavailable(string diagnosticCode = "TlsHandshakeFailed") =>
         new(
             "resource",
             ResourceHealthState.Unavailable,
             DateTimeOffset.UtcNow,
             null,
-            "NetworkError");
+            diagnosticCode);
 
     private sealed class FakeRuntime : IStrategyRuntime
     {
