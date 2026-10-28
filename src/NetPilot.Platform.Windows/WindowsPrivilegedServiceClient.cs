@@ -7,6 +7,8 @@ namespace NetPilot.Platform.Windows;
 
 public sealed class WindowsPrivilegedServiceClient : IPrivilegedServiceClient
 {
+    private static readonly WindowsNamedPipePeerAuthenticator PeerAuthenticator = new();
+
     public Task<IpcResponse> PingAsync(CancellationToken cancellationToken = default) =>
         SendAsync(IpcRequest.CreatePing(), cancellationToken);
 
@@ -26,13 +28,23 @@ public sealed class WindowsPrivilegedServiceClient : IPrivilegedServiceClient
         using var pipe = new NamedPipeClientStream(
             ".",
             IpcProtocol.WindowsPipeName,
-            PipeDirection.InOut,
+            PipeAccessRights.ReadWrite | PipeAccessRights.ReadPermissions,
             PipeOptions.Asynchronous,
-            TokenImpersonationLevel.Identification);
+            TokenImpersonationLevel.Identification,
+            HandleInheritability.None);
 
         try
         {
             await pipe.ConnectAsync(IpcProtocol.ConnectTimeoutMilliseconds, requestToken);
+
+            var serverAuthentication = PeerAuthenticator.AuthenticateServer(pipe);
+            if (!serverAuthentication.IsAuthenticated)
+            {
+                throw new IpcProtocolException(
+                    "ServerAuthenticationFailed",
+                    $"Проверка NetPilot.Service не пройдена: {serverAuthentication.Code}.");
+            }
+
             await IpcFraming.WriteAsync(pipe, request, requestToken);
 
             var response = await IpcFraming.ReadAsync<IpcResponse>(pipe, requestToken);
