@@ -115,9 +115,33 @@ Exact `nfqws2` поддерживает среди прочего:
 
 Auto-hostlist и experimental DNS hostname cache на первом этапе лучше **не патчить, а не включать вообще**. Это сокращает объём собственного форка и стоимость дальнейшего сопровождения.
 
-## 9. Следующие проверки до кода форка
+## 9. Supply-chain exact post-fix build
 
-1. Проверить exact Windows/Cygwin build graph и зависимости post-fix tree.
+В source tree `4a330554...` готового post-fix Windows binary нет: каталог `binaries` прямо указывает, что бинарные файлы публикуются только в releases либо собираются из исходников. Следовательно, exact post-UAF-fix candidate для NetPilot в любом случае требует собственной controlled build.
+
+Upstream GitHub Actions полезен как reference build recipe, но не принимается как наша trust policy без изменений. В проверенном workflow:
+
+- используются плавающие `actions/checkout@v4`, `actions/upload-artifact@v4`, `actions/cache/restore@v4` и `cygwin/cygwin-install-action@v4`, а не immutable action commit SHA;
+- Windows build скачивает LuaJIT archive по HTTPS и собирает его локально;
+- Windows packaging скачивает exact WinDivert `2.2.2-A` по URL, но в самом recipe перед использованием не сверяет ожидаемый SHA-256;
+- Cygwin runtime и `killall.exe` берутся из подготовленной Cygwin environment/package flow;
+- другие platform jobs также используют внешние archives/toolchains, местами через `latest` discovery.
+
+Это не считается finding против upstream-проекта: его CI решает другую задачу. Но для NetPilot fork admission требования строже.
+
+Controlled NetPilot build должен:
+
+1. pin GitHub Actions по immutable full commit SHA;
+2. pin exact Cygwin packages/toolchain identity;
+3. pin Lua/LuaJIT source version и SHA-256;
+4. pin WinDivert exact version/archive SHA-256 и отдельно проверить DLL/SYS identity/signature;
+5. не использовать `latest` как источник доверия;
+6. сохранять build manifest: source commit, compiler/toolchain, dependency versions/hashes, output hashes;
+7. не публиковать artifact как admitted до независимого сравнения inventory и security evidence.
+
+## 10. Следующие проверки до кода форка
+
+1. Завершить exact Windows/Cygwin dependency inventory для post-fix build и выбрать пинованные источники.
 2. Проверить WinDivert filter construction и определить минимальный необходимый inbound/outbound scope для Discord/YouTube.
 3. Спроектировать conntrack cap и нагрузочный тест до выбора числового значения.
 4. Собрать exact source tree в controlled CI с sanitizers/static analysis там, где это возможно.
@@ -127,4 +151,4 @@ Auto-hostlist и experimental DNS hostname cache на первом этапе л
 
 **zapret2 post-UAF-fix остаётся кандидатом №1**, но `ADMIT` пока не получает.
 
-Главная причина оставшегося BLOCK-gate теперь не известный UAF (он исправлен), а необходимость доказать bounded resource behavior и сформировать минимальный закрытый NetPilot profile/CLI boundary.
+Главная причина оставшегося BLOCK-gate теперь не известный UAF (он исправлен), а необходимость доказать bounded resource behavior, зафиксировать воспроизводимый/pinned build chain и сформировать минимальный закрытый NetPilot profile/CLI boundary.
