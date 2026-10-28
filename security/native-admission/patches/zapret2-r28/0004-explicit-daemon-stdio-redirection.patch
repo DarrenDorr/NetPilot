@@ -1,37 +1,59 @@
 diff --git a/nfq2/sec.c b/nfq2/sec.c
 --- a/nfq2/sec.c
 +++ b/nfq2/sec.c
-@@ -372,24 +372,30 @@ void daemonize(void)
+@@ -357,41 +357,29 @@ void daemonize(void)
+ 		DLOG_PERROR("setsid");
+ 		exit(21);
  	}
- 	/* redirect fd's 0,1,2 to /dev/null */
- 	/* stdin */
--	if (open("/dev/null", O_RDWR)<0)
+-	if (close(STDIN_FILENO)<0 && errno!=EBADF)
++	/* redirect fd's 0,1,2 to /dev/null without relying on fd allocation order */
 +	int nullfd = open("/dev/null", O_RDWR);
 +	if (nullfd<0)
  	{
- 		// will work only if debug not to console
- 		DLOG_PERROR("open(stdin)");
+-		DLOG_PERROR("close(stdin)");
+-		exit(22);
+-	}
+-	if (close(STDOUT_FILENO)<0 && errno!=EBADF)
+-	{
+-		DLOG_PERROR("close(stdout)");
+-		exit(22);
+-	}
+-	if (close(STDERR_FILENO)<0 && errno!=EBADF)
+-	{
+-		DLOG_PERROR("close(stderr)");
+-		exit(22);
++		// will work only if debug not to console
++		DLOG_PERROR("open(/dev/null)");
++		exit(23);
+ 	}
+-	/* redirect fd's 0,1,2 to /dev/null */
+-	/* stdin */
+-	if (open("/dev/null", O_RDWR)<0)
++	if (dup2(nullfd, STDIN_FILENO)<0)
+ 	{
+-		// will work only if debug not to console
+-		DLOG_PERROR("open(stdin)");
++		close(nullfd);
  		exit(23);
  	}
-+	if (nullfd != STDIN_FILENO)
-+	{
-+		close(nullfd);
-+		exit(23);
-+	}
- 	/* stdout */
+-	/* stdout */
 -	if (dup(0)<0)
-+	if (dup2(STDIN_FILENO, STDOUT_FILENO)<0)
++	if (dup2(nullfd, STDOUT_FILENO)<0)
  	{
- 		// will work only if debug not to console
- 		DLOG_PERROR("dup(stdout)");
+-		// will work only if debug not to console
+-		DLOG_PERROR("dup(stdout)");
++		close(nullfd);
  		exit(24);
  	}
- 	/* stderror */
+-	/* stderror */
 -	if (dup(0)<0)
-+	if (dup2(STDIN_FILENO, STDERR_FILENO)<0)
++	if (dup2(nullfd, STDERR_FILENO)<0)
  	{
- 		// will work only if debug not to console
- 		DLOG_PERROR("dup(stderr)");
+-		// will work only if debug not to console
+-		DLOG_PERROR("dup(stderr)");
++		close(nullfd);
  		exit(25);
  	}
++	if (nullfd > STDERR_FILENO)
++		close(nullfd);
  }
