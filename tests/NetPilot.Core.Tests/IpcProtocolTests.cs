@@ -6,9 +6,49 @@ namespace NetPilot.Core.Tests;
 public sealed class IpcProtocolTests
 {
     [Fact]
-    public void Ping_without_strategy_is_valid()
+    public void Ping_without_payload_is_valid()
     {
         var result = IpcRequestValidator.Validate(IpcRequest.CreatePing());
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void Enrollment_accepts_only_fixed_hex_nonce()
+    {
+        var valid = IpcRequestValidator.Validate(
+            IpcRequest.CreateEnrollment(new string('A', IpcProtocol.EnrollmentNonceCharacters)));
+        var shortNonce = IpcRequestValidator.Validate(
+            IpcRequest.CreateEnrollment("AA"));
+        var nonHex = IpcRequestValidator.Validate(
+            IpcRequest.CreateEnrollment(new string('Z', IpcProtocol.EnrollmentNonceCharacters)));
+
+        Assert.True(valid.IsValid);
+        Assert.False(shortNonce.IsValid);
+        Assert.False(nonHex.IsValid);
+    }
+
+    [Fact]
+    public void Install_latest_has_no_user_controlled_url_path_or_strategy_payload()
+    {
+        var valid = IpcRequestValidator.Validate(IpcRequest.CreateZapretInstallLatest());
+        var invalid = new IpcRequest(
+            IpcProtocol.Version,
+            Guid.NewGuid(),
+            IpcCommand.ZapretInstallLatest,
+            StrategyId: "ALT11");
+
+        Assert.True(valid.IsValid);
+        var rejected = IpcRequestValidator.Validate(invalid);
+        Assert.False(rejected.IsValid);
+        Assert.Equal("UnexpectedStrategyId", rejected.Code);
+    }
+
+    [Fact]
+    public void Installation_status_request_has_no_payload()
+    {
+        var result = IpcRequestValidator.Validate(
+            IpcRequest.CreateZapretGetInstallationStatus());
+
         Assert.True(result.IsValid);
     }
 
@@ -65,6 +105,21 @@ public sealed class IpcProtocolTests
     }
 
     [Fact]
+    public void Ordinary_command_with_enrollment_nonce_is_rejected()
+    {
+        var request = new IpcRequest(
+            IpcProtocol.Version,
+            Guid.NewGuid(),
+            IpcCommand.Ping,
+            EnrollmentNonce: new string('A', IpcProtocol.EnrollmentNonceCharacters));
+
+        var result = IpcRequestValidator.Validate(request);
+
+        Assert.False(result.IsValid);
+        Assert.Equal("UnexpectedEnrollmentNonce", result.Code);
+    }
+
+    [Fact]
     public async Task Framing_round_trip_preserves_typed_request()
     {
         var request = IpcRequest.CreateZapretStartStrategy("ALT11");
@@ -100,7 +155,7 @@ public sealed class IpcProtocolTests
     public async Task Numeric_enum_values_are_rejected()
     {
         var json = $$"""
-            {"protocolVersion":{{IpcProtocol.Version}},"requestId":"{{Guid.NewGuid()}}","command":0,"strategyId":null}
+            {"protocolVersion":{{IpcProtocol.Version}},"requestId":"{{Guid.NewGuid()}}","command":0,"strategyId":null,"enrollmentNonce":null}
             """;
 
         await using var stream = CreateFramedJson(json);
@@ -117,7 +172,7 @@ public sealed class IpcProtocolTests
     public async Task Unknown_json_fields_are_rejected()
     {
         var json = $$"""
-            {"protocolVersion":{{IpcProtocol.Version}},"requestId":"{{Guid.NewGuid()}}","command":"Ping","strategyId":null,"unexpected":"value"}
+            {"protocolVersion":{{IpcProtocol.Version}},"requestId":"{{Guid.NewGuid()}}","command":"Ping","strategyId":null,"enrollmentNonce":null,"unexpected":"value"}
             """;
 
         await using var stream = CreateFramedJson(json);
