@@ -28,19 +28,70 @@ public static class IpcRequestValidator
 
         return request.Command switch
         {
-            IpcCommand.Ping when request.StrategyId is null => IpcValidationResult.Valid(),
-            IpcCommand.ZapretListStrategies when request.StrategyId is null => IpcValidationResult.Valid(),
-            IpcCommand.ZapretGetStatus when request.StrategyId is null => IpcValidationResult.Valid(),
-            IpcCommand.ZapretStop when request.StrategyId is null => IpcValidationResult.Valid(),
-            IpcCommand.ZapretStartStrategy => ValidateStrategyId(request.StrategyId),
-            IpcCommand.Ping => UnexpectedStrategyId(),
-            IpcCommand.ZapretListStrategies => UnexpectedStrategyId(),
-            IpcCommand.ZapretGetStatus => UnexpectedStrategyId(),
-            IpcCommand.ZapretStop => UnexpectedStrategyId(),
+            IpcCommand.Ping => ValidateNoPayload(request),
+            IpcCommand.EnrollAuthorizedUser => ValidateEnrollment(request),
+            IpcCommand.ZapretListStrategies => ValidateNoPayload(request),
+            IpcCommand.ZapretGetStatus => ValidateNoPayload(request),
+            IpcCommand.ZapretStop => ValidateNoPayload(request),
+            IpcCommand.ZapretInstallLatest => ValidateNoPayload(request),
+            IpcCommand.ZapretStartStrategy => ValidateStrategyStart(request),
             _ => IpcValidationResult.Invalid(
                 "UnknownCommand",
                 "Указана неизвестная IPC-команда.")
         };
+    }
+
+    private static IpcValidationResult ValidateNoPayload(IpcRequest request)
+    {
+        if (request.StrategyId is not null)
+        {
+            return IpcValidationResult.Invalid(
+                "UnexpectedStrategyId",
+                "Эта IPC-команда не должна содержать идентификатор стратегии.");
+        }
+
+        if (request.EnrollmentNonce is not null)
+        {
+            return IpcValidationResult.Invalid(
+                "UnexpectedEnrollmentNonce",
+                "Эта IPC-команда не должна содержать nonce регистрации.");
+        }
+
+        return IpcValidationResult.Valid();
+    }
+
+    private static IpcValidationResult ValidateEnrollment(IpcRequest request)
+    {
+        if (request.StrategyId is not null)
+        {
+            return IpcValidationResult.Invalid(
+                "UnexpectedStrategyId",
+                "Регистрация пользователя не должна содержать идентификатор стратегии.");
+        }
+
+        var nonce = request.EnrollmentNonce;
+        if (string.IsNullOrWhiteSpace(nonce)
+            || nonce.Length != IpcProtocol.EnrollmentNonceCharacters
+            || nonce.Any(static character => !Uri.IsHexDigit(character)))
+        {
+            return IpcValidationResult.Invalid(
+                "InvalidEnrollmentNonce",
+                "Nonce регистрации имеет недопустимый формат.");
+        }
+
+        return IpcValidationResult.Valid();
+    }
+
+    private static IpcValidationResult ValidateStrategyStart(IpcRequest request)
+    {
+        if (request.EnrollmentNonce is not null)
+        {
+            return IpcValidationResult.Invalid(
+                "UnexpectedEnrollmentNonce",
+                "Команда запуска стратегии не должна содержать nonce регистрации.");
+        }
+
+        return ValidateStrategyId(request.StrategyId);
     }
 
     private static IpcValidationResult ValidateStrategyId(string? strategyId)
@@ -71,20 +122,19 @@ public static class IpcRequestValidator
 
         return IpcValidationResult.Valid();
     }
-
-    private static IpcValidationResult UnexpectedStrategyId() =>
-        IpcValidationResult.Invalid(
-            "UnexpectedStrategyId",
-            "Эта IPC-команда не должна содержать идентификатор стратегии.");
 }
 
 public interface IPrivilegedServiceClient
 {
     Task<IpcResponse> PingAsync(CancellationToken cancellationToken = default);
+    Task<IpcResponse> EnrollAuthorizedUserAsync(
+        string enrollmentNonce,
+        CancellationToken cancellationToken = default);
     Task<IpcResponse> ListZapretStrategiesAsync(CancellationToken cancellationToken = default);
     Task<IpcResponse> GetZapretStatusAsync(CancellationToken cancellationToken = default);
     Task<IpcResponse> StartZapretStrategyAsync(
         string strategyId,
         CancellationToken cancellationToken = default);
     Task<IpcResponse> StopZapretAsync(CancellationToken cancellationToken = default);
+    Task<IpcResponse> InstallLatestZapretAsync(CancellationToken cancellationToken = default);
 }
