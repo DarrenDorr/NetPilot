@@ -70,17 +70,26 @@ jobs:
         shell: pwsh
         run: pwsh -NoLogo -NoProfile -File scripts/build-installer.ps1 -Version 0.1.0-alpha-ci -VersionInfoVersion 0.1.0.0
 
-      - name: Installer smoke test - install and service start
+      - name: Installer smoke test - install, user enrollment and service start
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $setup = Resolve-Path 'artifacts\installer\NetPilot-Setup-0.1.0-alpha-ci-x64.exe'
           $process = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Setup failed with exit code $($process.ExitCode)" }
+
           $service = Get-Service -Name 'NetPilot.Service' -ErrorAction Stop
           if ($service.Status -ne 'Running') { throw "NetPilot.Service is not running: $($service.Status)" }
-          if (-not (Test-Path "$env:ProgramFiles\NetPilot\App\NetPilot.exe")) { throw 'NetPilot.exe was not installed.' }
-          if (-not (Test-Path "$env:ProgramFiles\NetPilot\Service\NetPilot.Service.exe")) { throw 'NetPilot.Service.exe was not installed.' }
+
+          $root = "$env:ProgramFiles\NetPilot"
+          if (-not (Test-Path "$root\App\NetPilot.exe")) { throw 'NetPilot.exe was not installed.' }
+          if (-not (Test-Path "$root\Service\NetPilot.Service.exe")) { throw 'NetPilot.Service.exe was not installed.' }
+          if (-not (Test-Path "$root\Config\authorized-user.sid")) { throw 'Authorized user SID was not enrolled.' }
+          if (Test-Path "$root\Config\enrollment.nonce") { throw 'Enrollment nonce remained after successful enrollment.' }
+          if (Test-Path "$root\Config\enrollment.session") { throw 'Enrollment session marker remained after successful enrollment.' }
+
+          $sid = (Get-Content "$root\Config\authorized-user.sid" -Raw).Trim()
+          if ($sid -notmatch '^S-1-5-') { throw 'Authorized user SID has an unexpected format.' }
 
       - name: Installer smoke test - uninstall and service removal
         if: always()
@@ -93,3 +102,4 @@ jobs:
             if ($process.ExitCode -ne 0) { throw "Uninstall failed with exit code $($process.ExitCode)" }
           }
           if (Get-Service -Name 'NetPilot.Service' -ErrorAction SilentlyContinue) { throw 'NetPilot.Service remained registered after uninstall.' }
+          if (Test-Path "$env:ProgramFiles\NetPilot\Config\authorized-user.sid") { throw 'System authorization state remained after uninstall.' }
