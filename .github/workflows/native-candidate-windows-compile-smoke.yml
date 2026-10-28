@@ -85,7 +85,7 @@ jobs:
         shell: C:\cygwin\bin\bash.exe -eo pipefail '{0}'
         run: >-
           export CYGWIN_NOWINPATH=1 &&
-          export WORK="$(cygpath -u "$GITHUB_WORKSPACE")" &&
+          export WORK="$(pwd)" &&
           export DEPS="$WORK/deps" &&
           mkdir -p "$WORK/evidence" "$DEPS" &&
           cd "$WORK/luajit2" &&
@@ -101,7 +101,7 @@ jobs:
         shell: C:\cygwin\bin\bash.exe -eo pipefail '{0}'
         run: >-
           export CYGWIN_NOWINPATH=1 &&
-          export WORK="$(cygpath -u "$GITHUB_WORKSPACE")" &&
+          export WORK="$(pwd)" &&
           export DEPS="$WORK/deps/usr/local" &&
           mkdir -p "$WORK/evidence" &&
           cd "$WORK/zapret2" &&
