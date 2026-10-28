@@ -13,6 +13,7 @@ builder.Services.AddWindowsService(options =>
 
 builder.Services.AddSingleton<OperationPolicy>();
 builder.Services.AddSingleton<WindowsNamedPipeServerFactory>();
+builder.Services.AddSingleton<WindowsNamedPipePeerAuthenticator>();
 builder.Services.AddHostedService<PrivilegedIpcWorker>();
 
 await builder.Build().RunAsync();
