@@ -10,6 +10,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/NetPilot.Automation/NetPilot.Automation.csproj" />
     <ProjectReference Include="../../src/NetPilot.Core/NetPilot.Core.csproj" />
+    <ProjectReference Include="../../src/NetPilot.Engine.Abstractions/NetPilot.Engine.Abstractions.csproj" />
     <ProjectReference Include="../../src/NetPilot.Health/NetPilot.Health.csproj" />
     <ProjectReference Include="../../src/NetPilot.Ipc/NetPilot.Ipc.csproj" />
     <ProjectReference Include="../../src/NetPilot.Security/NetPilot.Security.csproj" />
