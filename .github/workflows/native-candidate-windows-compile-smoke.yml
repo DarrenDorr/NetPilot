@@ -60,7 +60,7 @@ jobs:
             '0001-explicit-conntrack-feed-result.patch' = 'af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff'
             '0002-bounded-conntrack-resource-result.patch' = 'a3531211626ce602a3b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783'
             '0003-bounded-delayed-queue-bytes.patch' = '33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68'
-            '0004-explicit-daemon-stdio-redirection.patch' = 'dd22de05235807f1b2c1400774f6e4605c96c0ebc07b5e5ac4aa56efefd4849c'
+            '0004-explicit-daemon-stdio-redirection.patch' = 'df4bef5487febac8c4b3a55c85e939fdd6f57fb7b481d80bcc7962498303e4d0'
           }
           foreach ($patch in $patches.Keys) {
             $path = Join-Path $PWD "netpilot\security\native-admission\patches\zapret2-r28\$patch"
@@ -169,7 +169,7 @@ jobs:
             'patch_0001_sha256=af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff'
             'patch_0002_sha256=a3531211626ce602a3b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783'
             'patch_0003_sha256=33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68'
-            'patch_0004_sha256=dd22de05235807f1b2c1400774f6e4605c96c0ebc07b5e5ac4aa56efefd4849c'
+            'patch_0004_sha256=df4bef5487febac8c4b3a55c85e939fdd6f57fb7b481d80bcc7962498303e4d0'
             'runner=windows-2025'
             'cygwin_setup_version=2.940'
             'cygwin_setup_sha512=fc46e3ead0312ea632251c16334b23caab31c9b38db30db4e5418b43ffeec5c003cc867b4166c8222a622ad107660e2ce6e3d855499d08e695dd13010f43a396'
