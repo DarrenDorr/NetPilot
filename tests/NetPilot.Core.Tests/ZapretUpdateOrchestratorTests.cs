@@ -73,9 +73,24 @@ public sealed class ZapretUpdateOrchestratorTests
     {
         using var fixture = new OrchestratorFixture("1.10.4", validZip: false);
 
-        await Assert.ThrowsAsync<Exception>(
+        var exception = await Assert.ThrowsAsync<UpdateSecurityException>(
             () => fixture.Orchestrator.ApplyLatestAsync(TestContext.Current.CancellationToken));
 
+        Assert.Equal("InvalidZipArchive", exception.Code);
+        Assert.Equal(0, fixture.RuntimeGate.StopCalls);
+        Assert.False(Directory.Exists(Path.Combine(fixture.EngineRoot, "current")));
+    }
+
+    [Fact]
+    public async Task Tampered_download_is_reverified_and_rejected_before_runtime_stop()
+    {
+        using var fixture = new OrchestratorFixture("1.10.4");
+        fixture.ReleaseSource.TamperDownload = true;
+
+        var exception = await Assert.ThrowsAsync<UpdateSecurityException>(
+            () => fixture.Orchestrator.ApplyLatestAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal("Sha256Mismatch", exception.Code);
         Assert.Equal(0, fixture.RuntimeGate.StopCalls);
         Assert.False(Directory.Exists(Path.Combine(fixture.EngineRoot, "current")));
     }
@@ -165,7 +180,7 @@ public sealed class ZapretUpdateOrchestratorTests
     private sealed class FakeReleaseSource : IZapretReleaseSource
     {
         private readonly string _workspace;
-        private bool _validZip;
+        private readonly bool _validZip;
         private byte[] _zipBytes = [];
         private GithubZapretRelease _release = null!;
 
@@ -179,6 +194,7 @@ public sealed class ZapretUpdateOrchestratorTests
         public int MetadataCalls { get; private set; }
         public int DownloadCalls { get; private set; }
         public bool ReturnExternalPath { get; set; }
+        public bool TamperDownload { get; set; }
 
         public void SetRelease(string version)
         {
@@ -213,18 +229,25 @@ public sealed class ZapretUpdateOrchestratorTests
             string downloadRoot,
             CancellationToken cancellationToken = default)
         {
+            ArgumentNullException.ThrowIfNull(release);
             DownloadCalls++;
             Directory.CreateDirectory(downloadRoot);
+
+            var bytes = _zipBytes.ToArray();
+            if (TamperDownload && bytes.Length > 0)
+            {
+                bytes[^1] ^= 0x01;
+            }
 
             if (ReturnExternalPath)
             {
                 var external = Path.Combine(_workspace, "rogue.zip");
-                await File.WriteAllBytesAsync(external, _zipBytes, cancellationToken);
+                await File.WriteAllBytesAsync(external, bytes, cancellationToken);
                 return external;
             }
 
             var destination = Path.Combine(downloadRoot, "source.zip");
-            await File.WriteAllBytesAsync(destination, _zipBytes, cancellationToken);
+            await File.WriteAllBytesAsync(destination, bytes, cancellationToken);
             return destination;
         }
 
