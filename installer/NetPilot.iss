@@ -221,14 +221,62 @@ begin
   Result := False;
 end;
 
-procedure RemoveServiceBestEffort;
+function WaitForServiceRemoved: Boolean;
+var
+  Attempt: Integer;
+begin
+  for Attempt := 1 to 40 do
+  begin
+    if not ServiceExists then
+    begin
+      Result := True;
+      Exit;
+    end;
+
+    Sleep(250);
+  end;
+
+  Result := False;
+end;
+
+function DisableAndRemoveService: Boolean;
 var
   ResultCode: Integer;
+  DisableSucceeded: Boolean;
 begin
-  if ServiceExists then
+  Result := True;
+
+  if not ServiceExists then
+    Exit;
+
+  DisableSucceeded :=
+    RunSc(
+      'config ' + Quote(NetPilotServiceName) + ' start= disabled',
+      True,
+      ResultCode) and
+    (ResultCode = 0);
+
+  if not DisableSucceeded then
+    Log('Не удалось заранее отключить автозапуск службы NetPilot; продолжаем безопасную остановку и удаление.');
+
+  if not StopServiceAndWait then
   begin
-    StopServiceAndWait;
-    RunSc('delete ' + Quote(NetPilotServiceName), True, ResultCode);
+    Log('Не удалось подтвердить остановку службы NetPilot перед удалением.');
+    Result := False;
+    Exit;
+  end;
+
+  if not RunSc('delete ' + Quote(NetPilotServiceName), False, ResultCode) then
+  begin
+    Log('Не удалось удалить регистрацию службы NetPilot.');
+    Result := False;
+    Exit;
+  end;
+
+  if not WaitForServiceRemoved then
+  begin
+    Log('Windows не подтвердила удаление службы NetPilot за допустимое время.');
+    Result := False;
   end;
 end;
 
@@ -427,7 +475,9 @@ begin
 
     if not CompleteOriginalUserEnrollment then
     begin
-      RemoveServiceBestEffort;
+      if not DisableAndRemoveService then
+        RaiseException('Не удалось безопасно привязать пользователя и полностью удалить службу NetPilot. Установка остановлена; проверьте состояние службы перед повторной установкой.');
+
       RaiseException('Не удалось безопасно привязать службу NetPilot к текущему пользователю Windows.');
     end;
   end;
@@ -436,5 +486,8 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
-    RemoveServiceBestEffort;
+  begin
+    if not DisableAndRemoveService then
+      RaiseException('Не удалось безопасно удалить службу NetPilot. Удаление файлов остановлено, чтобы не оставить службу с неполным каталогом программы.');
+  end;
 end;
