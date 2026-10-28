@@ -43,7 +43,9 @@ Upstream fix `4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d` является пря�
 Зафиксированы:
 
 - `docs/ZAPRET2-STATIC-ADMISSION-R28.1.md`;
-- `docs/ZAPRET2-RESOURCE-HARDENING-R28.1.md`.
+- `docs/ZAPRET2-RESOURCE-HARDENING-R28.1.md`;
+- `docs/ZAPRET2-CONNTRACK-SATURATION-R28.2.md`;
+- `docs/ZAPRET2-CONTROLLED-BUILD-R28.2.md`.
 
 Остающиеся blockers:
 
@@ -134,7 +136,7 @@ DPIBreak v0.6.2 имеет сильные признаки release provenance:
 
 Документ: `docs/ZAPRET2-CONTROLLED-BUILD-R28.2.md`.
 
-Первый R28.2 gate уже добавлен как:
+Первый R28.2 gate добавлен как:
 
 `.github/workflows/native-candidate-provenance.yml`.
 
@@ -149,19 +151,49 @@ DPIBreak v0.6.2 имеет сильные признаки release provenance:
 
 Workflow имеет только `contents: read`, checkout выполняется без сохранения credentials, actions pin'нуты по full commit SHA, runner — `ubuntu-24.04`.
 
+### Conntrack saturation semantics
+
+Проверка exact `play_prolog()` обнаружила важную особенность: `ConntrackPoolFeed()==false` не означает pass-through. Без conntrack main path может продолжить `dp_find()` и stateless desync.
+
+Поэтому простой patch `if cap reached -> return false` отклонён.
+
+Новая целевая модель разделяет:
+
+- обычное отсутствие track;
+- успешный feed;
+- resource exhaustion.
+
+Только resource exhaustion должен останавливать main desync path с уже установленным `VERDICT_PASS` до `dp_find()`.
+
+### Patch 0001
+
+Добавлен первый behavior-preserving patch:
+
+`security/native-admission/patches/zapret2-r28/0001-explicit-conntrack-feed-result.patch`.
+
+Он пока **не вводит лимиты**. Он только заменяет неоднозначный `bool` на явный внутренний result `NONE/OK` и обновляет два известных call sites (`desync.c`, `lua.c`) без намеренного изменения packet behavior.
+
+`Native Candidate Provenance` выполняет `git apply --check` этого patch против exact source tree и проверяет, что patch затрагивает только:
+
+- `nfq2/conntrack.c`;
+- `nfq2/conntrack.h`;
+- `nfq2/desync.c`;
+- `nfq2/lua.c`.
+
 ### Следующий R28.2 patch gate
 
-После source provenance:
+После успешного source/patch provenance:
 
-1. сформировать exact source tree `v1.0.6 + 4a330554...`;
-2. подготовить минимальный resource-hardening patchset;
-3. `git apply --check` и source assertions выполнять до компиляции;
-4. pin exact compiler/Cygwin/Lua/LuaJIT/WinDivert inputs и SHA-256 до использования;
-5. собрать Windows x64 candidate в controlled CI;
-6. сформировать build manifest/SBOM и SHA-256 каждого EXE/DLL/SYS;
-7. проверить PE metadata/signatures/driver chain;
-8. прогнать static/sanitizer/fuzz regression evidence;
-9. только затем переходить к isolated runtime R28.3.
+1. расширить result состоянием resource exhaustion;
+2. добавить aggregate conntrack budget с fail-safe `VERDICT_PASS` только для нового flow при saturation;
+3. добавить delayed queue byte accounting с overflow-safe проверкой;
+4. `git apply --check` и source assertions выполнять до компиляции;
+5. pin exact compiler/Cygwin/Lua/LuaJIT/WinDivert inputs и SHA-256 до использования;
+6. собрать Windows x64 candidate в controlled CI;
+7. сформировать build manifest/SBOM и SHA-256 каждого EXE/DLL/SYS;
+8. проверить PE metadata/signatures/driver chain;
+9. прогнать static/sanitizer/fuzz regression evidence;
+10. только затем переходить к isolated runtime R28.3.
 
 ByeDPI controlled patchset/build идёт вторым потоком после фиксации backport set. DPIBreak не требует собственного fork build на этом шаге; для него нужен controlled rebuild exact upstream release.
 
@@ -207,11 +239,11 @@ ByeDPI controlled patchset/build идёт вторым потоком после
 - не делает автоматический fork sync;
 - не считает отсутствие CVE/advisory доказательством безопасности;
 - не меняет статус старого zapret2 v1.0.6 BLOCK;
-- не считает R28.1 эквивалентом полного ADMIT;
+- не считает R28.1/R28.2 design эквивалентом полного ADMIT;
 - не сливает PR #30 в `main`.
 
 ## Текущее состояние
 
 R28.1 static decision зафиксирован для всех трёх кандидатов. Все они остаются `REVIEW / gate BLOCK` и **не исполняются NetPilot**.
 
-R28.2 начат с отдельного immutable source-provenance gate для zapret2. Следующий шаг — подтверждённый CI evidence этого gate и минимальный resource-hardening patch series.
+R28.2 дошёл до exact source provenance, проверки patch applicability и первого behavior-preserving patch 0001. Следующий технический шаг — подтвердить CI evidence и подготовить resource-exhaustion/count/byte-budget patches без изменения уже проверенной fail-safe semantics.
