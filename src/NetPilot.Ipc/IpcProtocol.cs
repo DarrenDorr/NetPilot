@@ -37,6 +37,7 @@ public enum IpcCommand
 {
     Ping,
     EnrollAuthorizedUser,
+    ZapretGetInstallationStatus,
     ZapretListStrategies,
     ZapretGetStatus,
     ZapretStartStrategy,
@@ -60,6 +61,9 @@ public sealed record IpcRequest(
             Guid.NewGuid(),
             IpcCommand.EnrollAuthorizedUser,
             EnrollmentNonce: enrollmentNonce);
+
+    public static IpcRequest CreateZapretGetInstallationStatus() =>
+        new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.ZapretGetInstallationStatus);
 
     public static IpcRequest CreateZapretListStrategies() =>
         new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.ZapretListStrategies);
@@ -91,6 +95,10 @@ public sealed record IpcZapretStatus(
     IpcZapretProcessState State,
     string? StrategyId = null);
 
+public sealed record IpcZapretInstallationStatus(
+    bool IsInstalled,
+    string? Version = null);
+
 public sealed record IpcZapretInstallResult(
     string Version,
     bool Installed,
@@ -104,6 +112,7 @@ public sealed record IpcResponse(
     string? Message = null,
     IReadOnlyList<IpcZapretStrategy>? Strategies = null,
     IpcZapretStatus? ZapretStatus = null,
+    IpcZapretInstallationStatus? ZapretInstallation = null,
     IpcZapretInstallResult? ZapretInstall = null);
 
 public sealed class IpcProtocolException(string code, string message, Exception? innerException = null)
