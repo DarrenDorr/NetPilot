@@ -42,8 +42,7 @@ public static class SafeZipExtractor
                     "ZIP содержит несколько записей, указывающих на один и тот же путь.");
             }
 
-            var isDirectory = entry.FullName.EndsWith('/', StringComparison.Ordinal)
-                || entry.FullName.EndsWith('\\', StringComparison.Ordinal);
+            var isDirectory = entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\');
 
             if (isDirectory)
             {
@@ -79,11 +78,7 @@ public static class SafeZipExtractor
                 bufferSize: 64 * 1024,
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
 
-            await CopyWithLimitAsync(
-                source,
-                target,
-                entry.Length,
-                cancellationToken);
+            await CopyWithLimitAsync(source, target, entry.Length, cancellationToken);
         }
     }
 
@@ -197,8 +192,7 @@ public static class SafeZipExtractor
                 written += read;
             }
 
-            if (written > declaredLength
-                || written > UpdateSecurityLimits.MaxSingleExtractedFileBytes)
+            if (written > declaredLength || written > UpdateSecurityLimits.MaxSingleExtractedFileBytes)
             {
                 throw new UpdateSecurityException(
                     "ArchiveLengthMismatch",
