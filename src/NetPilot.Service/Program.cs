@@ -26,7 +26,7 @@ builder.Services.AddSingleton<UserResourceOwnership>();
 builder.Services.AddSingleton<WindowsNamedPipeServerFactory>();
 builder.Services.AddSingleton<WindowsNamedPipePeerAuthenticator>();
 
-// R20: без ADMIT LocalSystem-служба не получает SystemZapretProcessLauncher.
+// R20: без ADMIT LocalSystem-служба получает только fail-closed process launcher.
 // Даже прямой ошибочный StartAsync не может дойти до Process.Start.
 builder.Services.AddSingleton<IZapretProcessLauncher>(
     NoAdmittedZapretProcessLauncher.Instance);
