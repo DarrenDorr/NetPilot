@@ -8,6 +8,8 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../NetPilot.Engine.Zapret/NetPilot.Engine.Zapret.csproj" />
+    <ProjectReference Include="../NetPilot.Engine.Zapret.Windows/NetPilot.Engine.Zapret.Windows.csproj" />
     <ProjectReference Include="../NetPilot.Ipc/NetPilot.Ipc.csproj" />
     <ProjectReference Include="../NetPilot.Platform.Windows/NetPilot.Platform.Windows.csproj" />
     <ProjectReference Include="../NetPilot.Security/NetPilot.Security.csproj" />
