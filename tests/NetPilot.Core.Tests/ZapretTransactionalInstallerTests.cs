@@ -202,6 +202,24 @@ public sealed class ZapretTransactionalInstallerTests
         Assert.False(Directory.Exists(Path.Combine(fixture.EngineRoot, "current")));
     }
 
+    [Fact]
+    public async Task External_staging_is_rejected_before_installation()
+    {
+        using var fixture = new DeploymentFixture();
+        var staging = fixture.CreateExternalPackage("external-staging");
+        var installer = new ZapretTransactionalInstaller(fixture.EngineRoot);
+
+        var exception = await Assert.ThrowsAsync<UpdateSecurityException>(
+            () => installer.ApplyAsync(
+                CreateRelease("1.10.4", 'b'),
+                staging,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal("UntrustedStagingRoot", exception.Code);
+        Assert.False(File.Exists(Path.Combine(staging, EngineInstallationManifest.FileName)));
+        Assert.False(Directory.Exists(Path.Combine(fixture.EngineRoot, "current")));
+    }
+
     private static GithubZapretRelease CreateRelease(string version, char digestCharacter)
     {
         var fileName = $"zapret-discord-youtube-{version}.zip";
@@ -236,9 +254,14 @@ public sealed class ZapretTransactionalInstallerTests
 
         public string EngineRoot { get; }
 
-        public string CreatePackage(string name)
+        public string CreatePackage(string name) =>
+            CreatePackageAt(Path.Combine(EngineRoot, ".staging", name));
+
+        public string CreateExternalPackage(string name) =>
+            CreatePackageAt(Path.Combine(_workspace, name));
+
+        private static string CreatePackageAt(string root)
         {
-            var root = Path.Combine(_workspace, name);
             Directory.CreateDirectory(Path.Combine(root, "bin"));
             Directory.CreateDirectory(Path.Combine(root, "lists"));
             File.WriteAllBytes(Path.Combine(root, "bin", "winws.exe"), [0x4D, 0x5A]);
