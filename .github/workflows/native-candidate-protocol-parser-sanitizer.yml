@@ -35,6 +35,15 @@ jobs:
           path: zapret2
           persist-credentials: false
 
+      - name: Checkout exact LuaJIT headers used by controlled candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: openresty/luajit2
+          ref: dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc
+          fetch-depth: 1
+          path: luajit
+          persist-credentials: false
+
       - name: Verify exact source and reviewed patch identities
         shell: bash
         run: |
@@ -42,6 +51,9 @@ jobs:
           test "$(git -C zapret2 rev-parse HEAD)" = "4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d"
           test "$(git -C zapret2 rev-parse HEAD^)" = "221d7dff24bfec0cd5ac0a5070b8acef2008af3d"
           test "$(git -C zapret2 rev-parse 'HEAD^{tree}')" = "5c2a77786cc7089145abe2ca99bcc53a8ed7de15"
+          test "$(git -C luajit rev-parse HEAD)" = "dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc"
+          test -f luajit/src/lua.h
+          test -f luajit/src/lualib.h
 
           patch_dir="$PWD/netpilot/security/native-admission/patches/zapret2-r28"
           echo "af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff  $patch_dir/0001-explicit-conntrack-feed-result.patch" | sha256sum -c -
@@ -84,6 +96,7 @@ jobs:
             -ffunction-sections -fdata-sections \
             -Wall -Wextra -Werror \
             -Izapret2/nfq2 \
+            -Iluajit/src \
             -c netpilot/security/native-admission/harnesses/zapret2-r28/protocol_parser_sanitizer_harness.c \
             -o scratch/protocol_parser_sanitizer_harness.o \
             2>&1 | tee evidence/harness-compile.log
@@ -107,6 +120,7 @@ jobs:
             -ffunction-sections -fdata-sections \
             -Wall -Wextra \
             -Izapret2/nfq2 \
+            -Iluajit/src \
             scratch/protocol_parser_sanitizer_harness.o \
             zapret2/nfq2/protocol.c \
             zapret2/nfq2/helpers.c \
@@ -164,11 +178,13 @@ jobs:
           fi
 
           {
-            echo 'schema_version=2'
+            echo 'schema_version=3'
             echo 'scope=isolated-protocol-parser-sanitizer-regression'
             echo 'candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0004'
             echo 'source_commit=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d'
             echo 'source_tree=5c2a77786cc7089145abe2ca99bcc53a8ed7de15'
+            echo 'luajit_headers_commit=dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc'
+            echo 'luajit_scope=headers-only-no-luajit-runtime-linked'
             echo "compiler=$(gcc --version | head -n1)"
             echo "harness_sha256=$harness_sha256"
             echo "instrumented_harness_binary_sha256=$binary_sha256"
