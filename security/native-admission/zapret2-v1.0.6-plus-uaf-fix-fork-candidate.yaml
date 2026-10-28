@@ -49,6 +49,18 @@ static_review:
   full_upstream_master_as_base: REJECT
   next_gate: R28.2_CONTROLLED_BUILD_AND_PATCH_EVIDENCE
 
+patch_series:
+  - sequence: 1
+    path: security/native-admission/patches/zapret2-r28/0001-explicit-conntrack-feed-result.patch
+    purpose: behavior-preserving refactor of ambiguous bool feed result before any resource cap is introduced
+    status: APPLY_CHECK_REQUIRED
+    changes_packet_policy: false
+    expected_files:
+      - nfq2/conntrack.c
+      - nfq2/conntrack.h
+      - nfq2/desync.c
+      - nfq2/lua.c
+
 verified_delta:
   - id: Z2-FORK-BASE-001
     status: PASS_FOR_RELATIONSHIP_ONLY
@@ -74,6 +86,7 @@ provenance_gate:
     - exact tree
     - delta contains only nfq2/desync.c
     - expected UAF-fix source assertions
+    - patch 0001 git apply check and exact touched-file allowlist
     - SHA-256 evidence artifact
   workflow_actions_pinned_by_full_sha: true
   checkout_credentials_persisted: false
@@ -104,7 +117,7 @@ residual_review_blockers:
 
 fork_rules:
   - Ветвить только от exact v1.0.6 commit 221d7dff24bfec0cd5ac0a5070b8acef2008af3d.
-  - Первым обязательным изменением применять exact upstream UAF fix 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d.
+  - Первым обязательным upstream-изменением применять exact UAF fix 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d.
   - Не сливать текущий upstream master автоматически.
   - Каждый дополнительный upstream commit проходит отдельный diff review и CI до включения.
   - Поддерживать минимальный NetPilot patchset и журнал происхождения каждого патча.
@@ -114,7 +127,7 @@ fork_rules:
   - Runtime получает только фиксированный executable и валидированный ArgumentList из allowlist.
 
 required_before_admit:
-  - Успешное evidence от Native Candidate Provenance workflow для exact source anchor.
+  - Успешное evidence от Native Candidate Provenance workflow для exact source anchor и patch 0001 applicability.
   - Реализовать behavior-preserving feed-result refactor, затем aggregate conntrack budget и delayed queue byte budget согласно docs/ZAPRET2-CONNTRACK-SATURATION-R28.2.md.
   - Controlled source build с pinned immutable actions/toolchain/dependency hashes.
   - Полный Windows x64 inventory EXE/DLL/SYS с SHA-256 и проверкой подписей.
