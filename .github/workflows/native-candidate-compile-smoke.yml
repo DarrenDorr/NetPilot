@@ -53,18 +53,21 @@ jobs:
           echo "a3531211626ce602a3b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783  $patch_dir/0002-bounded-conntrack-resource-result.patch" | sha256sum -c -
           echo "33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68  $patch_dir/0003-bounded-delayed-queue-bytes.patch" | sha256sum -c -
           echo "f32e0c27393bcdfa30aa7e8c58749bb9e70e2a870350f5c3cfa429597a887777  $patch_dir/0004-explicit-daemon-stdio-redirection.patch" | sha256sum -c -
+          echo "67cbbfa656c47b7342a8c56ab178716e7890de0f05efc25eed2cc20b299c4ed1  $patch_dir/0005-fail-closed-zero-conntrack-budget.patch" | sha256sum -c -
 
           for patch in \
             0001-explicit-conntrack-feed-result.patch \
             0002-bounded-conntrack-resource-result.patch \
             0003-bounded-delayed-queue-bytes.patch \
-            0004-explicit-daemon-stdio-redirection.patch
+            0004-explicit-daemon-stdio-redirection.patch \
+            0005-fail-closed-zero-conntrack-budget.patch
           do
             git apply --check "$patch_dir/$patch"
             git apply "$patch_dir/$patch"
           done
 
           grep -Fq 'CTRACK_FEED_RESOURCE_EXHAUSTED = 2' nfq2/conntrack.h
+          grep -Fq '!max_entries || HASH_COUNT(*pp) >= max_entries' nfq2/conntrack.c
           grep -Fq 'size_t queued_bytes;' nfq2/packet_queue.h
           grep -Fq 'len > SIZE_MAX - q->queued_bytes' nfq2/packet_queue.c
           grep -Fq 'dup2(nullfd, STDOUT_FILENO)' nfq2/sec.c
@@ -115,9 +118,9 @@ jobs:
           fi
 
           {
-            echo "schema_version=4"
+            echo "schema_version=5"
             echo "scope=compile-smoke-only"
-            echo "candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0004"
+            echo "candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0005"
             echo "compile_outcome=$COMPILE_OUTCOME"
             echo "source_commit=$(git rev-parse HEAD)"
             echo "source_tree=$(git rev-parse 'HEAD^{tree}')"
@@ -131,6 +134,7 @@ jobs:
             echo "patch_0002_sha256=$(sha256sum ../netpilot/security/native-admission/patches/zapret2-r28/0002-bounded-conntrack-resource-result.patch | awk '{print $1}')"
             echo "patch_0003_sha256=$(sha256sum ../netpilot/security/native-admission/patches/zapret2-r28/0003-bounded-delayed-queue-bytes.patch | awk '{print $1}')"
             echo "patch_0004_sha256=$(sha256sum ../netpilot/security/native-admission/patches/zapret2-r28/0004-explicit-daemon-stdio-redirection.patch | awk '{print $1}')"
+            echo "patch_0005_sha256=$(sha256sum ../netpilot/security/native-admission/patches/zapret2-r28/0005-fail-closed-zero-conntrack-budget.patch | awk '{print $1}')"
             echo "candidate_binary_executed=false"
           } > ../evidence/zapret2-linux-compile-smoke.txt
 
