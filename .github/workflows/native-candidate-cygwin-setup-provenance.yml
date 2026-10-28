@@ -1,0 +1,82 @@
+name: Native Candidate Cygwin Setup Provenance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/native-candidate-cygwin-setup-provenance.yml"
+      - "docs/ZAPRET2-*.md"
+      - "security/native-admission/evidence/**"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-cygwin-setup:
+    name: Verify exact Cygwin setup without execution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Download exact official Cygwin setup inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence intake
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output intake/setup-2.940.x86_64.exe \
+            https://cygwin.com/setup/setup-2.940.x86_64.exe
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output intake/setup-2.940.x86_64.exe.sig \
+            https://cygwin.com/setup/setup-2.940.x86_64.exe.sig
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output intake/pubring.asc \
+            https://cygwin.com/key/pubring.asc
+
+      - name: Verify exact SHA-512 and Cygwin signing key fingerprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_sha512='fc46e3ead0312ea632251c16334b23caab31c9b38db30db4e5418b43ffeec5c003cc867b4166c8222a622ad107660e2ce6e3d855499d08e695dd13010f43a396'
+          expected_fingerprint='56405CF6FCC81574682A5D561A698DE9E2E56300'
+
+          actual_sha512="$(sha512sum intake/setup-2.940.x86_64.exe | awk '{print $1}')"
+          test "$actual_sha512" = "$expected_sha512"
+
+          export GNUPGHOME="$PWD/gnupg"
+          mkdir -m 700 "$GNUPGHOME"
+          gpg --batch --import intake/pubring.asc > evidence/gpg-import.txt 2>&1
+          actual_fingerprint="$(gpg --batch --with-colons --fingerprint 1A698DE9E2E56300 | awk -F: '$1=="fpr" {print $10; exit}')"
+          test "$actual_fingerprint" = "$expected_fingerprint"
+          gpg --batch --status-fd 1 \
+            --verify intake/setup-2.940.x86_64.exe.sig intake/setup-2.940.x86_64.exe \
+            > evidence/gpg-verify-status.txt 2> evidence/gpg-verify-stderr.txt
+          grep -Fq "[GNUPG:] VALIDSIG $expected_fingerprint" evidence/gpg-verify-status.txt
+
+          {
+            echo 'schema_version=1'
+            echo 'scope=cygwin-setup-provenance-only'
+            echo 'setup_version=2.940'
+            echo "setup_sha512=$actual_sha512"
+            echo "signing_key_fingerprint=$actual_fingerprint"
+            echo 'signature_valid=true'
+            echo 'setup_executed=false'
+          } > evidence/cygwin-setup-provenance.txt
+
+      - name: Remove executable and record text evidence hashes
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf intake gnupg
+          test ! -e intake/setup-2.940.x86_64.exe
+          sha256sum evidence/* | sort > evidence/SHA256SUMS.txt
+
+      - name: Upload text evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cygwin-setup-2.940-provenance-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
