@@ -167,6 +167,7 @@ public sealed class ZapretTransactionalInstaller
     {
         if (!Directory.Exists(_rollbackPendingRoot))
         {
+            RecoverPreviousWhenCurrentIsMissing();
             return;
         }
 
@@ -189,6 +190,18 @@ public sealed class ZapretTransactionalInstaller
             SafeDeleteTree(_currentRoot);
             Directory.Move(_rollbackPendingRoot, _currentRoot);
         }
+    }
+
+    private void RecoverPreviousWhenCurrentIsMissing()
+    {
+        if (Directory.Exists(_currentRoot) || !Directory.Exists(_previousRoot))
+        {
+            return;
+        }
+
+        ValidateInstalledTree(_previousRoot);
+        ReadManifestSynchronously(_previousRoot);
+        Directory.Move(_previousRoot, _currentRoot);
     }
 
     private void EnsureDeploymentRoot()
