@@ -108,7 +108,7 @@ public static class SafeZipExtractor
     {
         if (string.IsNullOrWhiteSpace(entry.FullName)
             || entry.FullName.Length > UpdateSecurityLimits.MaxArchivePathCharacters
-            || entry.FullName.IndexOf('\0') >= 0)
+            || entry.FullName.Contains('\0'))
         {
             throw new UpdateSecurityException("InvalidArchivePath", "ZIP содержит недопустимое имя записи.");
         }
@@ -148,7 +148,7 @@ public static class SafeZipExtractor
         var normalized = entryName.Replace('\\', '/');
 
         if (normalized.StartsWith('/', StringComparison.Ordinal)
-            || normalized.Contains(':', StringComparison.Ordinal))
+            || normalized.Contains(':'))
         {
             throw new UpdateSecurityException("InvalidArchivePath", "Абсолютные пути и имена дисков в ZIP запрещены.");
         }
