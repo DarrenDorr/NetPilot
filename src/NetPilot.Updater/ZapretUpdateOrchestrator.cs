@@ -50,7 +50,7 @@ public sealed class ZapretUpdateOrchestrator
         CreateTransactionRoot(downloadRoot);
         CreateTransactionRoot(extractRoot);
 
-        ZapretInstallResult? installResult = null;
+        ZapretInstallResult installResult;
         try
         {
             var downloadedPath = await _releaseSource.DownloadVerifiedAssetAsync(
@@ -111,6 +111,17 @@ public sealed class ZapretUpdateOrchestrator
         if (!Directory.Exists(_currentRoot))
         {
             return;
+        }
+
+        var resolvedCurrent = ZapretPackageLayoutValidator.ResolvePackageRoot(_currentRoot);
+        if (!string.Equals(
+                Path.GetFullPath(resolvedCurrent),
+                Path.GetFullPath(_currentRoot),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new UpdateSecurityException(
+                "UnexpectedInstalledLayout",
+                "Установленный current Zapret имеет неожиданную структуру.");
         }
 
         var installed = await EngineInstallationManifest.ReadAsync(
