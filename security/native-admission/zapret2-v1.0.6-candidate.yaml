@@ -1,6 +1,6 @@
 schema_version: 1
 component_set: zapret2-v1.0.6-candidate
-admission_status: REVIEW
+admission_status: BLOCK
 release_gate: BLOCK
 reviewed_at: 2026-10-28
 
@@ -31,22 +31,60 @@ policy:
   only_hash_pinned_project_lua_allowed: true
   strategy_must_compile_from_typed_allowlisted_profile: true
 
+blocking_findings:
+  - id: ZAPRET2-1.0.6-UAF-001
+    severity: BLOCK
+    title: Heap use-after-free in cancelled TLS reassembly path
+    affected_release_commit: 221d7dff24bfec0cd5ac0a5070b8acef2008af3d
+    upstream_issue: https://github.com/bol-van/zapret2/issues/335
+    evidence: The issue reproduces a heap-use-after-free read against the exact v1.0.6 tag commit using the real nfqws2 under ASan. The path is reachable with default reassembly and conntrack plus a matching Lua desync profile.
+    upstream_fix_commit: 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d
+    fix_commit_date: 2026-10-22T08:06:42Z
+    release_contains_fix: false
+    decision: BLOCK
+    rationale: A post-release master fix cannot retroactively make the immutable identity of the reviewed v1.0.6 archive safe. NetPilot must not execute or integrate this release.
+
+  - id: ZAPRET2-1.0.6-STATE-002
+    severity: REVIEW_BLOCKING_FOR_HOSTILE_ENVIRONMENT
+    title: No aggregate bound on conntrack and ipcache state
+    upstream_issue: https://github.com/bol-van/zapret2/issues/335
+    evidence: Reporter demonstrated growth by large numbers of distinct flows/addresses; upstream maintainer explicitly chose not to add the proposed aggregate limits and recommends reduced conntrack timeouts for high-load or potentially hostile environments.
+    decision: BLOCK_FOR_THIS_CANDIDATE
+    rationale: NetPilot cannot assume all future deployments are trusted single-device environments; failure-safe resource bounds need a product-level decision before admission.
+
+  - id: ZAPRET2-1.0.6-HOSTNAME-003
+    severity: REVIEW
+    title: Packet-derived hostname data can reach line-oriented auto-hostlist and log sinks
+    upstream_issue: https://github.com/bol-van/zapret2/issues/335
+    evidence: Issue reports line injection and a persistent availability failure through crafted auto-hostlist content on the exact release commit.
+    decision: BLOCK_FOR_THIS_CANDIDATE
+    rationale: NetPilot must not rely on untrusted packet bytes becoming trusted persistent configuration without a separately reviewed containment boundary.
+
+  - id: ZAPRET2-1.0.6-DNSCACHE-004
+    severity: REVIEW
+    title: DNS responses may seed global ipcache without query correlation when experimental hostname caching is enabled
+    upstream_issue: https://github.com/bol-van/zapret2/issues/335
+    evidence: The reported feature is off by default, but the exact release commit lacks transaction and flow correlation for this path.
+    decision: DO_NOT_ENABLE
+    rationale: Even a future admitted engine adapter must keep this capability disabled unless separately reviewed and justified.
+
 windows_x64_candidate_runtime:
   - path: binaries/windows-x86_64/winws2.exe
     role: packet-processing executable
     size_bytes: 656384
     sha256: ba4ceccdea3576da0a0991a50d7893ea911de197281338132dbec02a5b2fcf58
     signature_status: NotSigned
-    decision: REVIEW
+    decision: BLOCK
+    blockers:
+      - The v1.0.6 release executable is built from an affected release commit and must not be executed by NetPilot.
 
   - path: binaries/windows-x86_64/WinDivert.dll
     role: WinDivert user-mode library
     size_bytes: 47616
     sha256: 16abd6a029e65557c6a309bea7b13bf81fff4e193567582e1cddbf6719f323e0
     signature_status: NotSigned
+    provenance: Built by the official zapret2 release workflow from WinDivert 2.2.2-A and modified with peflags dynamicbase=true.
     decision: REVIEW
-    blockers:
-      - This DLL differs from the WinDivert.dll previously byte-matched to official WinDivert v2.2.2 A; exact upstream variant/provenance still must be established.
 
   - path: binaries/windows-x86_64/WinDivert64.sys
     role: privileged WinDivert kernel driver
@@ -73,7 +111,7 @@ windows_x64_candidate_runtime:
     provenance: SAME_SHA256_AS_ZAPRET_V72_9_WINDOWS_X86_64_BUNDLE
     decision: REVIEW
     blockers:
-      - The maintained zapret2 release still bundles Cygwin 3.4.10; suitability for modern-Windows-only NetPilot remains a review item.
+      - The maintained zapret2 release still bundles Cygwin 3.4.10; suitability for modern-Windows-only NetPilot remains unresolved and must be re-reviewed for any future release.
 
 excluded_from_minimal_runtime_by_default:
   - binaries/windows-x86_64/ip2net.exe
@@ -109,23 +147,37 @@ checks_completed:
   - PASS: all EXE/DLL/SYS files inventoried without executing downloaded code.
   - PASS: Windows x64 winws2.exe, WinDivert.dll, WinDivert64.sys and cygwin1.dll hashes recorded.
   - PASS: v1.0.6 tag resolves to commit 221d7dff24bfec0cd5ac0a5070b8acef2008af3d.
-  - PASS: source/docs review confirms zapret2 supports Lua execution through its command/config surface; NetPilot-specific denial boundary is therefore mandatory.
+  - PASS: source/docs review confirms zapret2 supports Lua execution through its command/config surface; NetPilot-specific denial boundary is mandatory.
+  - PASS_FOR_CHECKED_CLASS_ONLY: the earlier zapret1 TLS short-input underflow pattern is not copied literally into v1.0.6.
+  - PASS_FOR_CHECKED_CLASS_ONLY: QUIC version parsing in v1.0.6 uses length checking plus bytewise pntoh32 instead of an unaligned uint32 dereference.
+  - BLOCK: upstream issue 335 demonstrates a separate heap-use-after-free on the exact v1.0.6 release commit.
+  - BLOCK: upstream fixed the UAF only after the release in commit 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d.
+  - BLOCK: as of 2026-10-28 there is no newer published zapret2 release after v1.0.6 containing that fix.
 
-checks_required:
-  - Establish authoritative provenance for Windows x64 WinDivert.dll variant and winws2.exe build.
-  - Review current zapret2 upstream issues/security reports and CVE/NVD/OSV/CISA KEV applicability.
-  - Review v1.0.6 parser code for the zapret1 findings class and other obvious unsafe length/alignment patterns in the Windows packet path.
-  - Define and review the exact NetPilot-owned Lua module set, including immutable SHA-256 values.
-  - Define typed allowlisted strategy schema and deterministic compiler to argument arrays; no raw args.
-  - Review cleanup/rollback behavior for crash, stop, service failure and uninstall.
-  - Only after all checks may admission_status become ADMIT.
+future_candidate_requirements:
+  - Do not reconsider v1.0.6; open a new admission record for a newer exact tagged release.
+  - Require the new tag to contain the UAF fix or an equivalent audited correction.
+  - Re-run exact archive identity, complete native inventory and hashes; never inherit identities from v1.0.6.
+  - Re-run current upstream issue/security report and CVE/NVD/OSV/CISA KEV applicability review.
+  - Re-review resource exhaustion exposure and decide product-level conntrack/ipcache limits or safe deployment assumptions.
+  - Keep packet-derived auto-hostlist persistence disabled unless separately contained and reviewed.
+  - Keep experimental ipcache-hostname behavior disabled unless separately reviewed.
+  - Re-review Cygwin and WinDivert identities/advisories for the exact new release.
+  - Define and review exact project-owned Lua modules with immutable SHA-256 before any integration.
+  - Keep typed allowlisted profile compilation and no raw args.
+  - Review crash, stop, service-failure and uninstall cleanup behavior.
+  - Only a new candidate that completes all applicable checks may become ADMIT.
 
 evidence:
   - Official GitHub release API identifies v1.0.6 as published 2026-10-21 and reports zapret2-v1.0.6.zip SHA-256 e141b51b60c895fe9548f4d644365461dcad8155e068d284a9aae1724504237d.
   - Zapret2 Candidate Evidence run 40659130327 completed successfully and recorded 14 native components across x64/x86 without executing downloaded code.
   - Source/docs show --lua-init file/code support and luaexec code expressions; this is treated as an upstream capability that NetPilot must deny to untrusted configuration.
+  - Upstream issue 335 explicitly tests commit 221d7dff24bfec0cd5ac0a5070b8acef2008af3d and reports a reproducible heap-use-after-free plus three additional state/input-handling findings.
+  - Upstream maintainer states finding 1 is fixed and declines the other proposed complexity/resource-limit changes for the project's normal single-device/home-router usage model.
+  - Commit 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d dated 2026-10-22 is titled 'nfqws2: fix UAF' and resets the reassembly data view after cancellation before rediscovery.
 
 notes:
-  - This candidate was opened because the existing zapret1 v72.9 component set is BLOCKED and zapret1 is EOL.
-  - The candidate remains REVIEW/BLOCK for release. Nothing here authorizes installation, execution, bundling or activation of zapret2.
-  - A successful inventory is evidence of identity only, not evidence that the engine is safe.
+  - Identity/provenance evidence does not override a demonstrated memory-safety defect in the exact release artifact.
+  - The v1.0.6 ZIP remains permanently BLOCKED for NetPilot; a later master commit does not modify its reviewed bytes.
+  - Nothing in this record authorizes installation, execution, bundling or activation of zapret2.
+  - A future fixed release starts a new admission from zero; UNKNOWN/REVIEW/BLOCK are never treated as PASS.
