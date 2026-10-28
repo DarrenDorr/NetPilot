@@ -61,6 +61,7 @@ jobs:
             '0002-bounded-conntrack-resource-result.patch' = 'a3531211626ce602a3b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783'
             '0003-bounded-delayed-queue-bytes.patch' = '33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68'
             '0004-explicit-daemon-stdio-redirection.patch' = 'f32e0c27393bcdfa30aa7e8c58749bb9e70e2a870350f5c3cfa429597a887777'
+            '0005-fail-closed-zero-conntrack-budget.patch' = '67cbbfa656c47b7342a8c56ab178716e7890de0f05efc25eed2cc20b299c4ed1'
           }
           foreach ($patch in $patches.Keys) {
             $path = Join-Path $PWD "netpilot\security\native-admission\patches\zapret2-r28\$patch"
@@ -73,6 +74,7 @@ jobs:
           }
 
           if (-not (Select-String -LiteralPath 'zapret2\nfq2\sec.c' -SimpleMatch 'dup2(nullfd, STDOUT_FILENO)' -Quiet)) { throw 'Patch 0004 anchor missing' }
+          if (-not (Select-String -LiteralPath 'zapret2\nfq2\conntrack.c' -SimpleMatch '!max_entries || HASH_COUNT(*pp) >= max_entries' -Quiet)) { throw 'Patch 0005 anchor missing' }
 
       - name: Install exact hash-pinned Cygwin compiler dependencies
         shell: pwsh
@@ -159,9 +161,9 @@ jobs:
           $cygwinSize = if (Test-Path $cygwinDll) { (Get-Item $cygwinDll).Length } else { 0 }
 
           @(
-            'schema_version=6'
+            'schema_version=7'
             'scope=windows-x64-compile-smoke-only'
-            'candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0004'
+            'candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0005'
             "luajit_build_outcome=$env:LUAJIT_BUILD_OUTCOME"
             "winws_build_outcome=$env:WINWS_BUILD_OUTCOME"
             'zapret2_commit=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d'
@@ -170,6 +172,7 @@ jobs:
             'patch_0002_sha256=a3531211626ce602a3b5cab6c926a28e7a94ebdf2a475e3bcfa6829e64dea783'
             'patch_0003_sha256=33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68'
             'patch_0004_sha256=f32e0c27393bcdfa30aa7e8c58749bb9e70e2a870350f5c3cfa429597a887777'
+            'patch_0005_sha256=67cbbfa656c47b7342a8c56ab178716e7890de0f05efc25eed2cc20b299c4ed1'
             'runner=windows-2025'
             'cygwin_setup_version=2.940'
             'cygwin_setup_sha512=fc46e3ead0312ea632251c16334b23caab31c9b38db30db4e5418b43ffeec5c003cc867b4166c8222a622ad107660e2ce6e3d855499d08e695dd13010f43a396'
