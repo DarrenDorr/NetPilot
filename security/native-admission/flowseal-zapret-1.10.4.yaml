@@ -22,80 +22,97 @@ policy:
   signature_bypass_allowed: false
   version_drift_requires_readmission: true
 
+executable_native_inventory:
+  - bin/winws.exe
+  - bin/WinDivert.dll
+  - bin/WinDivert64.sys
+  - bin/cygwin1.dll
+
 components:
   - path: bin/winws.exe
     role: packet-processing executable
+    size_bytes: 203776
     git_blob_sha1: bc2cc0ff325fd92da4130b9d781992ff49355ccc
-    sha256: UNKNOWN
+    sha256: affb4f69d2ea302a7abccd5325d81826e140ddae014f1e070bc4a6c0dd555188
     exact_version: UNKNOWN
-    signer: UNKNOWN
+    signature_status: NotSigned
+    signer: null
     publisher: UNKNOWN
-    provenance: CONFIRMED_FROM_IMMUTABLE_FLOWSEAL_TAG
+    provenance: CONFIRMED_FROM_IMMUTABLE_FLOWSEAL_RELEASE
     decision: REVIEW
     blockers:
-      - SHA-256 of the exact released file has not yet been independently recorded.
-      - PE version metadata has not yet been independently recorded.
-      - Authenticode signer/publisher status has not yet been independently verified.
+      - Exact upstream winws/zapret build identity is not yet independently mapped to an authoritative source release.
+      - Unsigned executable policy requires explicit component provenance review before ADMIT.
 
   - path: bin/WinDivert.dll
     role: WinDivert user-mode library
     size_bytes: 47616
     git_blob_sha1: 50ca874308a916f834e02a749bcce365673426f3
-    sha256: UNKNOWN
-    exact_version: UNKNOWN
-    signer: UNKNOWN
-    publisher: UNKNOWN
-    provenance: CONFIRMED_FROM_IMMUTABLE_FLOWSEAL_TAG
+    sha256: c1e060ee19444a259b2162f8af0f3fe8c4428a1c6f694dce20de194ac8d7d9a2
+    exact_version: 2.2.2
+    signature_status: NotSigned
+    signer: null
+    publisher: basil00/WinDivert
+    provenance: BYTE_MATCH_OFFICIAL_WINDIVERT_V2_2_2_X64
     decision: REVIEW
     blockers:
-      - Exact WinDivert version has not yet been independently established.
-      - SHA-256 and Authenticode status have not yet been independently verified.
+      - Current vulnerability/advisory applicability review must be recorded before ADMIT.
+      - DLL is not Authenticode-signed; byte identity therefore remains mandatory.
 
   - path: bin/WinDivert64.sys
     role: privileged WinDivert kernel driver
     size_bytes: 94144
     git_blob_sha1: 218ccaf423ef0a67696226f9ef3a09149e4441d0
-    sha256: UNKNOWN
-    exact_version: UNKNOWN
-    signer: UNKNOWN
-    publisher: UNKNOWN
-    provenance: CONFIRMED_FROM_IMMUTABLE_FLOWSEAL_TAG
+    sha256: 8da085332782708d8767bcace5327a6ec7283c17cfb85e40b03cd2323a90ddc2
+    exact_version: 2.2.2
+    pe_file_version: '2.2'
+    pe_product_version: '2.2'
+    pe_company_name: Basil
+    pe_product_name: WinDivert 2.2 driver
+    signature_status: Valid
+    signer_subject: 'CN=成都密思听科技有限公司, O=成都密思听科技有限公司, S=四川省, C=CN, OID.2.5.4.15=Private Organization, OID.1.3.6.1.4.1.311.60.2.1.3=CN, SERIALNUMBER=91510107MA7E8Y2876'
+    signer_thumbprint: 043589F75FCE2795E7F2CC3E526D46784D5DDAB3
+    publisher: basil00/WinDivert
+    provenance: BYTE_MATCH_OFFICIAL_WINDIVERT_V2_2_2_X64
     decision: REVIEW
     blockers:
-      - Exact WinDivert driver version has not yet been independently established.
-      - SHA-256 and Windows driver-signing chain have not yet been independently verified.
-      - Applicable vendor/CVE/KEV review remains required for the exact driver identity.
+      - Current vendor/CVE/KEV applicability review must be recorded for WinDivert 2.2.2 before ADMIT.
+      - Driver signature is valid on the tested Windows runner, but signer-chain policy still requires human security review because the certificate identity is not self-evidently the upstream project name.
 
   - path: bin/cygwin1.dll
     role: native runtime dependency loaded by winws.exe
     size_bytes: 2954293
     git_blob_sha1: 1bb2e05c6d5458ad7987859a17172b635e87b9c5
-    sha256: UNKNOWN
-    exact_version: UNKNOWN
-    signer: UNKNOWN
-    publisher: UNKNOWN
-    provenance: CONFIRMED_FROM_IMMUTABLE_FLOWSEAL_TAG
+    sha256: 103104a52e5293ce418944725df19e2bf81ad9269b9a120d71d39028e821499b
+    exact_version: 3.4.10
+    company_name: Red Hat
+    product_name: Cygwin
+    signature_status: NotSigned
+    signer: null
+    publisher: Cygwin/Red Hat
+    provenance: CONFIRMED_FROM_IMMUTABLE_FLOWSEAL_RELEASE
     decision: BLOCK
     blockers:
-      - Exact Cygwin build/version has not yet been independently established.
-      - SHA-256 and signer/publisher status have not yet been independently verified.
-      - Component-level vulnerability/advisory review cannot be completed without exact identity.
+      - Cygwin 3.4.10 is an old compatibility branch; official Cygwin documentation identifies it as the final release for Windows 7/8-class systems, while NetPilot targets Windows 10+.
+      - Current supported Cygwin DLL is newer; retaining 3.4.10 therefore needs a documented compatibility reason or replacement with a supported upstream-compatible build.
+      - Component-level advisory review remains incomplete; absence of a discovered CVE is not evidence of safety.
 
 required_before_admit:
-  - Download the exact immutable ZIP in an isolated review environment without executing its contents.
-  - Verify the ZIP SHA-256 against the recorded GitHub release digest.
-  - Extract without following symlinks/reparse points and compute SHA-256 for every executable/native component.
-  - Record PE/product/file version metadata where available.
-  - Verify Authenticode/driver signature chain and publisher where applicable.
-  - Perform advisory/CVE/OSV/NVD/CISA KEV applicability review for the exact identified versions.
-  - Compare the extracted inventory byte-for-byte with this manifest and reject any extra executable DLL SYS or script-capable component outside the approved inventory.
+  - Map bin/winws.exe to an authoritative exact upstream zapret/winws release or source revision and record immutable provenance.
+  - Complete current vendor/CVE/OSV/NVD/CISA KEV review for WinDivert 2.2.2 and the exact winws/Cygwin components.
+  - Resolve Cygwin 3.4.10: either document a defensible compatibility requirement with risk acceptance, or update upstream/component while preserving byte-level admission.
+  - Review the WinDivert64.sys signer-chain identity and document why it is acceptable for the official v2.2.2 artifact.
+  - Enforce the approved component inventory and SHA-256 values in the activation/install path only after admission_status becomes ADMIT.
   - Change admission_status to ADMIT only after independent evidence is attached; do not infer PASS from provenance alone.
 
 evidence:
-  - Official GitHub release 1.10.4 is immutable and points to commit 176f56dc3f11ce5915c26abcdde903f93d835b64.
-  - Official release API reports ZIP SHA-256 291af673bd0238506f9548e0e94ca0abf244000f4c9a06960544fb01c5f97b34.
-  - GitHub tag tree confirms the listed component paths and Git blob identities.
+  - Official Flowseal GitHub release 1.10.4 is immutable and points to commit 176f56dc3f11ce5915c26abcdde903f93d835b64.
+  - Official Flowseal release API reports ZIP SHA-256 291af673bd0238506f9548e0e94ca0abf244000f4c9a06960544fb01c5f97b34.
+  - GitHub Actions Native Admission Evidence run 40657705812 confirmed archive identity, safe path checks, four-file executable/native inventory, component SHA-256 values, PE metadata and Authenticode status without executing downloaded components.
+  - GitHub Actions Native Admission Evidence run 40657903933 byte-compared Flowseal WinDivert.dll and WinDivert64.sys with official basil00/WinDivert v2.2.2 x64 and both matched exactly.
+  - Official Cygwin site reports 3.4.10 as the last compatibility release for Windows 7/8-era systems and a newer supported DLL for current Windows.
 
 notes:
-  - Git blob SHA-1 is repository identity evidence, not a substitute for required component SHA-256.
-  - UNKNOWN fields are intentionally blocking/reviewing evidence gaps and must never be treated as PASS.
+  - Git blob SHA-1 is repository identity evidence, not a substitute for component SHA-256.
+  - NotSigned is not automatically REJECT, but it requires stronger immutable provenance and exact hash enforcement.
+  - UNKNOWN/REVIEW/BLOCK fields must never be treated as PASS.
