@@ -288,17 +288,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             OverallStatus = "Доступ в порядке";
             OverallDetails = "Discord и YouTube отвечают на проверку NetPilot.";
         }
-        else if (results.Any(result => result.State == ResourceHealthState.Unavailable))
-        {
-            OverallStatus = "Есть недоступные сервисы";
-            OverallDetails = CanUseEngine
-                ? "Можно запустить подбор разрешённого профиля или повторить проверку позже."
-                : "Безопасно допущенный сетевой движок пока недоступен. NetPilot не будет запускать непроверенный пакет.";
-        }
         else
         {
-            OverallStatus = "Есть ограничения";
-            OverallDetails = "Часть сервисов отвечает нестабильно или с ограничениями.";
+            OverallStatus = results.Any(result => result.State == ResourceHealthState.Unavailable)
+                ? "Есть недоступные сервисы"
+                : "Есть ограничения";
+            OverallDetails = GetRecoveryGuidance(results);
         }
 
         if (!preserveActionText)
@@ -306,6 +301,24 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             LastAction = "Состояние ресурсов обновлено.";
         }
     }
+
+    private string GetRecoveryGuidance(IReadOnlyList<ResourceHealth> results) =>
+        ResourceHealthFailureClassifier.ClassifyAggregate(results) switch
+        {
+            ResourceHealthFailureClass.DnsFailure =>
+                "Обнаружена проблема DNS. Смена сетевого профиля автоматически не выполняется; проверьте подключение и DNS-настройки.",
+            ResourceHealthFailureClass.ServiceResponse =>
+                "Сервис отвечает по HTTPS, но вернул ошибку или ограничение. NetPilot не будет менять сетевой профиль только из-за такого ответа.",
+            ResourceHealthFailureClass.SecurityOrConfiguration =>
+                "Проверка ограничена политикой безопасности или конфигурацией NetPilot. Автоматическое сетевое вмешательство запрещено.",
+            ResourceHealthFailureClass.RecoverableNetworkPath when CanUseEngine =>
+                "Сбой похож на проблему сетевого пути. Можно запустить подбор заранее разрешённого профиля.",
+            ResourceHealthFailureClass.RecoverableNetworkPath =>
+                "Сбой похож на проблему сетевого пути, но безопасно допущенный движок пока недоступен. NetPilot не запустит непроверенный пакет.",
+            ResourceHealthFailureClass.Unclassified =>
+                "Причина сбоя недостаточно определена. NetPilot сохранит текущую конфигурацию и не будет автоматически менять профиль.",
+            _ => "Часть сервисов отвечает нестабильно или с ограничениями."
+        };
 
     private void RecordHealthHistory(IReadOnlyList<ResourceHealth> results)
     {
