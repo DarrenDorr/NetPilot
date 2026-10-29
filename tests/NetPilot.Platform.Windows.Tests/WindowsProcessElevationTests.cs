@@ -6,9 +6,9 @@ public sealed class WindowsProcessElevationTests
 {
     [Theory]
     [InlineData(WindowsProcessElevationState.NotElevated, true)]
-    [InlineData(WindowsProcessElevationState.Elevated, false)]
+    [InlineData(WindowsProcessElevationState.Elevated, true)]
     [InlineData(WindowsProcessElevationState.Unknown, false)]
-    public void Installer_enrollment_policy_is_fail_closed(
+    public void Installer_enrollment_policy_accepts_detectable_interactive_token_state(
         WindowsProcessElevationState state,
         bool expected)
     {
