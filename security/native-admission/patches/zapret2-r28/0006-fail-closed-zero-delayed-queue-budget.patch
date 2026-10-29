@@ -1,0 +1,14 @@
+diff --git a/nfq2/packet_queue.c b/nfq2/packet_queue.c
+--- a/nfq2/packet_queue.c
++++ b/nfq2/packet_queue.c
+@@ -48,9 +48,9 @@ struct rawpacket *rawpacket_queue(
+ 	bool server_side)
+ {
+ 	if (q->max_packets && rawpacket_queue_count(q)>=q->max_packets) return NULL;
+ 	if (len > SIZE_MAX - q->queued_bytes) return NULL;
+ 	size_t new_queued_bytes = q->queued_bytes + len;
+-	if (q->max_bytes && new_queued_bytes > q->max_bytes) return NULL;
++	if (!q->max_bytes || new_queued_bytes > q->max_bytes) return NULL;
+ 
+ 	struct rawpacket *rp = malloc(sizeof(struct rawpacket));
+ 	if (!rp) return NULL;
