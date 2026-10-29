@@ -1,4 +1,4 @@
-schema_version: 7
+schema_version: 8
 matrix_id: netpilot-prelab-r28.4
 reviewed_at: 2026-10-29
 production_activation_allowed: false
@@ -90,6 +90,8 @@ candidates:
         - WD-RUNTIME-001
         - WD-LIFECYCLE-002
         - WD-DEFENDER-003
+        - WD-SIGNING-003
+      windows_release_boundary_document: docs/WINDIVERT-WINDOWS-RELEASE-DECISION-R28.5.md
     next_decision:
       - keep controlled build hashes as references only
       - define evidence-based temporary nonzero Linux lab resource budgets in a separately reviewed change
@@ -163,26 +165,36 @@ candidates:
       - do not start ciadpi before LAB_APPROVED
 
   dpibreak:
-    component_set: dpibreak-v0.6.2-candidate
+    component_set: dpibreak-v0.6.2-netpilot-fork-candidate
     role: reserve-windows-linux-https-candidate
     admission_status: REVIEW
     release_gate: BLOCK
     may_execute_in_netpilot: false
     may_integrate_in_netpilot: false
-    manifest: security/native-admission/dpibreak-v0.6.2-candidate.yaml
+    manifest: security/native-admission/dpibreak-v0.6.2-netpilot-fork-candidate.yaml
     source_identity:
       release_tag: v0.6.2
       annotated_tag_object: 7601532147fe92130964e49a644d3207e74b8a51
       release_commit: 334285b60aabd5a32a83a65211ac60bce968b211
       release_tree: 7e95a17933fe9fda521865b1317c4f9f75d6c58c
       cargo_lock_git_blob_sha1: e3adcd1b21711e7e754878b15625076c7bcaf7e9
+    active_patchset:
+      patch_0001_git_blob_sha1: 3f731650c83e56f717a7709084fd5873e7cb99eb
+      patch_0001_sha256: aa3e7681be056dfc5f1a1c83872b2ae5ea7058744261a0c3040cd1a092d55bce
+      patch_0002_git_blob_sha1: 733a8c989e22790b5518468af61a5041e65c1238
+      patch_0002_sha256: 2620c5823e8b0f527048bd0e112b00565e5517d9923a537a9a947b4c5774d8ef
+      patch_0003_git_blob_sha1: d27efdb337fabe15745832d00acbb6a039f7cb7c
+      patch_0003_sha256: 1a0cbde6714c05e35da0004b36dd3e5c25f32f3d4086195dd64015f8fdc2acb1
     evidence_state:
       manual_signed_tag_and_release_metadata_review: PASS_FOR_PROVENANCE_ONLY
       automated_source_dependency_provenance: PASS_FOR_SOURCE_AND_LOCK_PROVENANCE_ONLY
-      linux_compile_only: PASS_FOR_COMPILE_ONLY
-      windows_compile_only: NOT_STARTED
-      cargo_advisory_review: NOT_STARTED
-      unsafe_ffi_review: NOT_STARTED
+      upstream_linux_compile_only_reference: PASS_FOR_COMPILE_ONLY
+      hardened_patchset_0001_0003_source_applicability: PASS_FOR_EXACT_SOURCE_APPLICABILITY_ONLY
+      cargo_advisory_review: PASS_FOR_EXACT_LOCKFILE_ADVISORY_AND_STATIC_INVENTORY_ONLY
+      unsafe_ffi_review: PASS_FOR_EXACT_LOCKFILE_ADVISORY_AND_STATIC_INVENTORY_ONLY
+      privileged_boundary_inventory: PASS_FOR_EXACT_LOCKFILE_ADVISORY_AND_STATIC_INVENTORY_ONLY
+      hardened_linux_compile_only: NOT_STARTED
+      hardened_windows_compile_only: NOT_STARTED
     provenance_evidence:
       workflow_run_id: 40809643722
       workflow_job_id: 123236663919
@@ -193,7 +205,7 @@ candidates:
       local_package_count: 2
       unexpected_dependency_sources: 0
       registry_packages_without_checksum: 0
-    linux_compile_evidence:
+    upstream_linux_compile_reference:
       workflow_run_id: 40809820544
       workflow_job_id: 123237225747
       artifact_id: 12869892327
@@ -207,6 +219,29 @@ candidates:
       binary_retained: false
       nfqueue_enabled: false
       firewall_changed: false
+      limitation: this build predates application of the active NetPilot patchset and is reference-only
+    source_hardening_evidence:
+      workflow_run_id: 40815277559
+      workflow_job_id: 123254763300
+      head_sha: 1a3270c4c0c6e280fbce16009ead98601ab3de8f
+      artifact_id: 12871704278
+      artifact_zip_sha256: b591c47a668716e1a0bcbea78aee5d857ba5d0390c0973c25ae7873d91769321
+      identity_outcome: success
+      apply_and_source_boundary_outcome: success
+      candidate_built: false
+      candidate_executed: false
+    advisory_static_evidence:
+      workflow_run_id: 40815049052
+      workflow_job_id: 123254041366
+      head_sha: c8ec92e4f70905ba20b0c617a7eb1d426c09b265
+      artifact_id: 12871589958
+      artifact_zip_sha256: ef5f3264002b135dc96b5458e3a233e43ca09ab24dc277e01867c5d0b9ff715c
+      cargo_audit_version: 0.22.2
+      exact_cargo_lock: true
+      known_rustsec_vulnerability_count: 0
+      unsafe_ffi_inventory_completed: true
+      privileged_boundary_inventory_completed: true
+      candidate_executed: false
     known_scope_limits:
       - upstream issue 32 QUIC support is open
       - upstream issue 24 NFQUEUE GSO semantics is open
@@ -214,9 +249,10 @@ candidates:
       - upstream issue 28 hard-coded nft/iptables lifecycle requires rollback design
       - upstream issue 31 WireGuard coexistence remains a compatibility scope
     platform_boundaries:
-      linux: PRE_LAB_REVIEW
-      windows: BLOCK_PENDING_EXACT_WINDIVERT_COMPONENT_INVENTORY
+      linux: PRE_LAB_REVIEW_PATCHED_COMPILE_PENDING
+      windows: BLOCK_WINDIVERT_RUNTIME_AND_SIGNING
       android: NOT_SELECTED
+    windows_release_boundary_document: docs/WINDIVERT-WINDOWS-RELEASE-DECISION-R28.5.md
     lab:
       linux_state: PRE_LAB_REVIEW
       linux_plan: security/native-admission/lab-plans/dpibreak-linux-r28.4.yaml
@@ -227,10 +263,10 @@ candidates:
       quic_http3_in_scope: false
       discord_udp_in_scope: false
     next_decision:
-      - review exact Cargo.lock advisories and unsafe/FFI surfaces
-      - keep Windows blocked until exact WinDivert component inventory and compile-only evidence are complete
-      - review Linux GSO/MTU/firewall/local-LAN test design
-      - keep controlled Linux build hash as reference only, not an approved runtime identity
+      - compile exact active patchset 0001-0003 on Linux with locked dependencies without execution
+      - keep Windows blocked by WinDivert R28.5 boundary
+      - review Linux GSO/MTU/firewall/local-LAN test design only after patched compile gate
+      - keep all build hashes as references only, not approved runtime identities
       - do not execute DPIBreak before separate LAB_APPROVED decision
 
 promotion_requirements:
@@ -254,5 +290,5 @@ notes:
   - No native engine start/install path may be enabled in NetPilot production from this file.
   - Zapret2 controlled build hashes and synthetic caps are references only; no runtime hash or lab budget is pre-authorized.
   - ByeDPI compile-only PASS does not authorize candidate execution or network routing.
-  - DPIBreak provenance/Linux compile PASS does not authorize NFQUEUE, firewall mutation, driver load or candidate execution.
+  - DPIBreak upstream compile reference and source/static PASS do not authorize NFQUEUE, firewall mutation, driver load or candidate execution.
   - Any review referring to older candidate/patch identities is stale unless explicitly retained as historical evidence.
