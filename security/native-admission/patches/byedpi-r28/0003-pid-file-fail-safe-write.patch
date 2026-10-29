@@ -1,0 +1,70 @@
+diff --git a/main.c b/main.c
+--- a/main.c
++++ b/main.c
+@@ -563,4 +563,13 @@
+ #ifdef DAEMON
++static int reset_pid_fd(void)
++{
++    if (params.pid_fd >= 0) {
++        close(params.pid_fd);
++        params.pid_fd = -1;
++    }
++    return -1;
++}
++
+ int init_pid_file(const char *fname)
+ {
+     params.pid_fd = open(fname, O_RDWR | O_CREAT, 0640);
+@@ -572,13 +581,34 @@
+         .l_type = F_WRLCK
+     };
+     if (fcntl(params.pid_fd, F_SETLK, &fl) < 0) {
+-        return -1;
++        return reset_pid_fd();
+     }
++    if (ftruncate(params.pid_fd, 0) < 0 || lseek(params.pid_fd, 0, SEEK_SET) < 0) {
++        return reset_pid_fd();
++    }
++
++    char pid_str[21];
++    int pid_len = snprintf(pid_str, sizeof(pid_str), "%d", getpid());
++    if (pid_len <= 0 || (size_t)pid_len >= sizeof(pid_str)) {
++        return reset_pid_fd();
++    }
++
++    size_t written = 0;
++    while (written < (size_t)pid_len) {
++        ssize_t n = write(params.pid_fd, pid_str + written, (size_t)pid_len - written);
++        if (n < 0) {
++            if (errno == EINTR) {
++                continue;
++            }
++            return reset_pid_fd();
++        }
++        if (n == 0) {
++            return reset_pid_fd();
++        }
++        written += (size_t)n;
++    }
++
+     params.pid_file = fname;
+-    char pid_str[21];
+-    snprintf(pid_str, sizeof(pid_str), "%d", getpid());
+-    
+-    write(params.pid_fd, pid_str, strlen(pid_str));
+     return 0;
+ }
+ #endif
+@@ -590,9 +620,11 @@
+     WSACleanup();
+     #endif
+     #ifdef DAEMON
+-    if (params.pid_fd > 0) {
++    if (params.pid_file && params.pid_fd >= 0) {
+         close(params.pid_fd);
++        params.pid_fd = -1;
+     }
+     if (params.pid_file) {
+         unlink(params.pid_file);
++        params.pid_file = 0;
+     }
