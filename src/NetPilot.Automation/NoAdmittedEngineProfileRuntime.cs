@@ -5,11 +5,15 @@ namespace NetPilot.Automation;
 /// <summary>
 /// Fail-closed runtime для состояния, когда ни один native engine не прошёл ADMIT.
 /// Он не имеет executable, пути, process launcher или сетевого transport и физически
-/// не может активировать профиль.
+/// не может активировать профиль. Набор сетевых возможностей явно пуст.
 /// </summary>
-public sealed class NoAdmittedEngineProfileRuntime : IEngineProfileRuntime
+public sealed class NoAdmittedEngineProfileRuntime :
+    IEngineProfileRuntime,
+    IEngineCapabilityProvider
 {
     public string EngineId => "no-admitted-engine";
+
+    public EngineCapabilitySet Capabilities => EngineCapabilitySet.None;
 
     public ValueTask<IReadOnlyList<EngineProfileDescriptor>> ListProfilesAsync(
         CancellationToken cancellationToken)
