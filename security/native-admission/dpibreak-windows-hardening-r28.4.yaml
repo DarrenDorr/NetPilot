@@ -1,0 +1,108 @@
+schema_version: 1
+decision_id: dpibreak-windows-hardening-r28.4
+reviewed_at: 2026-10-29
+candidate: dpibreak-v0.6.2-candidate
+platform: windows-x86_64
+status: BLOCK
+execution_allowed: false
+integration_allowed: false
+production_effect: NONE
+
+source_anchor:
+  upstream_repository: https://github.com/dilluti0n/dpibreak
+  release_tag: v0.6.2
+  release_commit: 334285b60aabd5a32a83a65211ac60bce968b211
+  release_tree: 7e95a17933fe9fda521865b1317c4f9f75d6c58c
+  latest_stable_checked: v0.6.2
+  upstream_master_still_calls_global_windivert_uninstall: true
+
+confirmed_boundaries:
+  - id: DPIBREAK-WD-SHARED-012
+    severity: RELEASE_BLOCKER
+    finding: Exact v0.6.2 and current upstream master unconditionally call WinDivert::uninstall() after candidate handle cleanup.
+    external_evidence: WinDivert issue #406 remains open and states that stopping the global WinDivert service while another process still owns a handle can leave WinDivertOpen failing with ERROR_SERVICE_DISABLED 1058.
+    adapter_only_fix_possible: false
+    reason: The service-stop action occurs inside the candidate executable after its packet loop exits.
+
+  - id: DPIBREAK-WD-RACE-013
+    severity: RELEASE_BLOCKER
+    finding: Exact candidate depends on the WinDivert 2.2.x driver boundary for Windows packet interception.
+    external_evidence: WinDivert issue #408 remains open and reports a driver-load initialization race with possible bugcheck 0xD1; issue states line numbers are identical in v2.2.2 and current master.
+    adapter_only_fix_possible: false
+    reason: Kernel driver initialization safety is below the DPIBreak adapter boundary.
+
+  - id: DPIBREAK-WD-ACCESS-014
+    severity: HARDENING_REQUIRED
+    finding: In-tree WinDivert::uninstall() opens SCM/service using SC_MANAGER_ALL_ACCESS before SERVICE_CONTROL_STOP.
+    required_action: Minimize SCM/service rights to the exact operations required by any retained lifecycle code.
+
+  - id: DPIBREAK-WD-HANDLE-015
+    severity: HARDENING_REQUIRED
+    finding: WinDivert::uninstall() returns on ControlService failure before later CloseServiceHandle calls.
+    required_action: Use RAII/finally-style handle ownership so every opened service/SCM handle is released on all paths.
+
+  - id: DPIBREAK-WD-TLS-016
+    severity: REVIEW
+    finding: WinDivert::new() uses TlsAlloc(); no TlsFree was found in the in-tree wrapper during source review.
+    required_action: Add bounded TLS slot cleanup or provide separately reviewed lifecycle justification.
+
+  - id: DPIBREAK-WD-DROP-017
+    severity: REVIEW
+    finding: No general Drop implementation for WinDivert was found in the exact in-tree wrapper; handle close is caller-driven.
+    required_action: Review every success/error/early-return path and prefer ownership-safe cleanup in any fork.
+
+  - id: DPIBREAK-WD-BATCH-018
+    severity: REVIEW_OUT_OF_CURRENT_MAIN_PATH
+    finding: recv_ex paths trust native returned lengths before slicing/parsing and contain expect/unwrap/split_at operations.
+    current_reachability: DPIBreak v0.6.2 main Windows loop uses single-packet recv(), not recv_ex().
+    required_action: If future upstream/fork uses batch receive, add malformed/native-output bounds regression before admission.
+
+fork_decision:
+  linux_strategy: UPSTREAM_FIRST_ADAPTER_HARDENED
+  windows_strategy: MINIMAL_HARDENED_FORK_OR_UPSTREAM_FIX_REQUIRED_BEFORE_LAB
+  create_production_fork_now: false
+  reason: A DPIBreak source fix is required for Windows service ownership, but WinDivert issue #408 independently blocks Windows runtime, so production fork activation would be premature.
+  allowed_now:
+    - prepare minimal source patches as review-only artifacts
+    - compile-only test exact patched source
+    - static analysis and source-boundary regression
+  forbidden_now:
+    - execute patched DPIBreak on Windows
+    - install or load WinDivert for this candidate
+    - stop or remove a shared WinDivert service
+    - add Defender/SmartScreen exclusions
+    - enable candidate in NetPilot runtime
+
+minimum_windows_patch_requirements:
+  - remove unconditional global WinDivert service stop/uninstall from normal candidate shutdown
+  - do not assume ownership of a service or handles created/used by other applications
+  - minimize SCM/service access rights
+  - close SCM/service/native handles on every success/error path
+  - define TlsAlloc/TlsFree lifecycle
+  - keep upstream daemon/service mode disabled for NetPilot integration
+  - keep WinDivert filters internal and fixed by typed NetPilot profiles
+  - keep raw CLI/path/filter/service-name input unreachable from NetPilot UI/config/IPC
+
+external_blockers_before_windows_lab:
+  - exact WinDivert component set must resolve or safely avoid issue #408 driver-load race
+  - exact DLL/SYS hashes and signature chain must be admitted
+  - shared-service lifecycle semantics must be ownership-safe
+  - controlled compile-only Windows build must pass for the exact patched source
+  - separate HIGH_ASSURANCE human approval required
+
+promotion:
+  to_windows_lab_approved:
+    automatic: false
+    requires:
+      - all release blockers above closed for exact component set
+      - exact patched source and binary identities pinned
+      - Windows lab plan created with execution_allowed=false until separately approved
+      - explicit HIGH_ASSURANCE human approval
+  to_admit:
+    automatic: false
+    requires_separate_security_decision: true
+
+notes:
+  - This file records a blocker/fork decision only; it does not authorize runtime.
+  - A future upstream fix may replace the need for a NetPilot fork, but must be re-admitted from an exact tagged/committed identity.
+  - No current WinDivert workaround is treated as a substitute for fixing the kernel-driver race.
