@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 3
 component_set: dpibreak-v0.6.2-netpilot-fork-candidate
 admission_status: REVIEW
 release_gate: BLOCK
@@ -31,8 +31,8 @@ license_boundary:
 active_patch_series:
   - sequence: 1
     path: security/native-admission/patches/dpibreak-r28/0001-remove-global-windivert-service-stop.patch
-    git_blob_sha1: 3b0cf8644b58ca924cfe616c2907b02e7b42497f
-    sha256: PENDING_FIRST_CANONICAL_SOURCE_GATE
+    git_blob_sha1: 3f731650c83e56f717a7709084fd5873e7cb99eb
+    sha256: aa3e7681be056dfc5f1a1c83872b2ae5ea7058744261a0c3040cd1a092d55bce
     purpose: remove app-controlled global WinDivert service stop/uninstall API from the NetPilot candidate path and leave only candidate-owned handle close
     security_scope:
       - mitigates WinDivert issue 406 shared-service lifecycle risk at the DPIBreak source boundary
@@ -42,12 +42,12 @@ active_patch_series:
       - WinDivert issue 408 kernel driver initialization race
       - unused TLS/event cache lifecycle
       - all abnormal process termination paths
-    status: APPLY_CHECK_PENDING
+    status: PASS_FOR_EXACT_SOURCE_APPLICABILITY_ONLY
 
   - sequence: 2
     path: security/native-admission/patches/dpibreak-r28/0002-always-revalidate-clienthello.patch
-    git_blob_sha1: 46f70538b5d5ea05573f22f83fd0e071c7bed489
-    sha256: PENDING_FIRST_CANONICAL_SOURCE_GATE
+    git_blob_sha1: 733a8c989e22790b5518468af61a5041e65c1238
+    sha256: 2620c5823e8b0f527048bd0e112b00565e5517d9923a537a9a947b4c5774d8ef
     purpose: always revalidate TLS ClientHello in userspace instead of trusting kernel prefilter classification after NFQUEUE/GSO segmentation
     security_scope:
       - continuation/non-ClientHello packets fail safe to the normal unhandled/accept path
@@ -56,12 +56,12 @@ active_patch_series:
       - full GSO delivery semantics
       - MTU/EMSGSIZE behavior
       - effectiveness when a ClientHello prefix itself is too short for recognition
-    status: APPLY_CHECK_PENDING
+    status: PASS_FOR_EXACT_SOURCE_APPLICABILITY_ONLY
 
   - sequence: 3
     path: security/native-admission/patches/dpibreak-r28/0003-disable-custom-nft-executable.patch
     git_blob_sha1: d27efdb337fabe15745832d00acbb6a039f7cb7c
-    sha256: PENDING_FIRST_CANONICAL_SOURCE_GATE
+    sha256: 1a0cbde6714c05e35da0004b36dd3e5c25f32f3d4086195dd64015f8fdc2acb1
     purpose: reject --nft-command in the hardened build so a root candidate cannot be pointed at a user-selected executable
     security_scope:
       - closes privileged executable-selection surface as defense in depth
@@ -71,7 +71,7 @@ active_patch_series:
       - nftables/iptables lifecycle ownership and rollback
       - queue-number policy
       - all Linux firewall compatibility concerns
-    status: APPLY_CHECK_PENDING
+    status: PASS_FOR_EXACT_SOURCE_APPLICABILITY_ONLY
 
 prepared_inactive_patches:
   - sequence: 4
@@ -106,14 +106,42 @@ policy:
 source_gate:
   workflow: .github/workflows/native-candidate-dpibreak-windows-hardening-source.yml
   current_patchset: 0001-0003
-  status: PENDING
+  status: PASS_FOR_EXACT_SOURCE_APPLICABILITY_ONLY
+  workflow_run_id: 40815277559
+  workflow_job_id: 123254763300
+  head_sha: 1a3270c4c0c6e280fbce16009ead98601ab3de8f
+  artifact_id: 12871704278
+  artifact_name: dpibreak-r28-source-hardening-evidence
+  artifact_zip_sha256: b591c47a668716e1a0bcbea78aee5d857ba5d0390c0973c25ae7873d91769321
+  identity_outcome: success
+  apply_and_source_boundary_outcome: success
   candidate_built_by_gate: false
   candidate_executed_by_gate: false
+  windivert_driver_loaded: false
+  nfqueue_enabled: false
+  firewall_changed: false
+
+advisory_static_gate:
+  workflow: .github/workflows/native-candidate-dpibreak-advisory-static.yml
+  status: PASS_FOR_EXACT_LOCKFILE_ADVISORY_AND_STATIC_INVENTORY_ONLY
+  workflow_run_id: 40815049052
+  workflow_job_id: 123254041366
+  head_sha: c8ec92e4f70905ba20b0c617a7eb1d426c09b265
+  artifact_id: 12871589958
+  artifact_name: dpibreak-r28-advisory-static-evidence
+  artifact_zip_sha256: ef5f3264002b135dc96b5458e3a233e43ca09ab24dc277e01867c5d0b9ff715c
+  cargo_audit_version: 0.22.2
+  exact_cargo_lock: true
+  known_rustsec_vulnerability_count: 0
+  unsafe_ffi_inventory_completed: true
+  privileged_boundary_inventory_completed: true
+  candidate_executed_by_gate: false
+  admission_effect: NONE
 
 platforms:
   linux:
     state: REVIEW
-    next_gate: apply exact active patchset then controlled Linux compile-only with --locked dependencies
+    next_gate: compile exact active patchset 0001-0003 with locked dependencies, then review issue 24 GSO/MTU behavior before any lab promotion
     lab_state: NOT_APPROVED
     residual_blockers:
       - issue 24 GSO/MTU correctness needs regression evidence beyond fail-safe userspace revalidation
@@ -122,16 +150,18 @@ platforms:
       - issue 31 VPN/WireGuard coexistence remains compatibility scope
   windows:
     state: BLOCK
-    next_gate: source gate then compile-only only; no runtime
+    next_gate: compile-only of exact active patchset may be prepared, but driver runtime remains prohibited
     residual_blockers:
       - WinDivert issue 408 kernel driver race remains open
       - exact Windows native component inventory/signature review required
       - active patchset does not yet remove unused TLS/event cache or add idempotent Drop
       - no runtime lab until a fixed/admitted WinDivert component set exists
+      - production kernel driver signing path must be independently satisfied
 
 upstream_sync_strategy:
   default: MANUAL_REVIEWED_DELTA_ONLY
   rules:
+    - upstream repository is read-only for NetPilot
     - fetch exact upstream tag/commit, never mutable master as production base
     - compare upstream delta against current exact base
     - drop a NetPilot patch only when the upstream fix is independently verified equivalent or stronger
