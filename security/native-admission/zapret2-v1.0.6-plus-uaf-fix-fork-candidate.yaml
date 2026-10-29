@@ -60,6 +60,7 @@ static_review:
   delayed_queue_zero_budget_document: docs/ZAPRET2-DELAYED-QUEUE-ZERO-BUDGET-R28.9.md
   resource_budget_wiring_document: docs/ZAPRET2-RESOURCE-BUDGET-WIRING-R28.10.md
   adapter_budget_consumption_document: docs/ZAPRET2-ADAPTER-BUDGET-CONSUMPTION-R28.11.md
+  launch_plan_metadata_document: docs/ZAPRET2-LAUNCH-PLAN-METADATA-R28.12.md
   windivert_boundary_document: docs/ZAPRET2-WINDIVERT-BOUNDARY-R28.3.md
   provenance_workflow: .github/workflows/native-candidate-provenance.yml
   linux_compile_smoke_workflow: .github/workflows/native-candidate-compile-smoke.yml
@@ -73,7 +74,7 @@ static_review:
   delayed_queue_zero_budget_workflow: .github/workflows/native-candidate-delayed-queue-zero-budget.yml
   fork_strategy: OWNED_MINIMAL_HARDENED_FORK_CANDIDATE
   full_upstream_master_as_base: REJECT
-  next_gate: R28.12_NON_EXECUTABLE_TYPED_LAUNCH_PLAN_METADATA_BOUNDARY_DESIGN
+  next_gate: R28.13_IMMUTABLE_EXECUTABLE_IDENTITY_DESIGN
 
 patch_series:
   - sequence: 1
@@ -198,6 +199,15 @@ verified_delta:
     runtime_effect: NONE
     limitation: Resource-budget catalog is still empty, no executable launch plan exists, and this does not authorize runtime execution.
 
+  - id: Z2-LAUNCH-METADATA-008
+    status: PASS_FOR_TYPED_DESIGN_ONLY
+    finding: Non-executable launch-plan metadata now requires a complete trusted runtime prerequisite plus a built-in profile whose capability requirements are covered by that backend.
+    head_sha: e1be8bcd383bb18d140b5ea9eaef3d8718d7f21a
+    ci_run_id: 40832374469
+    launch_metadata_catalog_entries: 0
+    runtime_effect: NONE
+    limitation: No executable identity, path, ArgumentList, process/service/driver/network action or runtime grant exists; this does not authorize execution.
+
 historical_evidence:
   note: Historical 0001-0004 and 0001-0005 evidence remains preserved in the R28.1-R28.3 documents and GitHub Actions history. The authoritative current patchset evidence is recorded below.
 
@@ -321,7 +331,7 @@ platform_status:
     compile_and_isolated_logic_gates: PASS
     runtime_admission: REVIEW
     execution_allowed: false
-    blocker: positive evidence-based resource budgets, non-executable launch-plan metadata boundary, and isolated NFQUEUE runtime/lifecycle evidence remain
+    blocker: positive evidence-based resource budgets, immutable executable identity design, and isolated NFQUEUE runtime/lifecycle evidence remain
   windows:
     compile_and_isolated_logic_gates: PASS
     runtime_admission: BLOCK
@@ -390,7 +400,7 @@ fork_rules:
   - Windows driver load remains prohibited while WinDivert runtime blockers are open.
 
 required_before_admit:
-  - Complete the non-executable typed launch-plan metadata boundary with trusted runtime prerequisites as mandatory input and without adding execution rights.
+  - Complete immutable executable identity design without adding Process.Start, user/config-defined paths or runtime execution rights.
   - Choose production resource budgets from controlled real workload evidence and promote only reviewed positive declarations.
   - Define and approve a lab-execution gate before any native engine process/network interception test.
   - Close WinDivert runtime/lifecycle/signing blockers or select a Windows backend that does not depend on the blocked component set.
@@ -405,6 +415,7 @@ notes:
   - Patch 0006 is promoted into the current review patchset because all authoritative 0001-0006 gates passed on head 1b0153f88423828a49cd4bda6502f2ff4d3a79e7.
   - R28.10 typed resource-budget contracts passed the full 26-workflow regression on head ea8a3174e78c085b1bce8c30de5c4ae072e462c9; trusted budget catalog remains empty.
   - R28.11 composite runtime prerequisite boundary passed the full 26-workflow regression on head 0f5873646e30b16cc8dfe2d0fb4a97ca44901d63; prerequisite catalog remains empty because trusted budget catalog has zero entries.
+  - R28.12 non-executable launch-plan metadata boundary passed the full 26-workflow regression on head e1be8bcd383bb18d140b5ea9eaef3d8718d7f21a; launch metadata catalog remains empty because prerequisite catalog has zero entries.
   - Promotion of a patch or typed metadata contract is not engine admission and does not authorize execution or integration.
   - Historical PASS does not transfer automatically to a changed source or patchset.
   - Provenance/compile/sanitizer/fuzz/stress PASS values are scoped evidence, not ADMIT.
