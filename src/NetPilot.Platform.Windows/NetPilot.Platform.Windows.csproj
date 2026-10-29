@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../NetPilot.Automation/NetPilot.Automation.csproj" />
+    <ProjectReference Include="../NetPilot.Engine.Abstractions/NetPilot.Engine.Abstractions.csproj" />
     <ProjectReference Include="../NetPilot.Ipc/NetPilot.Ipc.csproj" />
     <ProjectReference Include="../NetPilot.Platform.Abstractions/NetPilot.Platform.Abstractions.csproj" />
     <ProjectReference Include="../NetPilot.Security/NetPilot.Security.csproj" />

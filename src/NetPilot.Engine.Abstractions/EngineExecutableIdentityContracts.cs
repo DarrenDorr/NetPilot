@@ -209,6 +209,8 @@ public sealed class EngineExecutableIdentityDeclaration
     {
         if (string.IsNullOrEmpty(value)
             || value.Length > 64
+            || value is "." or ".."
+            || value.EndsWith(".", StringComparison.Ordinal)
             || value.Any(static character =>
                 character is not (>= 'A' and <= 'Z')
                     and not (>= 'a' and <= 'z')
@@ -219,7 +221,7 @@ public sealed class EngineExecutableIdentityDeclaration
                     and not '+'))
         {
             throw new ArgumentException(
-                "Version должна быть каноническим ASCII token без path/URL separators.",
+                "Version должна быть каноническим ASCII token без path/URL aliases или separators.",
                 nameof(value));
         }
 

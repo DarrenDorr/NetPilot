@@ -123,6 +123,37 @@ public sealed class EngineExecutableIdentityContractTests
         Assert.IsType<ArgumentException>(exception.InnerException);
     }
 
+    [Theory]
+    [InlineData(".")]
+    [InlineData("..")]
+    [InlineData("1.0.")]
+    [InlineData("../1.0")]
+    [InlineData("1.0/next")]
+    public void Identity_rejects_version_path_aliases_or_separators(string version)
+    {
+        var primary = CreateComponent(
+            "engine",
+            EngineExecutableComponentKind.PrimaryExecutable,
+            DigestA);
+        var constructor = GetIdentityConstructor();
+
+        var exception = Assert.Throws<TargetInvocationException>(() =>
+            constructor.Invoke(
+                new object[]
+                {
+                    BuiltInEngineBackendKind.Zapret2,
+                    EngineHostPlatform.Windows,
+                    EngineBinaryArchitecture.X64,
+                    version,
+                    DigestA,
+                    DigestB,
+                    DigestC,
+                    new[] { primary }
+                }));
+
+        Assert.IsType<ArgumentException>(exception.InnerException);
+    }
+
     [Fact]
     public void Identity_requires_exactly_one_primary_executable()
     {
