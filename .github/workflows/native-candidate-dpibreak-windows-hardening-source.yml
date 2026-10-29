@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   source-hardening:
-    name: Apply reviewed lifecycle and fail-safe packet patches without candidate execution
+    name: Apply reviewed lifecycle, packet and executable-selection patches without candidate execution
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
@@ -47,13 +47,17 @@ jobs:
 
           patch1='security/native-admission/patches/dpibreak-r28/0001-remove-global-windivert-service-stop.patch'
           patch2='security/native-admission/patches/dpibreak-r28/0002-always-revalidate-clienthello.patch'
+          patch3='security/native-admission/patches/dpibreak-r28/0003-disable-custom-nft-executable.patch'
           test "$(git -C netpilot rev-parse "HEAD:$patch1")" = "3b0cf8644b58ca924cfe616c2907b02e7b42497f"
           test "$(git -C netpilot rev-parse "HEAD:$patch2")" = "46f70538b5d5ea05573f22f83fd0e071c7bed489"
+          test "$(git -C netpilot rev-parse "HEAD:$patch3")" = "e1d4e90d2de7f51df83a3f8e3d09d03a675cab8f"
 
           git -C netpilot show "HEAD:$patch1" > scratch/0001.patch
           git -C netpilot show "HEAD:$patch2" > scratch/0002.patch
+          git -C netpilot show "HEAD:$patch3" > scratch/0003.patch
           sha256sum scratch/0001.patch | awk '{print $1}' | tee evidence/patch-0001.sha256
           sha256sum scratch/0002.patch | awk '{print $1}' | tee evidence/patch-0002.sha256
+          sha256sum scratch/0003.patch | awk '{print $1}' | tee evidence/patch-0003.sha256
 
       - name: Apply exact patchset and enforce source boundaries
         id: apply
@@ -62,7 +66,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for patch in scratch/0001.patch scratch/0002.patch; do
+          for patch in scratch/0001.patch scratch/0002.patch scratch/0003.patch; do
             git -C dpibreak apply --check "$GITHUB_WORKSPACE/$patch"
             git -C dpibreak apply "$GITHUB_WORKSPACE/$patch"
           done
@@ -86,15 +90,21 @@ jobs:
           ! grep -Fq 'let is_filtered = platform::is_kernel_filtered_clienthello();' dpibreak/src/pkt.rs
           ! grep -Fq 'if !is_filtered && !tls::is_client_hello' dpibreak/src/pkt.rs
 
+          # Patch 0003: custom privileged executable selection must fail closed.
+          grep -Fq 'return Err(anyhow!("--nft-command is disabled in the NetPilot hardened build"));' dpibreak/src/opt.rs
+          ! grep -Fq '"--nft-command" => { nft_command = take_value' dpibreak/src/opt.rs
+          grep -Fq 'const DEFAULT_NFT_COMMAND: &str = "nft";' dpibreak/src/opt.rs
+
           # Still-open review boundaries are intentionally pinned rather than
           # hidden by this patchset.
           grep -Fq 'TlsAlloc()' dpibreak/crates/windivert/src/divert/mod.rs
-          grep -Fq '"--nft-command" => { nft_command = take_value' dpibreak/src/opt.rs
+          grep -Fq 'WinDivert::network' dpibreak/src/platform/windows.rs
 
           git -C dpibreak diff -- \
             src/platform/windows.rs \
             crates/windivert/src/divert/mod.rs \
-            src/pkt.rs > evidence/patched-source.diff
+            src/pkt.rs \
+            src/opt.rs > evidence/patched-source.diff
 
       - name: Produce text-only evidence
         if: always()
@@ -107,26 +117,30 @@ jobs:
           mkdir -p evidence
           patch1_sha256='not-produced'
           patch2_sha256='not-produced'
+          patch3_sha256='not-produced'
           if [ -f evidence/patch-0001.sha256 ]; then patch1_sha256="$(cat evidence/patch-0001.sha256)"; fi
           if [ -f evidence/patch-0002.sha256 ]; then patch2_sha256="$(cat evidence/patch-0002.sha256)"; fi
+          if [ -f evidence/patch-0003.sha256 ]; then patch3_sha256="$(cat evidence/patch-0003.sha256)"; fi
           {
-            echo 'schema_version=2'
-            echo 'scope=dpibreak-v0.6.2-netpilot-source-hardening-0001-0002'
+            echo 'schema_version=3'
+            echo 'scope=dpibreak-v0.6.2-netpilot-source-hardening-0001-0003'
             echo 'release_commit=334285b60aabd5a32a83a65211ac60bce968b211'
             echo 'release_tree=7e95a17933fe9fda521865b1317c4f9f75d6c58c'
             echo 'patch_0001_git_blob_sha1=3b0cf8644b58ca924cfe616c2907b02e7b42497f'
             echo 'patch_0002_git_blob_sha1=46f70538b5d5ea05573f22f83fd0e071c7bed489'
+            echo 'patch_0003_git_blob_sha1=e1d4e90d2de7f51df83a3f8e3d09d03a675cab8f'
             echo "patch_0001_sha256=$patch1_sha256"
             echo "patch_0002_sha256=$patch2_sha256"
+            echo "patch_0003_sha256=$patch3_sha256"
             echo "identity_outcome=$IDENTITY_OUTCOME"
             echo "apply_and_source_boundary_outcome=$APPLY_OUTCOME"
             echo 'global_windivert_service_stop_removed=true'
             echo 'win_divert_issue_406_source_mitigation_scope=true'
             echo 'clienthello_userspace_revalidation_always_enabled=true'
             echo 'nfqueue_gso_continuation_fail_safe_reject_to_normal_accept_path=true'
+            echo 'linux_user_selectable_nft_executable_surface_closed=true'
             echo 'win_divert_issue_408_kernel_driver_blocker_closed=false'
             echo 'tls_slot_lifecycle_closed=false'
-            echo 'linux_user_selectable_nft_executable_surface_closed=false'
             echo 'candidate_built=false'
             echo 'candidate_binary_executed=false'
             echo 'windivert_driver_installed=false'
