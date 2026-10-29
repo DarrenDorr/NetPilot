@@ -1,0 +1,100 @@
+name: Native zapret2 Pre-Lab Policy
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/native-zapret2-prelab-policy.yml"
+      - "security/native-admission/lab-plans/zapret2-linux-r28.4.yaml"
+      - "security/native-admission/prelab-gate-matrix-r28.4.yaml"
+      - "docs/ZAPRET2-PRELAB-READINESS-R28.4.md"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-zapret2-prelab-draft:
+    name: Enforce fail-closed zapret2 pre-lab draft
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout NetPilot without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Validate exact reference evidence and non-executable state
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          plan_path = Path("security/native-admission/lab-plans/zapret2-linux-r28.4.yaml")
+          matrix_path = Path("security/native-admission/prelab-gate-matrix-r28.4.yaml")
+          plan = plan_path.read_text(encoding="utf-8")
+          matrix = matrix_path.read_text(encoding="utf-8")
+
+          def require(text: str, pattern: str, message: str) -> None:
+              if re.search(pattern, text, flags=re.MULTILINE) is None:
+                  raise SystemExit(message)
+
+          def forbid(text: str, pattern: str, message: str) -> None:
+              if re.search(pattern, text, flags=re.MULTILINE) is not None:
+                  raise SystemExit(message)
+
+          require(plan, r"^candidate:\s*zapret2-v1\.0\.6-plus-uaf-fix-plus-netpilot-patches-0001-0005\s*$", "zapret2 candidate identity mismatch")
+          require(plan, r"^status:\s*DRAFT_NOT_APPROVED\s*$", "zapret2 lab plan must remain DRAFT_NOT_APPROVED")
+          require(plan, r"^execution_allowed:\s*false\s*$", "zapret2 lab plan must remain non-executable")
+          require(plan, r"^\s*approval_id:\s*null\s*$", "zapret2 draft approval_id must remain null")
+          require(plan, r"^\s*approved_candidate_hashes:\s*\[\]\s*$", "zapret2 draft approved hash list must remain empty")
+          require(plan, r"^\s*runtime_binary_sha256:\s*null\s*$", "zapret2 draft must not pre-authorize a runtime binary")
+          forbid(plan, r"^\s*executable_run_allowed:\s*true\s*$", "zapret2 draft stage cannot enable executable run")
+          forbid(plan, r"^\s*service_installation_allowed:\s*true\s*$", "zapret2 draft cannot enable service installation")
+          forbid(plan, r"^\s*autostart_allowed:\s*true\s*$", "zapret2 draft cannot enable autostart")
+          forbid(plan, r"^\s*production_activation_allowed:\s*true\s*$", "zapret2 draft cannot enable production activation")
+
+          require(plan, r"^\s*required_fix_commit:\s*4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d\s*$", "zapret2 UAF-fix commit mismatch")
+          require(plan, r"^\s*required_fix_tree:\s*5c2a77786cc7089145abe2ca99bcc53a8ed7de15\s*$", "zapret2 source tree mismatch")
+          require(plan, r"^\s*binary_sha256:\s*61219de00f9728d401fdb484b929aac2245d5dfebacc460f9d109f2cc721d72e\s*$", "zapret2 controlled Linux build reference mismatch")
+          require(plan, r"^\s*binary_sha256:\s*9e6ab76c661d0d2bd8a51a035452b397c11ab2978c6d53ec650d04ffde19508c\s*$", "zapret2 controlled Windows build reference mismatch")
+          require(plan, r"^\s*conntrack_caps_tested:\s*\[64, 512, 2048\]\s*$", "zapret2 synthetic conntrack reference caps mismatch")
+
+          require(plan, r"^\s*conntrack_max_entries:\s*null\s*$", "zapret2 lab conntrack budget must remain unselected in draft")
+          require(plan, r"^\s*delayed_queue_max_packets:\s*null\s*$", "zapret2 lab delayed queue packet budget must remain unselected in draft")
+          require(plan, r"^\s*delayed_queue_max_bytes:\s*null\s*$", "zapret2 lab delayed queue byte budget must remain unselected in draft")
+          require(plan, r"^\s*production_values_selected:\s*false\s*$", "zapret2 production resource values must remain unselected")
+          require(plan, r"^\s*lab_values_selected:\s*false\s*$", "zapret2 lab resource values must remain unselected")
+
+          require(matrix, r"^\s*linux_plan:\s*security/native-admission/lab-plans/zapret2-linux-r28\.4\.yaml\s*$", "pre-lab matrix missing zapret2 Linux plan")
+          require(matrix, r"^\s*linux_plan_status:\s*DRAFT_NOT_APPROVED\s*$", "pre-lab matrix must keep zapret2 plan DRAFT_NOT_APPROVED")
+          require(matrix, r"^\s*runtime_binary_sha256:\s*null\s*$", "pre-lab matrix must not pre-authorize zapret2 runtime binary")
+          require(matrix, r"^\s*approved_candidate_hashes:\s*\[\]\s*$", "pre-lab matrix must not pre-authorize zapret2 candidate hash")
+          require(matrix, r"^\s*lab_resource_values_selected:\s*false\s*$", "pre-lab matrix must keep zapret2 lab budgets unselected")
+          require(matrix, r"^\s*binary_sha256:\s*61219de00f9728d401fdb484b929aac2245d5dfebacc460f9d109f2cc721d72e\s*$", "pre-lab matrix Linux build reference mismatch")
+          require(matrix, r"^\s*binary_sha256:\s*9e6ab76c661d0d2bd8a51a035452b397c11ab2978c6d53ec650d04ffde19508c\s*$", "pre-lab matrix Windows build reference mismatch")
+          require(matrix, r"^\s*conntrack_caps_tested:\s*\[64, 512, 2048\]\s*$", "pre-lab matrix synthetic caps mismatch")
+          require(matrix, r"^\s*lab_values_selected:\s*false\s*$", "pre-lab matrix synthetic lab values must remain unselected")
+          require(matrix, r"^\s*production_values_selected:\s*false\s*$", "pre-lab matrix production values must remain unselected")
+
+          Path("zapret2-prelab-policy-evidence.txt").write_text(
+              "schema_version=1\n"
+              "scope=zapret2-r28.4-prelab-draft-policy\n"
+              "result=PASS\n"
+              "candidate_execution_authorized=false\n"
+              "runtime_binary_preauthorized=false\n"
+              "lab_resource_values_selected=false\n"
+              "production_resource_values_selected=false\n"
+              "linux_reference_sha256=61219de00f9728d401fdb484b929aac2245d5dfebacc460f9d109f2cc721d72e\n"
+              "windows_reference_sha256=9e6ab76c661d0d2bd8a51a035452b397c11ab2978c6d53ec650d04ffde19508c\n"
+              "synthetic_conntrack_caps=64,512,2048\n",
+              encoding="utf-8",
+          )
+
+      - name: Upload text-only policy evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zapret2-prelab-policy-evidence
+          path: zapret2-prelab-policy-evidence.txt
+          if-no-files-found: error
+          retention-days: 14
