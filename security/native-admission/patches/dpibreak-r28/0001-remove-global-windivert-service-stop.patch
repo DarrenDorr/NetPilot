@@ -10,7 +10,7 @@ diff --git a/src/platform/windows.rs b/src/platform/windows.rs
              },
              Err(_still_shared) => {
                  crate::warn!("windivert: handle still referenced, skipping close");
-@@ -91,7 +91,7 @@ fn close_send_handle() {
+@@ -91,6 +91,6 @@ fn close_send_handle() {
  fn close_send_handle() {
      if let Some(m) = SEND_HANDLE.get() && let Ok(mut wd) = m.lock() {
 -        if let Err(e) = wd.close(windivert::CloseAction::Nothing) {
@@ -31,14 +31,14 @@ diff --git a/src/platform/windows.rs b/src/platform/windows.rs
 diff --git a/crates/windivert/src/divert/mod.rs b/crates/windivert/src/divert/mod.rs
 --- a/crates/windivert/src/divert/mod.rs
 +++ b/crates/windivert/src/divert/mod.rs
-@@ -3,7 +3,6 @@ use std::{
+@@ -3,6 +3,5 @@ use std::{
      ffi::{c_void, CString},
      marker::PhantomData,
 -    mem::MaybeUninit,
  };
  
  use crate::layer;
-@@ -11,17 +10,10 @@ use sys::{WinDivertParam, WinDivertShutdownMode};
+@@ -11,15 +10,9 @@ use sys::{WinDivertParam, WinDivertShutdownMode};
  use windivert_sys as sys;
  
  use windows::{
@@ -65,7 +65,7 @@ diff --git a/crates/windivert/src/divert/mod.rs b/crates/windivert/src/divert/mo
          let res = unsafe { sys::WinDivertClose(self.handle) };
          if !res.as_bool() {
              return Err(WinError::from(unsafe { GetLastError() }));
-@@ -86,10 +78,7 @@ impl<L: layer::WinDivertLayerTrait> WinDivert<L> {
+@@ -86,7 +78,4 @@ impl<L: layer::WinDivertLayerTrait> WinDivert<L> {
 -        match action {
 -            CloseAction::Uninstall => WinDivert::uninstall(),
 -            CloseAction::Nothing => Ok(()),
@@ -74,7 +74,7 @@ diff --git a/crates/windivert/src/divert/mod.rs b/crates/windivert/src/divert/mo
      }
  
      /// Shutdown function.
-@@ -150,50 +139,6 @@ impl WinDivert<layer::ReflectLayer> {
+@@ -150,46 +139,6 @@ impl WinDivert<layer::ReflectLayer> {
  }
  
  impl WinDivert<()> {
