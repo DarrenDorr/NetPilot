@@ -162,9 +162,10 @@ if ($binaryHash -ne $expectedHash) {
 }
 
 $port = Get-FreeLoopbackPort
-$workDir = Split-Path -Parent (Resolve-Path -LiteralPath $EvidencePath -ErrorAction SilentlyContinue)
-if ([string]::IsNullOrWhiteSpace($workDir)) {
-    $workDir = (Get-Location).Path
+$EvidencePath = [System.IO.Path]::GetFullPath($EvidencePath)
+$workDir = Split-Path -Parent $EvidencePath
+if (-not (Test-Path -LiteralPath $workDir)) {
+    New-Item -ItemType Directory -Force -Path $workDir | Out-Null
 }
 
 $stdout1 = Join-Path $workDir 'byedpi-r32-run1.stdout.txt'
