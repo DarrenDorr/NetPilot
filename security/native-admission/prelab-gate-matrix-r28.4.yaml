@@ -1,4 +1,4 @@
-schema_version: 5
+schema_version: 6
 matrix_id: netpilot-prelab-r28.4
 reviewed_at: 2026-10-29
 production_activation_allowed: false
@@ -41,25 +41,59 @@ candidates:
       synthetic_resource_stress: PASS
       packet_queue_asan_ubsan: PASS
       windivert_inventory_only: PASS
+    controlled_compile_reference:
+      linux:
+        workflow_run_id: 40734378302
+        artifact_id: 12837081078
+        artifact_zip_sha256: 348af9c8fcb8339a3561b368e338060263df5536dea7b8794a19a84a6c27f2c6
+        binary_name: nfqws2
+        binary_sha256: 61219de00f9728d401fdb484b929aac2245d5dfebacc460f9d109f2cc721d72e
+        binary_size: 242824
+        binary_executed: false
+      windows:
+        workflow_run_id: 40734378565
+        artifact_id: 12836008002
+        artifact_zip_sha256: f159c38cc1a5161a5b61c07d1d24543b58ec14fcb178e885a0b043649cd2538a
+        binary_name: winws2
+        binary_sha256: 9e6ab76c661d0d2bd8a51a035452b397c11ab2978c6d53ec650d04ffde19508c
+        binary_size: 650240
+        authenticode_status: NotSigned
+        binary_executed: false
+        windivert_present: false
+        driver_installed: false
+    synthetic_resource_reference:
+      conntrack_caps_tested: [64, 512, 2048]
+      resource_stress_run_id: 40802559408
+      resource_stress_artifact_id: 12866926284
+      resource_stress_artifact_zip_sha256: 41ef8ae61b65fe2bcc674b2626bbd3a0689069ad332f51d62212cb66567a8992
+      parser_fuzz_run_id: 40802559290
+      parser_fuzz_artifact_id: 12866891622
+      parser_fuzz_artifact_zip_sha256: 353d9d59a765d8517ad2a6bdd02a4db522b988ab92f5a111609005c5daab8155
+      lab_values_selected: false
+      production_values_selected: false
     evidence_scope_limits:
       - no production engine execution
       - no WinDivert driver load
       - no NFQUEUE/firewall interception
       - no real Discord/YouTube workload measurement
       - production conntrack/queue numeric budgets not selected
+      - lab conntrack/queue numeric budgets not selected
     lab:
       linux_state: PRE_LAB_REVIEW
       linux_plan: security/native-admission/lab-plans/zapret2-linux-r28.4.yaml
       linux_plan_status: DRAFT_NOT_APPROVED
+      runtime_binary_sha256: null
+      approved_candidate_hashes: []
+      lab_resource_values_selected: false
       windows_state: BLOCK
       windows_blockers:
         - WD-RUNTIME-001
         - WD-LIFECYCLE-002
         - WD-DEFENDER-003
     next_decision:
-      - complete current CI reruns without regression
-      - define evidence-based temporary nonzero lab resource budgets
-      - human review exact Linux lab plan
+      - keep controlled build hashes as references only
+      - define evidence-based temporary nonzero Linux lab resource budgets in a separately reviewed change
+      - human review exact Linux lab plan and rebuilt binary hash
       - do not execute before LAB_APPROVED
 
   byedpi:
@@ -194,6 +228,7 @@ notes:
   - This matrix is status/evidence metadata only and cannot authorize execution.
   - No candidate is currently ADMIT.
   - No native engine start/install path may be enabled in NetPilot production from this file.
+  - Zapret2 controlled build hashes and synthetic caps are references only; no runtime hash or lab budget is pre-authorized.
   - ByeDPI compile-only PASS does not authorize candidate execution or network routing.
   - DPIBreak draft plan does not authorize NFQUEUE, firewall mutation, driver load or candidate execution.
   - Any review referring to older candidate/patch identities is stale unless explicitly retained as historical evidence.
