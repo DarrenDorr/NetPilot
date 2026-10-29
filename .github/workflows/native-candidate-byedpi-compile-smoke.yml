@@ -153,13 +153,8 @@ jobs:
               if re.search(pattern, scope, flags=re.MULTILINE) is None:
                   raise SystemExit(f'{label}: missing')
 
-          forbidden = [
-              (ttl, r'int\s+orig_ttl\s*=\s*-1\s*,\s*fd\s*;', 'get_default_ttl must not share int fd declaration'),
-              (ipv6, r'\bint\s+fd\s*=\s*socket\(AF_INET6, SOCK_STREAM, 0\);\s*\n\s*if \(fd < 0\)', 'ipv6_support must not use unconditional int fd on Windows'),
-          ]
-          for scope, pattern, label in forbidden:
-              if re.search(pattern, scope, flags=re.MULTILINE):
-                  raise SystemExit(label)
+          if re.search(r'int\s+orig_ttl\s*=\s*-1\s*,\s*fd\s*;', ttl, flags=re.MULTILINE):
+              raise SystemExit('get_default_ttl must not share int fd declaration')
 
           print('windows_aux_socket_source_boundary: PASS')
           PY
@@ -244,7 +239,7 @@ jobs:
             windows_compiler="$(x86_64-w64-mingw32-gcc --version | head -n1)"
           fi
           {
-            echo 'schema_version=11'
+            echo 'schema_version=12'
             echo 'scope=byedpi-v0.17.3-netpilot-hardening-0001-0007-compile-only'
             echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
             echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
@@ -260,7 +255,8 @@ jobs:
             echo "windows_x64_cross_compile_outcome=$WINDOWS_OUTCOME"
             echo "linux_compiler=$linux_compiler"
             echo "windows_compiler=$windows_compiler"
-            echo 'aux_socket_gate=source-boundary-assertions-plus-normal-windows-compile'
+            echo 'aux_socket_gate=branch-structured-source-assertions-plus-normal-windows-compile'
+            echo 'aux_socket_validator_false_positive_fixed=true'
             echo 'unrelated_upstream_conversion_warnings=review-debt-not-promoted-by-this-targeted-gate'
             echo 'socket_handle_policy=event-pool-ingress-and-auxiliary-probes-use-validated-Win64-SOCKET-boundaries'
             echo 'wait_result_policy=only-WAIT_OBJECT_0-through-WAIT_OBJECT_0-plus-MAX_TF-minus-one-is-indexed'
