@@ -36,10 +36,11 @@ internal static class Program
             return 10;
         }
 
-        // ExecAsOriginalUser обязан вернуть нас к исходному не-elevated пользователю.
-        // Если Setup был вручную запущен уже elevated (например, через "Запуск от имени
-        // администратора"), Inno Setup не может восстановить исходный token. В таком случае
-        // enrollment должен завершиться fail-closed, а не привязать установку к admin SID.
+        // R31.1: elevation status is only a local sanity signal, not the trust boundary.
+        // The LocalSystem service performs the authoritative enrollment checks itself:
+        // authenticated interactive named-pipe peer, exact Session ID match and one-time nonce.
+        // This permits valid Inno/UAC flows where ExecAsOriginalUser still reports an elevated
+        // token while preserving fail-closed behavior if Windows cannot inspect the token.
         var elevationState = WindowsProcessElevation.GetCurrentState();
         if (!WindowsInstallerEnrollmentPolicy.MayCompleteEnrollment(elevationState))
         {
