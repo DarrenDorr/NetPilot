@@ -1,4 +1,4 @@
-schema_version: 3
+schema_version: 4
 plan_id: byedpi-loopback-r28.4
 candidate: byedpi-v0.17.3-netpilot-fork-candidate
 platforms:
@@ -36,9 +36,17 @@ candidate_identity:
     - 0007-windows-aux-socket-probes.patch
   patch_0007_git_blob_sha1: e7b590a7d0594be0629bac221cb120c165dab8cd
   patch_0007_sha256: 778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25
+  controlled_compile_reference:
+    workflow_run_id: 40809161345
+    head_sha: 27a64c64868fc7d4d09b0f165f48df9431485f23
+    linux_x86_64_sha256: a54f71634020ef43421fa6b4c22800409226d29450ad143df949940c2290f33a
+    windows_x64_sha256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+    binaries_retained: false
+    note: hashes are compile-only reference identities; CI deleted the binaries after hashing
   linux_runtime_binary_sha256: null
   windows_runtime_binary_sha256: null
-  rule: exact runtime binary hashes must be pinned from controlled builds before approval
+  runtime_rebuild_rule: any future lab binary must be rebuilt from the exact pinned source/patch/toolchain recipe and its SHA-256 must match the approved candidate hash before execution
+  rule: exact runtime binary hashes must be explicitly copied into approval.approved_candidate_hashes before any executable stage may be enabled
 
 preconditions:
   exact_source_identity_required: true
@@ -106,7 +114,8 @@ stages:
     executable_run_allowed: false
     required_evidence:
       - exact source/patch identities
-      - exact runtime binary SHA-256 for selected platform
+      - rebuilt lab binary SHA-256 for selected platform
+      - exact match to an explicitly approved candidate hash
       - full patchset 0001-0007 compile evidence
       - clean disposable lab snapshot
       - baseline process/listener inventory
@@ -197,4 +206,5 @@ notes:
   - It does not authorize starting ciadpi/ciadpi.exe.
   - It does not authorize exposing a SOCKS listener outside loopback.
   - It does not authorize system-wide routing, Android VPN/TUN, or production integration.
+  - Controlled compile hashes are references only; approval still requires an explicit exact lab binary hash and human decision.
   - Any approval referencing an older patch 0007 identity is stale and invalid for the current candidate identity.
