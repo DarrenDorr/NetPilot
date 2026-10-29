@@ -1,0 +1,30 @@
+diff --git a/crates/windivert/src/divert/mod.rs b/crates/windivert/src/divert/mod.rs
+--- a/crates/windivert/src/divert/mod.rs
++++ b/crates/windivert/src/divert/mod.rs
+@@ -55,12 +55,23 @@ impl<L: layer::WinDivertLayerTrait> WinDivert<L> {
+ 
+     /// Handle close function.
+     pub fn close(&mut self) -> WinResult<()> {
++        if self.handle.is_invalid() {
++            return Ok(());
++        }
++
+         let res = unsafe { sys::WinDivertClose(self.handle) };
+         if !res.as_bool() {
+             return Err(WinError::from(unsafe { GetLastError() }));
+         }
++
++        self.handle = HANDLE::default();
+         Ok(())
+     }
+@@ -76,6 +87,13 @@ impl<L: layer::WinDivertLayerTrait> WinDivert<L> {
+     }
+ }
+ 
++impl<L: layer::WinDivertLayerTrait> Drop for WinDivert<L> {
++    fn drop(&mut self) {
++        _ = self.close();
++    }
++}
++
+ impl WinDivert<layer::NetworkLayer> {
