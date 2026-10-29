@@ -69,6 +69,7 @@ Name: "desktopicon"; Description: "Создать ярлык на рабочем
 Name: "{app}\Config"
 Name: "{app}\Engines"
 Name: "{app}\Engines\Zapret"
+Name: "{app}\Users"
 
 [Files]
 Source: "{#AppPublishDir}\*"; DestDir: "{app}\App"; Flags: ignoreversion recursesubdirs createallsubdirs notimestamp
@@ -86,6 +87,7 @@ Filename: "{app}\App\NetPilot.exe"; Description: "Запустить NetPilot"; 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\Engines"
 Type: filesandordirs; Name: "{app}\Config"
+Type: filesandordirs; Name: "{app}\Users"
 
 [Code]
 const

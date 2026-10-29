@@ -14,6 +14,7 @@ public sealed class PrivilegedIpcWorker(
     WindowsNamedPipeServerFactory pipeFactory,
     WindowsNamedPipePeerAuthenticator peerAuthenticator,
     WindowsAuthorizedUserStore authorizedUserStore,
+    WindowsUserProfileStore userProfileStore,
     OperationPolicy operationPolicy,
     UserResourceOwnership zapretOwnership,
     ZapretEngineController zapretController,
@@ -99,18 +100,18 @@ public sealed class PrivilegedIpcWorker(
             return;
         }
 
+        // Первичная UAC-регистрация по-прежнему фиксирует владельца системной установки.
+        // После неё обычный runtime не ограничивается одним SID: каждый проверенный
+        // интерактивный Windows SID получает отдельный service-owned профиль.
         if (request.Command != IpcCommand.EnrollAuthorizedUser
-            && !authorizedUserStore.IsAuthorized(clientIdentity.UserSid))
+            && !authorizedUserStore.IsEnrolled)
         {
-            var isEnrolled = authorizedUserStore.IsEnrolled;
             await SendResponseAsync(
                 pipe,
                 Failure(
                     request,
-                    isEnrolled ? "UnauthorizedUser" : "EnrollmentRequired",
-                    isEnrolled
-                        ? "Эта учётная запись Windows не является владельцем установки NetPilot."
-                        : "Установка NetPilot ещё не привязана к пользовательской учётной записи."),
+                    "EnrollmentRequired",
+                    "Системная установка NetPilot ещё не завершила первичную регистрацию владельца."),
                 cancellationToken);
             return;
         }
@@ -127,12 +128,23 @@ public sealed class PrivilegedIpcWorker(
 
             try
             {
-                response = request.Command == IpcCommand.EnrollAuthorizedUser
-                    ? DispatchEnrollment(
+                if (request.Command == IpcCommand.EnrollAuthorizedUser)
+                {
+                    response = DispatchEnrollment(
                         request,
                         clientIdentity.UserSid,
-                        clientIdentity.SessionId)
-                    : await DispatchAuthorizedAsync(request, clientIdentity.UserSid, operationToken);
+                        clientIdentity.SessionId);
+                }
+                else
+                {
+                    // Создание/открытие профиля выполняет только LocalSystem-служба и только
+                    // для SID, который уже был подтверждён через named-pipe peer authentication.
+                    userProfileStore.EnsureProfile(clientIdentity.UserSid);
+                    response = await DispatchAuthorizedAsync(
+                        request,
+                        clientIdentity.UserSid,
+                        operationToken);
+                }
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
@@ -207,8 +219,8 @@ public sealed class PrivilegedIpcWorker(
             ? Success(
                 request,
                 result.Status == AuthorizedUserEnrollmentStatus.Enrolled
-                    ? "Пользователь Windows успешно привязан к установке NetPilot."
-                    : "Этот пользователь Windows уже является владельцем установки NetPilot.")
+                    ? "Владелец системной установки NetPilot зарегистрирован."
+                    : "Этот пользователь Windows уже является владельцем системной установки NetPilot.")
             : Failure(
                 request,
                 result.Code,
@@ -218,7 +230,7 @@ public sealed class PrivilegedIpcWorker(
                         "Одноразовый код регистрации NetPilot отклонён.",
                     AuthorizedUserEnrollmentStatus.InvalidSession =>
                         "Регистрация выполняется не из пользовательской сессии установщика.",
-                    _ => "Регистрация владельца NetPilot больше недоступна."
+                    _ => "Регистрация владельца системной установки NetPilot больше недоступна."
                 });
     }
 
@@ -232,7 +244,7 @@ public sealed class PrivilegedIpcWorker(
             case IpcCommand.Ping:
                 return Success(
                     request,
-                    "Служба NetPilot доступна и пользователь Windows авторизован.");
+                    "Служба NetPilot доступна; интерактивный пользователь работает в отдельном SID-профиле.");
 
             case IpcCommand.ZapretGetInstallationStatus:
             {
@@ -294,6 +306,17 @@ public sealed class PrivilegedIpcWorker(
 
             case IpcCommand.ZapretInstallLatest:
             {
+                // Engine package является машинным ресурсом. Обычные пользователи могут
+                // пользоваться установленным runtime, но provisioning остаётся за SID,
+                // подтверждённым реальной UAC-регистрацией установки.
+                if (!authorizedUserStore.IsAuthorized(clientSid))
+                {
+                    return Failure(
+                        request,
+                        "InstallationOwnerRequired",
+                        "Установка системного сетевого движка доступна только владельцу установки NetPilot.");
+                }
+
                 if (!operationPolicy.IsAllowed(PrivilegedOperation.EngineInstall))
                 {
                     return Failure(
@@ -347,7 +370,7 @@ public sealed class PrivilegedIpcWorker(
                     return Failure(
                         request,
                         "EngineOwnedByAnotherUser",
-                        "Запущенный экземпляр Zapret принадлежит другой пользовательской сессии.");
+                        "NetPilot уже активен в другой пользовательской сессии.");
                 }
 
                 if (!zapretOwnership.TryAcquire(clientSid))
@@ -355,7 +378,7 @@ public sealed class PrivilegedIpcWorker(
                     return Failure(
                         request,
                         "EngineOwnedByAnotherUser",
-                        "Право управления Zapret уже принадлежит другой пользовательской сессии.");
+                        "Системная engine-сессия NetPilot уже занята другой пользовательской сессией.");
                 }
 
                 try
@@ -397,7 +420,7 @@ public sealed class PrivilegedIpcWorker(
                     return Failure(
                         request,
                         "EngineOwnedByAnotherUser",
-                        "Нельзя остановить экземпляр Zapret, запущенный другой пользовательской сессией.");
+                        "Нельзя остановить NetPilot, активированный другой пользовательской сессией.");
                 }
 
                 var stopped = await zapretController.StopAsync(cancellationToken);
