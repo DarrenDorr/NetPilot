@@ -1,4 +1,4 @@
-schema_version: 4
+schema_version: 5
 component_set: byedpi-v0.17.3-netpilot-fork-candidate
 admission_status: REVIEW
 release_gate: BLOCK
@@ -47,6 +47,7 @@ static_review:
   document: docs/BYEDPI-STATIC-ADMISSION-R28.1.md
   compile_smoke_document: docs/BYEDPI-COMPILE-SMOKE-R28.3.md
   windows_handle_hardening_document: docs/BYEDPI-WINDOWS-HANDLE-HARDENING-R28.4.md
+  upstream_issue_review_document: docs/BYEDPI-UPSTREAM-ISSUE-REVIEW-R28.4.md
   decision: EXACT_V0_17_3_PLUS_CURATED_PATCHES_ONLY
   full_post_release_head_as_base: REJECT
   reason: post-release delta adds new proxy/cache/plugin/raw-mode surfaces beyond first NetPilot need
@@ -93,11 +94,12 @@ patch_series:
   - sequence: 5
     path: security/native-admission/patches/byedpi-r28/0005-windows-socket-handle-narrowing-guard.patch
     purpose: validate pointer-sized Windows SOCKET values before narrowing them into the upstream int-based event-pool representation
-    git_blob_sha1: fb8a7f57dc577e9ee8664adb41d264a64dc81a0d
-    sha256: 3b8034c4cecdcd7b1551fbdf7b99f0fbdf82b00c0a7613046a06aa8b5182d050
-    status: DESIGN_FIXED_COMPILE_GATE_PENDING
+    git_blob_sha1: d5cde98057a0ded600468b1f1c69d2e55c3b4d6e
+    sha256: 7c8f4eee9ff2624346cb886027df66378773d0af04f5f84f54c30815104b4356
+    status: DESIGN_FIXED_UNIFIED_DIFF_REPAIRED_COMPILE_GATE_PENDING
     expected_files: [proxy.c, conev.c]
     finding: upstream v0.17.3 stores socket()/accept() results in int while Win64 SOCKET is pointer-sized unsigned
+    patch_format_note: previous hunk metadata had invalid unified-diff line counts and was rejected fail-closed before compilation; logic was unchanged while hunk metadata was repaired
     semantics:
       invalid_socket: reject
       socket_above_INT_MAX: close_and_reject
@@ -120,15 +122,10 @@ patch_series:
 kavl_sanitizer:
   status: PASS_FOR_ISOLATED_KAVL_ASAN_UBSAN_REGRESSION_ONLY
   workflow: .github/workflows/native-candidate-byedpi-static-sanitizer.yml
-  workflow_run_id: 40804649207
-  workflow_job_id: 123220567167
-  head_sha: 782994db855910b7d2d6a699cc22946bfea1cd0c
-  artifact_id: 12868200056
-  artifact_name: byedpi-r28-kavl-sanitizer-evidence
-  artifact_zip_sha256: 7815708ee7cbb57e06b36679c89a4686f0dbf74a01029c9f8074139436bd4134
+  workflow_run_id: 40806335254
+  head_sha: b78e4953e8281b8685145a1161afb0583cee93dd
   sanitizers: [ASan, UBSan]
-  node_count_per_cycle: 1024
-  cycles: 40
+  scope: targeted_patches_0001_0002_0004_only
   no_network_syscalls: true
   candidate_binary_executed: false
   listener_opened: false
@@ -144,17 +141,23 @@ historical_compile_smoke:
 current_patchset_gates:
   patchset: 0001-0006
   compile_smoke_linux_windows:
-    status: PENDING
+    status: PENDING_AFTER_PATCH_0005_UNIFIED_DIFF_REPAIR
     workflow: .github/workflows/native-candidate-byedpi-compile-smoke.yml
     required_windows_warning_gates:
       - conev.c with -Werror=sign-compare
       - desync.c with -Werror=type-limits
   pidfile_static:
-    status: TARGETED_PRE_0005_0006_PASS_FULL_IDENTITY_RERUN_PENDING
+    status: PASS_TARGETED_SUBSET
     workflow: .github/workflows/native-candidate-byedpi-pidfile-static.yml
+    latest_confirmed_run_id: 40806335312
   kavl_sanitizer:
     status: PASS_TARGETED_SUBSET
     workflow: .github/workflows/native-candidate-byedpi-static-sanitizer.yml
+    latest_confirmed_run_id: 40806335254
+  kavl_erase_sanitizer:
+    status: PASS_TARGETED_SUBSET
+    workflow: .github/workflows/native-candidate-byedpi-kavl-erase-sanitizer.yml
+    latest_confirmed_run_id: 40806335262
   loopback_runtime:
     status: NOT_STARTED
     requires_lab_execution_policy: true
@@ -174,6 +177,22 @@ compile_warning_review:
     - Windows event descriptor signed/unsigned warning exposed a wider representation boundary: socket()/accept() return SOCKET but upstream event pool stores int; patched fail-closed at ingress by 0005
     - Windows WaitForMultipleObjects lower-bound comparison was always true for DWORD; patched by 0006 with explicit successful-object range
   required_action: full patchset 0001-0006 reproducible Linux/Windows compile plus targeted warning gates before runtime admission
+
+upstream_issue_review:
+  document: docs/BYEDPI-UPSTREAM-ISSUE-REVIEW-R28.4.md
+  historical_issue_213:
+    classification: ADDRESSED_BEFORE_V0_17_3
+    fix_pr: 229
+    fix_merge_commit: 9d9c370d666f99434f44627c233426e4ba28de32
+    exact_release_is_ahead_by_commits: 85
+  historical_issue_135:
+    classification: HISTORICAL_UNRESOLVED_CRASH_SIGNAL_NOT_PROVEN_AGAINST_EXACT_V0_17_3
+    admission_effect: strengthens future supervised lifecycle/resource testing requirements
+  issue_416:
+    classification: FUNCTIONAL_HTTP_CONNECT_APPLE_COMPATIBILITY_LIMITATION
+    exact_v0_17_3_reported_affected: true
+    memory_safety_blocker: false
+    netpilot_current_scope: HTTP_PROXY_MODE_NOT_ADMITTED
 
 curated_backport_candidates:
   - commit: 57f9606feba6e06f9974e8502a21ce6672251548
