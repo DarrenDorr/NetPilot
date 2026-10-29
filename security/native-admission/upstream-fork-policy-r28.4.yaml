@@ -1,0 +1,80 @@
+schema_version: 1
+policy_id: netpilot-upstream-fork-policy-r28.4
+status: ACTIVE
+production_effect: NONE
+
+principles:
+  upstream_repositories_are_read_only: true
+  mutate_third_party_upstream_repositories: false
+  automated_upstream_push_pr_issue_comment: false
+  source_modification_requires_netpilot_owned_fork_or_reviewed_local_patchset: true
+  license_review_required_before_integration_or_distribution: true
+  security_review_required_before_integration_or_distribution: true
+  preserve_required_copyright_and_license_notices: true
+  do_not_masquerade_netpilot_builds_as_upstream_releases: true
+  upstream_latest_is_not_a_trust_decision: true
+  automatic_upstream_merge_or_execution: false
+
+fork_lifecycle:
+  current_stage:
+    local_reviewed_patchsets_allowed: true
+    separate_fork_repository_required_now: false
+    reason: candidates are still in REVIEW/PRE_LAB_REVIEW and may change before long-term maintenance is justified
+  create_owned_fork_when:
+    - candidate-specific lab gate has passed for the intended platform boundary
+    - patchset intended for long-term maintenance is frozen and reviewed
+    - license obligations are documented
+    - exact upstream base and fork ancestry are recorded
+  fork_release_requirements:
+    - own version identity such as upstream-version-np.N
+    - exact source commit and tree recorded
+    - exact NetPilot delta recorded
+    - reproducible build evidence where practical
+    - provenance, static, sanitizer and applicable runtime gates re-run
+    - admission decision is made on the exact fork build, not on upstream name alone
+
+components:
+  zapret2:
+    upstream: bol-van/zapret2
+    upstream_license: MIT
+    strategy: NETPILOT_OWNED_FORK_AFTER_SUCCESSFUL_LAB_GATE
+    planned_repo_name: NetPilot-zapret2
+    current_modification_mode: REVIEWED_LOCAL_PATCHSET_ONLY
+    direct_upstream_mutation: FORBIDDEN
+    direct_core_code_copy_without_license_notice: FORBIDDEN
+    integration_model: SEPARATE_VERSIONED_NATIVE_COMPONENT_CONTROLLED_BY_TYPED_NETPILOT_PROFILE_API
+    release_identity_example: 1.0.6-np.1
+
+  byedpi:
+    upstream: hufrea/byedpi
+    upstream_license: MIT
+    strategy: NETPILOT_OWNED_FORK_AFTER_SUCCESSFUL_LAB_GATE
+    planned_repo_name: NetPilot-ByeDPI
+    current_modification_mode: REVIEWED_LOCAL_PATCHSET_ONLY
+    direct_upstream_mutation: FORBIDDEN
+    integration_model: SEPARATE_VERSIONED_NATIVE_COMPONENT_WITH_LOOPBACK_ONLY_POLICY
+    release_identity_example: 0.17.3-np.1
+
+  dpibreak:
+    upstream: dilluti0n/dpibreak
+    upstream_license: GPL-3.0-or-later
+    strategy: SEPARATE_COMPONENT_BOUNDARY
+    direct_upstream_mutation: FORBIDDEN
+    copy_gpl_code_into_netpilot_mit_core: FORBIDDEN
+    modification_rule: if a NetPilot-owned fork is ever required, it remains under applicable GPL obligations and is distributed as a separate component
+    integration_model: SEPARATE_EXECUTABLE_OR_COMPONENT_WITH_DISTINCT_LICENSE_AND_ADMISSION_BOUNDARY
+
+new_third_party_components:
+  default_state: REVIEW
+  required_before_use:
+    - exact repository and immutable source identity
+    - license and redistribution obligations
+    - dependency and transitive-license review where relevant
+    - security/advisory review
+    - explicit integration boundary
+    - no automatic execution merely because the upstream project is trusted or popular
+
+notes:
+  - Reading public upstream source, releases, issues and documentation for review is allowed.
+  - This policy does not authorize candidate execution or production integration.
+  - Fork creation itself does not grant ADMIT; exact fork artifacts must pass the normal admission process.
