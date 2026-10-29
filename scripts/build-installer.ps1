@@ -22,10 +22,10 @@ $packageVersion = ($versionParts[0..2] -join '.')
 $appPublishDir = Join-Path $repoRoot "artifacts\publish\app-win-x64"
 $servicePublishDir = Join-Path $repoRoot "artifacts\publish\service-win-x64"
 $toolsDir = Join-Path $repoRoot "artifacts\tools"
-$innoInstallDir = Join-Path $toolsDir "inno-7.1.0"
-$innoInstaller = Join-Path $toolsDir "innosetup-7.1.0-x64.exe"
-$innoUrl = "https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe"
-$innoSha256 = "0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f"
+$innoInstallDir = Join-Path $toolsDir "inno-7.1.1"
+$innoInstaller = Join-Path $toolsDir "innosetup-7.1.1-x64.exe"
+$innoUrl = "https://github.com/jrsoftware/issrc/releases/download/is-7_1_1/innosetup-7.1.1-x64.exe"
+$innoSha256 = "8a5a6711c3766a6e5fb74f280ba0e3551e719ce94538d901fdbd1f8f9920b3f0"
 
 New-Item -ItemType Directory -Force -Path $appPublishDir, $servicePublishDir, $toolsDir, $OutputDir | Out-Null
 
@@ -67,7 +67,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if (-not (Test-Path $innoInstaller)) {
-    Write-Host "Загрузка закреплённого Inno Setup 7.1.0 x64..."
+    Write-Host "Загрузка закреплённого Inno Setup 7.1.1 x64..."
     Invoke-WebRequest -Uri $innoUrl -OutFile $innoInstaller -UseBasicParsing
 }
 
@@ -88,7 +88,7 @@ if ($null -eq $signature.SignerCertificate -or $signature.SignerCertificate.Subj
 
 $iscc = Join-Path $innoInstallDir "ISCC.exe"
 if (-not (Test-Path $iscc)) {
-    Write-Host "Локальная установка Inno Setup 7.1.0 для сборки..."
+    Write-Host "Локальная установка Inno Setup 7.1.1 для сборки..."
     $arguments = @(
         "/VERYSILENT",
         "/SUPPRESSMSGBOXES",
