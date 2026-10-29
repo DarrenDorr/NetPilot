@@ -79,9 +79,11 @@ if [[ -f "$app_windows_program" ]] && grep -qF 'new WindowsZapretStrategyRuntime
   fail=1
 fi
 
-# R26: первичная Windows-установка не должна делать службу auto-start до успешного
-# enrollment исходного не-elevated пользователя. Ошибочный enrollment обязан
-# отключать/останавливать/удалять службу и очищать свежие enrollment artifacts.
+# R26/R31.1: первичная Windows-установка не должна делать службу auto-start до
+# успешного enrollment. Ошибочный enrollment обязан отключать/останавливать/удалять
+# службу и очищать свежие enrollment artifacts. Client-side elevation state не является
+# authentication boundary: R31.1 разрешает известный NotElevated/Elevated token, но
+# Unknown обязан fail-closed. Authoritative SID/session/nonce checks выполняет LocalSystem.
 installer_script='installer/NetPilot.iss'
 uac_workflow='.github/workflows/windows-uac-security.yml'
 elevation_helper='src/NetPilot.Platform.Windows/WindowsProcessElevation.cs'
@@ -119,13 +121,13 @@ fi
 if [[ ! -f "$app_windows_program" ]] \
   || ! grep -qF 'WindowsProcessElevation.GetCurrentState()' "$app_windows_program" \
   || ! grep -qF 'WindowsInstallerEnrollmentPolicy.MayCompleteEnrollment' "$app_windows_program"; then
-  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: installer enrollment helper обязан проверять non-elevated Windows token fail-closed."
+  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: installer enrollment helper обязан проверять Windows token state fail-closed."
   fail=1
 fi
 
 if [[ ! -f "$elevation_helper" ]] \
-  || ! grep -qF 'elevationState == WindowsProcessElevationState.NotElevated' "$elevation_helper"; then
-  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: enrollment policy должна разрешать только явно NotElevated token."
+  || ! grep -qF 'elevationState != WindowsProcessElevationState.Unknown' "$elevation_helper"; then
+  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: enrollment policy обязана отклонять indeterminate/Unknown Windows token state."
   fail=1
 fi
 
@@ -233,6 +235,11 @@ else
 
       if ! grep -qF 'NoAdmittedZapretProcessLauncher.Instance' "$service_program"; then
         echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: без ADMIT LocalSystem-служба обязана использовать fail-closed process launcher."
+        fail=1
+      fi
+
+      if ! grep -qF 'NoAdmittedWindowsVerifiedEngineProcessLauncher.Instance' "$service_program"; then
+        echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: без ADMIT service-owned verified engine lifecycle обязан использовать fail-closed launcher."
         fail=1
       fi
 
