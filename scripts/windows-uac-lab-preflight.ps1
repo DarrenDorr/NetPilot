@@ -42,7 +42,7 @@ function Resolve-LocalUserName([string]$Value) {
         }
 
         if ($machinePart -ne $env:COMPUTERNAME) {
-            throw "Для R29 preflight используйте локальную учётную запись Account B в формате .\\Имя или $env:COMPUTERNAME\\Имя."
+            throw "Для R30 preflight используйте локальную учётную запись Account B в формате .\\Имя или $env:COMPUTERNAME\\Имя."
         }
 
         return $userPart
@@ -51,12 +51,12 @@ function Resolve-LocalUserName([string]$Value) {
     return $Value
 }
 
-Write-Host 'NetPilot R29 Windows UAC lab preflight'
+Write-Host 'NetPilot R30 Windows multi-user UAC lab preflight'
 Write-Host 'Этот скрипт ничего не устанавливает, не повышает привилегии и не изменяет системные настройки.'
 Write-Host ''
 
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
-    Write-Fail 'R29 lab должен выполняться на Windows.'
+    Write-Fail 'R30 lab должен выполняться на Windows.'
 } else {
     Write-Pass 'Windows обнаружена.'
 }
@@ -90,7 +90,7 @@ if ($sessionId -eq 0) {
 }
 
 if ($isAdmin) {
-    Write-Fail 'Текущий token входит в Administrators. Account A для R29 должен быть standard user.'
+    Write-Fail 'Текущий token входит в Administrators. Account A для R30 должен быть standard user.'
 } else {
     Write-Pass 'Account A работает без административного token.'
 }
@@ -134,7 +134,7 @@ if ($null -eq (Get-Command dotnet -ErrorAction SilentlyContinue)) {
 try {
     $secondaryLogon = Get-Service -Name 'seclogon' -ErrorAction Stop
     if ($secondaryLogon.StartType -eq 'Disabled') {
-        Write-Fail 'Secondary Logon (seclogon) отключён. Он нужен для negative test под Account B.'
+        Write-Fail 'Secondary Logon (seclogon) отключён. Он нужен для multi-user test под Account B.'
     } else {
         Write-Pass "Secondary Logon доступен (Status=$($secondaryLogon.Status), StartType=$($secondaryLogon.StartType))."
     }
@@ -165,7 +165,7 @@ try {
     $admins = Get-LocalGroup -SID 'S-1-5-32-544' -ErrorAction Stop
     $adminMembers = @(Get-LocalGroupMember -Group $admins -ErrorAction Stop)
     if ($adminMembers | Where-Object { $_.SID.Value -eq $otherSid }) {
-        Write-Fail 'Account B входит в локальную группу Administrators. Для negative test нужен standard user.'
+        Write-Fail 'Account B входит в локальную группу Administrators. Для multi-user test нужен standard user.'
     } else {
         Write-Pass 'Account B не является прямым членом локальной группы Administrators.'
     }
@@ -175,14 +175,14 @@ try {
 
 $existingService = Get-Service -Name 'NetPilot.Service' -ErrorAction SilentlyContinue
 if ($null -ne $existingService) {
-    Write-Fail "На машине уже зарегистрирован NetPilot.Service (Status=$($existingService.Status)). Для чистого R29 lab его не должно быть."
+    Write-Fail "На машине уже зарегистрирован NetPilot.Service (Status=$($existingService.Status)). Для чистого R30 lab его не должно быть."
 } else {
     Write-Pass 'NetPilot.Service до теста отсутствует.'
 }
 
 $existingInstall = Join-Path $env:ProgramFiles 'NetPilot'
 if (Test-Path $existingInstall) {
-    Write-Fail "Обнаружен существующий каталог установки: $existingInstall. R29 должен начинаться с чистого состояния."
+    Write-Fail "Обнаружен существующий каталог установки: $existingInstall. R30 должен начинаться с чистого состояния."
 } else {
     Write-Pass 'Существующий Program Files\\NetPilot не обнаружен.'
 }
@@ -200,7 +200,7 @@ if (-not [string]::IsNullOrWhiteSpace($RunnerRoot)) {
     if (-not (Test-Path $runnerExe)) {
         Write-Fail "В RunnerRoot отсутствует run.cmd: $RunnerRoot"
     } else {
-        Write-Pass 'run.cmd найден. Для R29 запускайте runner именно интерактивно через run.cmd, не как Windows service.'
+        Write-Pass 'run.cmd найден. Для R30 запускайте runner именно интерактивно через run.cmd, не как Windows service.'
     }
 } else {
     Write-Warn 'RunnerRoot не указан. Локальная регистрация GitHub Actions runner не проверялась.'
@@ -218,7 +218,7 @@ try {
 }
 
 Write-Host ''
-Write-Host '--- R29 preflight summary ---'
+Write-Host '--- R30 preflight summary ---'
 Write-Host "Failures: $($failures.Count)"
 Write-Host "Warnings: $($warnings.Count)"
 
@@ -236,5 +236,5 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 
-Write-Host 'RESULT=READY_FOR_R29_RUNNER_SETUP' -ForegroundColor Green
+Write-Host 'RESULT=READY_FOR_R30_RUNNER_SETUP' -ForegroundColor Green
 exit 0
