@@ -84,9 +84,17 @@ public sealed class EngineRuntimePrerequisiteContractTests
     [Fact]
     public void Internal_constructor_rejects_backend_or_platform_mismatch()
     {
-        var budgetConstructor = Assert.Single(
-            typeof(EngineResourceBudgetDeclaration)
-                .GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic));
+        var budgetConstructor = typeof(EngineResourceBudgetDeclaration)
+            .GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
+            .Single(static constructor =>
+            {
+                var parameters = constructor.GetParameters();
+                return parameters.Length == 4
+                    && parameters[0].ParameterType == typeof(BuiltInEngineBackendKind)
+                    && parameters[1].ParameterType == typeof(EngineHostPlatform)
+                    && parameters[2].ParameterType == typeof(uint)
+                    && parameters[3].ParameterType == typeof(ulong);
+            });
 
         var linuxBudget = (EngineResourceBudgetDeclaration)budgetConstructor.Invoke(
             new object[]
@@ -101,9 +109,15 @@ public sealed class EngineRuntimePrerequisiteContractTests
             BuiltInEngineBackendKind.Zapret2,
             EngineHostPlatform.Windows);
 
-        var prerequisiteConstructor = Assert.Single(
-            typeof(EngineRuntimePrerequisiteDeclaration)
-                .GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic));
+        var prerequisiteConstructor = typeof(EngineRuntimePrerequisiteDeclaration)
+            .GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
+            .Single(static constructor =>
+            {
+                var parameters = constructor.GetParameters();
+                return parameters.Length == 2
+                    && parameters[0].ParameterType == typeof(EngineBackendCapabilityDeclaration)
+                    && parameters[1].ParameterType == typeof(EngineResourceBudgetDeclaration);
+            });
 
         var exception = Assert.Throws<TargetInvocationException>(() =>
             prerequisiteConstructor.Invoke(
