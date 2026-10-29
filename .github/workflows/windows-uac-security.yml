@@ -11,7 +11,7 @@ jobs:
     # Отдельная изолированная Windows VM. Runner должен быть запущен ИНТЕРАКТИВНО
     # от обычного пользователя, а не как служба и не от администратора.
     runs-on: [self-hosted, windows, netpilot-uac-lab]
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -55,6 +55,36 @@ jobs:
       - name: IPC identity policy tests in standard-user session
         shell: pwsh
         run: dotnet test tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj --configuration Release --no-build
+
+      - name: Publish isolated live IPC lab client
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $labDir = Join-Path $env:PUBLIC "NetPilot-UacLab-$env:GITHUB_RUN_ID"
+          if (Test-Path $labDir) {
+            Remove-Item $labDir -Recurse -Force
+          }
+
+          dotnet publish tools/NetPilot.WindowsIpcLabClient/NetPilot.WindowsIpcLabClient.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            --output $labDir
+
+          $client = Join-Path $labDir 'NetPilot.WindowsIpcLabClient.exe'
+          if (-not (Test-Path $client)) {
+            throw 'Live IPC lab client was not published.'
+          }
+
+          $item = Get-Item $client
+          $hash = Get-FileHash -Algorithm SHA256 -Path $client
+          Write-Host "Lab client: $($item.FullName)"
+          Write-Host "Size: $($item.Length) bytes"
+          Write-Host "SHA-256: $($hash.Hash)"
+          Write-Host 'The lab client contains no password/credential handling and only sends the fixed Ping IPC request.'
 
       - name: Build installer
         shell: pwsh
@@ -101,6 +131,109 @@ jobs:
 
           Write-Host "PASS: standard-user SID $expectedSid survived the real Inno UAC boundary and owns the NetPilot installation."
 
+      - name: Live IPC authorized owner SID
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $client = Join-Path $env:PUBLIC "NetPilot-UacLab-$env:GITHUB_RUN_ID\NetPilot.WindowsIpcLabClient.exe"
+          if (-not (Test-Path $client)) { throw 'Live IPC lab client is missing.' }
+
+          $output = & $client --expect-authorized 2>&1
+          $exitCode = $LASTEXITCODE
+          $output | ForEach-Object { Write-Host $_ }
+
+          if ($exitCode -ne 0) {
+            throw "Authorized live IPC probe failed with exit code $exitCode."
+          }
+          if (-not ($output -contains 'RESULT=AUTHORIZED_PASS')) {
+            throw 'Authorized live IPC probe did not return AUTHORIZED_PASS.'
+          }
+
+          $expectedSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          if (-not ($output -contains "SID=$expectedSid")) {
+            throw 'Authorized live IPC probe did not run as the installation owner SID.'
+          }
+
+          Write-Host 'PASS: the original standard-user SID authenticated the LocalSystem service and received Ping=Ok.'
+
+      - name: Live IPC rejects a different standard-user SID
+        shell: pwsh
+        env:
+          NETPILOT_UAC_LAB_OTHER_USER: ${{ secrets.NETPILOT_UAC_LAB_OTHER_USER }}
+          NETPILOT_UAC_LAB_OTHER_PASSWORD: ${{ secrets.NETPILOT_UAC_LAB_OTHER_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ([string]::IsNullOrWhiteSpace($env:NETPILOT_UAC_LAB_OTHER_USER)) {
+            throw 'Configure the NETPILOT_UAC_LAB_OTHER_USER repository secret with a pre-created second standard Windows lab account.'
+          }
+          if ([string]::IsNullOrWhiteSpace($env:NETPILOT_UAC_LAB_OTHER_PASSWORD)) {
+            throw 'Configure the NETPILOT_UAC_LAB_OTHER_PASSWORD repository secret for the second standard Windows lab account.'
+          }
+
+          $client = Join-Path $env:PUBLIC "NetPilot-UacLab-$env:GITHUB_RUN_ID\NetPilot.WindowsIpcLabClient.exe"
+          if (-not (Test-Path $client)) { throw 'Live IPC lab client is missing.' }
+
+          $ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          $securePassword = ConvertTo-SecureString $env:NETPILOT_UAC_LAB_OTHER_PASSWORD -AsPlainText -Force
+          $credential = [PSCredential]::new($env:NETPILOT_UAC_LAB_OTHER_USER, $securePassword)
+
+          # Пароль удаляется из environment до создания дочернего процесса.
+          # В command line он никогда не передаётся.
+          Remove-Item Env:NETPILOT_UAC_LAB_OTHER_PASSWORD -ErrorAction SilentlyContinue
+
+          $stdoutPath = Join-Path $env:RUNNER_TEMP 'netpilot-uac-other-user.stdout.txt'
+          $stderrPath = Join-Path $env:RUNNER_TEMP 'netpilot-uac-other-user.stderr.txt'
+          Remove-Item $stdoutPath,$stderrPath -Force -ErrorAction SilentlyContinue
+
+          $process = Start-Process `
+            -FilePath $client `
+            -ArgumentList '--expect-denied' `
+            -Credential $credential `
+            -WorkingDirectory (Split-Path -Parent $client) `
+            -RedirectStandardOutput $stdoutPath `
+            -RedirectStandardError $stderrPath `
+            -Wait `
+            -PassThru
+
+          $output = @()
+          if (Test-Path $stdoutPath) { $output = @(Get-Content $stdoutPath) }
+          $errors = @()
+          if (Test-Path $stderrPath) { $errors = @(Get-Content $stderrPath) }
+
+          $output | ForEach-Object { Write-Host $_ }
+          $errors | ForEach-Object { Write-Host "LAB-CLIENT-ERROR: $_" }
+
+          if ($process.ExitCode -ne 0) {
+            throw "Different-SID live IPC probe failed with exit code $($process.ExitCode)."
+          }
+          if (-not ($output -contains 'RESULT=DENIED_PASS')) {
+            throw 'Different-SID live IPC probe did not receive UnauthorizedUser.'
+          }
+          if (-not ($output -contains 'IS_ADMIN=False')) {
+            throw 'The second Windows lab account must be a standard user, not an administrator.'
+          }
+
+          $sidLine = $output | Where-Object { $_ -like 'SID=*' } | Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($sidLine)) {
+            throw 'Different-SID live IPC probe did not report its SID.'
+          }
+          $otherSid = $sidLine.Substring(4).Trim()
+          if ($otherSid -eq $ownerSid) {
+            throw 'The negative IPC probe used the same SID as the installation owner.'
+          }
+
+          Write-Host "PASS: different standard-user SID $otherSid reached the authenticated local pipe but NetPilot.Service returned UnauthorizedUser."
+
+      - name: Remove live IPC lab client
+        if: always()
+        shell: pwsh
+        run: |
+          $labDir = Join-Path $env:PUBLIC "NetPilot-UacLab-$env:GITHUB_RUN_ID"
+          if (Test-Path $labDir) {
+            Remove-Item $labDir -Recurse -Force
+          }
+
       - name: Uninstall through real UAC boundary
         if: always()
         shell: pwsh
@@ -125,6 +258,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          Write-Host 'This workflow provides evidence for: interactive standard-user start, UAC enabled, Inno-initiated elevation, LocalSystem service account, SID binding and cleanup.'
-          Write-Host 'Launching Setup with PowerShell -Verb RunAs is intentionally forbidden here because it destroys the original-user evidence required by ExecAsOriginalUser.'
-          Write-Host 'A dedicated live cross-user IPC integration harness is still required before claiming full IPC authorization PASS.'
+          Write-Host 'This workflow can provide live evidence for: interactive standard-user start, UAC enabled, Inno-initiated elevation, LocalSystem service account, original SID binding, authenticated owner Ping=Ok, different standard-user SID -> UnauthorizedUser, and uninstall cleanup.'
+          Write-Host 'Launching Setup with PowerShell -Verb RunAs is intentionally forbidden because it destroys the original-user evidence required by ExecAsOriginalUser.'
+          Write-Host 'The negative SID test requires two pre-created distinct standard Windows lab accounts. Password is supplied only through a GitHub Actions secret and is never placed in a command line or printed.'
+          Write-Host 'A PASS may be claimed only when every non-cleanup step above completed successfully on the isolated self-hosted Windows lab.'

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>NetPilot.WindowsIpcLabClient</AssemblyName>
+    <RootNamespace>NetPilot.WindowsIpcLabClient</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/NetPilot.Platform.Windows/NetPilot.Platform.Windows.csproj" />
+  </ItemGroup>
+</Project>
