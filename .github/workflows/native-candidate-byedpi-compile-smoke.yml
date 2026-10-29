@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   byedpi-compile-smoke:
-    name: Apply loopback hardening and compile Linux/Windows without execution
+    name: Apply hardened patchset and compile Linux/Windows without execution
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
@@ -34,52 +34,40 @@ jobs:
           path: byedpi
           persist-credentials: false
 
-      - name: Verify source identity and apply reviewed canonical patch
+      - name: Verify source identity and apply full reviewed patchset
         shell: bash
         run: |
           set -euo pipefail
-          expected_commit='7efde1b1296eaaa187b70e951894dde17527489c'
-          expected_tree='8d13f6f5939190cd27ee68696247073a00b3e7dc'
-          patch_path='security/native-admission/patches/byedpi-r28/0001-loopback-only-listener.patch'
-          expected_blob='fa9ba3349792d66f40d925bc612310e8d18aae8a'
-          expected_sha256='3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068'
+          test "$(git -C byedpi rev-parse HEAD)" = "7efde1b1296eaaa187b70e951894dde17527489c"
+          test "$(git -C byedpi rev-parse 'HEAD^{tree}')" = "8d13f6f5939190cd27ee68696247073a00b3e7dc"
 
-          observed_commit="$(git -C byedpi rev-parse HEAD)"
-          observed_tree="$(git -C byedpi rev-parse 'HEAD^{tree}')"
-          observed_blob="$(git -C netpilot rev-parse "HEAD:$patch_path")"
+          patch_dir="$PWD/netpilot/security/native-admission/patches/byedpi-r28"
+          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0001-loopback-only-listener.patch')" = "fa9ba3349792d66f40d925bc612310e8d18aae8a"
+          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0002-kavl-iterator-no-before-array-sentinel.patch')" = "6f51d66597847ee49e373922e4905c80b8ee2f47"
+          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0003-pid-file-fail-safe-write.patch')" = "d56d0f8659a49c48c923b6af85a523a952e77e0c"
+          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0004-kavl-empty-erase-guard.patch')" = "9b196b289efd9a2ea1118c5504f4a811aa0becd2"
 
-          mkdir -p scratch
-          git -C netpilot show "HEAD:$patch_path" > scratch/byedpi-0001.patch
-          observed_sha256="$(sha256sum scratch/byedpi-0001.patch | awk '{print $1}')"
+          echo "3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068  $patch_dir/0001-loopback-only-listener.patch" | sha256sum -c -
+          echo "6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7  $patch_dir/0002-kavl-iterator-no-before-array-sentinel.patch" | sha256sum -c -
+          echo "5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738  $patch_dir/0003-pid-file-fail-safe-write.patch" | sha256sum -c -
+          echo "fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a  $patch_dir/0004-kavl-empty-erase-guard.patch" | sha256sum -c -
 
-          printf 'observed_source_commit=%s\n' "$observed_commit"
-          printf 'observed_source_tree=%s\n' "$observed_tree"
-          printf 'observed_patch_blob=%s\n' "$observed_blob"
-          printf 'observed_patch_sha256=%s\n' "$observed_sha256"
+          for patch in \
+            0001-loopback-only-listener.patch \
+            0002-kavl-iterator-no-before-array-sentinel.patch \
+            0003-pid-file-fail-safe-write.patch \
+            0004-kavl-empty-erase-guard.patch
+          do
+            git -C byedpi apply --verbose --check "$patch_dir/$patch"
+            git -C byedpi apply --verbose "$patch_dir/$patch"
+          done
 
-          if [ "$observed_commit" != "$expected_commit" ]; then
-            echo 'ByeDPI source commit mismatch' >&2
-            exit 1
-          fi
-          if [ "$observed_tree" != "$expected_tree" ]; then
-            echo 'ByeDPI source tree mismatch' >&2
-            exit 1
-          fi
-          if [ "$observed_blob" != "$expected_blob" ]; then
-            echo 'ByeDPI canonical patch blob mismatch' >&2
-            exit 1
-          fi
-          if [ "$observed_sha256" != "$expected_sha256" ]; then
-            echo 'ByeDPI canonical patch SHA-256 mismatch' >&2
-            exit 1
-          fi
-
-          git -C byedpi apply --verbose --check "$PWD/scratch/byedpi-0001.patch"
-          git -C byedpi apply --verbose "$PWD/scratch/byedpi-0001.patch"
-
-          grep -Fq 'Listening IP, loopback only; default 127.0.0.1' byedpi/main.c || { echo 'ByeDPI help-text hardening anchor missing after patch' >&2; exit 1; }
-          grep -Fq 'netpilot_is_loopback_addr' byedpi/main.c || { echo 'ByeDPI loopback validator missing after patch' >&2; exit 1; }
-          grep -Fq 'get_addr("127.0.0.1", &params.laddr)' byedpi/main.c || { echo 'ByeDPI loopback default missing after patch' >&2; exit 1; }
+          grep -Fq 'Listening IP, loopback only; default 127.0.0.1' byedpi/main.c
+          grep -Fq 'netpilot_is_loopback_addr' byedpi/main.c
+          grep -Fq 'get_addr("127.0.0.1", &params.laddr)' byedpi/main.c
+          grep -Fq '#define kavl_at(itr) ((itr)->top? *(itr)->top : 0)' byedpi/kavl.h
+          grep -Fq 'if (*root_ == 0) return 0;' byedpi/kavl.h
+          grep -Fq 'while (written < (size_t)pid_len)' byedpi/main.c
 
       - name: Install compile-only toolchains
         shell: bash
@@ -160,12 +148,14 @@ jobs:
             windows_compiler="$(x86_64-w64-mingw32-gcc --version | head -n1)"
           fi
           {
-            echo 'schema_version=6'
-            echo 'scope=byedpi-v0.17.3-loopback-hardening-compile-only'
+            echo 'schema_version=7'
+            echo 'scope=byedpi-v0.17.3-netpilot-hardening-0001-0004-compile-only'
             echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
             echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
-            echo 'patch_0001_git_blob_sha1=fa9ba3349792d66f40d925bc612310e8d18aae8a'
             echo 'patch_0001_sha256=3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068'
+            echo 'patch_0002_sha256=6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7'
+            echo 'patch_0003_sha256=5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738'
+            echo 'patch_0004_sha256=fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a'
             echo "linux_compile_outcome=$LINUX_OUTCOME"
             echo "windows_x64_cross_compile_outcome=$WINDOWS_OUTCOME"
             echo "linux_compiler=$linux_compiler"
@@ -176,8 +166,9 @@ jobs:
             echo 'candidate_binary_executed=false'
             echo 'listener_opened=false'
             echo 'routing_changed=false'
+            echo 'admission_effect=NONE'
+            echo 'release_gate=BLOCK'
           } > evidence/byedpi-compile-smoke.txt
-          rm -f scratch/byedpi-0001.patch
           sha256sum evidence/* | sort > evidence/SHA256SUMS-byedpi-compile-smoke.txt
 
       - name: Upload text evidence only
