@@ -105,4 +105,21 @@ public static class BuiltInEngineProfileCapabilityPolicy
         EngineProfileId profileId,
         EngineCapabilitySet capabilities) =>
         capabilities.Supports(GetRequiredCapabilities(profileId));
+
+    /// <summary>
+    /// Возвращает только те встроенные полнофункциональные профили, которые
+    /// покрываются конкретной доверенной backend declaration.
+    /// Метод не выполняет admission и не разрешает запуск native-компонента.
+    /// </summary>
+    public static IReadOnlyList<EngineProfileDescriptor> GetSupportedProfiles(
+        EngineBackendCapabilityDeclaration declaration)
+    {
+        ArgumentNullException.ThrowIfNull(declaration);
+
+        var supported = BuiltInEngineProfileCatalog.All
+            .Where(profile => IsSupported(profile.Id, declaration.DirectCapabilities))
+            .ToArray();
+
+        return Array.AsReadOnly(supported);
+    }
 }

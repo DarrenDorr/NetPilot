@@ -50,6 +50,36 @@ public sealed class EngineBackendCapabilityCatalogTests
     }
 
     [Fact]
+    public void Zapret2Windows_SupportsAllCurrentFullProfiles()
+    {
+        var declaration = BuiltInEngineBackendCapabilityCatalog.Get(
+            BuiltInEngineBackendKind.Zapret2,
+            EngineHostPlatform.Windows);
+
+        var ids = BuiltInEngineProfileCapabilityPolicy
+            .GetSupportedProfiles(declaration)
+            .Select(static profile => profile.Id.Value)
+            .ToArray();
+
+        Assert.Equal(
+            ["standard", "discord", "youtube", "discord-youtube"],
+            ids);
+    }
+
+    [Fact]
+    public void ByeDpiWindows_SupportsNoCurrentFullProfiles()
+    {
+        var declaration = BuiltInEngineBackendCapabilityCatalog.Get(
+            BuiltInEngineBackendKind.ByeDpi,
+            EngineHostPlatform.Windows);
+
+        var profiles = BuiltInEngineProfileCapabilityPolicy
+            .GetSupportedProfiles(declaration);
+
+        Assert.Empty(profiles);
+    }
+
+    [Fact]
     public void ByeDpiWindows_DoesNotSatisfyFullBuiltInProfiles()
     {
         var capabilities = BuiltInEngineBackendCapabilityCatalog.Get(
@@ -88,6 +118,17 @@ public sealed class EngineBackendCapabilityCatalogTests
     }
 
     [Fact]
+    public void Declaration_HasNoPublicConstructor()
+    {
+        var publicConstructors = typeof(EngineBackendCapabilityDeclaration)
+            .GetConstructors(
+                System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.Public);
+
+        Assert.Empty(publicConstructors);
+    }
+
+    [Fact]
     public void Declaration_ExposesOnlyTrustedIdentityPlatformAndCapabilities()
     {
         var propertyNames = typeof(EngineBackendCapabilityDeclaration)
@@ -99,6 +140,22 @@ public sealed class EngineBackendCapabilityCatalogTests
         Assert.Equal(
             ["Backend", "DirectCapabilities", "EngineId", "Platform"],
             propertyNames);
+    }
+
+    [Fact]
+    public void SupportedProfiles_ResultIsReadOnly()
+    {
+        var declaration = BuiltInEngineBackendCapabilityCatalog.Get(
+            BuiltInEngineBackendKind.Zapret2,
+            EngineHostPlatform.Windows);
+        var profiles = BuiltInEngineProfileCapabilityPolicy
+            .GetSupportedProfiles(declaration);
+        var list = Assert.IsAssignableFrom<IList<EngineProfileDescriptor>>(profiles);
+
+        Assert.Throws<NotSupportedException>(() =>
+            list.Add(new EngineProfileDescriptor(
+                EngineProfileId.Parse("extra"),
+                "Extra")));
     }
 
     [Fact]
