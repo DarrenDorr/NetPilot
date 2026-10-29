@@ -100,7 +100,7 @@
         <StackPanel Spacing="10">
           <StackPanel Spacing="2">
             <TextBlock Text="Профили NetPilot" FontSize="16" FontWeight="SemiBold" />
-            <TextBlock Text="Read-only каталог пользовательских профилей. Запуск недоступен, пока сетевой движок не прошёл security admission."
+            <TextBlock Text="Каталог сетевых профилей NetPilot. Запуск недоступен, пока сетевой движок не прошёл security admission."
                        FontSize="12"
                        Opacity="0.58"
                        TextWrapping="Wrap" />
@@ -145,7 +145,7 @@
                      FontSize="12"
                      Opacity="0.58"
                      TextWrapping="Wrap" />
-          <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+          <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
             <TextBlock Text="Версия" Opacity="0.60" />
             <TextBlock x:Name="SupportVersionText" Grid.Column="1" Text="неизвестно" TextWrapping="Wrap" />
 
@@ -155,11 +155,14 @@
             <TextBlock Grid.Row="2" Text="Архитектура" Opacity="0.60" Margin="0,7,0,0" />
             <TextBlock x:Name="SupportArchitectureText" Grid.Row="2" Grid.Column="1" Text="неизвестно" TextWrapping="Wrap" Margin="0,7,0,0" />
 
-            <TextBlock Grid.Row="3" Text="Движок" Opacity="0.60" Margin="0,7,0,0" />
-            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding EngineStatus}" TextWrapping="Wrap" Margin="0,7,0,0" />
+            <TextBlock Grid.Row="3" Text="Служба" Opacity="0.60" Margin="0,7,0,0" />
+            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding ServiceStatus}" TextWrapping="Wrap" Margin="0,7,0,0" />
 
-            <TextBlock Grid.Row="4" Text="Последнее действие" Opacity="0.60" Margin="0,7,0,0" />
-            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding LastAction}" TextWrapping="Wrap" Margin="0,7,0,0" />
+            <TextBlock Grid.Row="4" Text="Движок" Opacity="0.60" Margin="0,7,0,0" />
+            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding EngineStatus}" TextWrapping="Wrap" Margin="0,7,0,0" />
+
+            <TextBlock Grid.Row="5" Text="Последнее действие" Opacity="0.60" Margin="0,7,0,0" />
+            <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding LastAction}" TextWrapping="Wrap" Margin="0,7,0,0" />
           </Grid>
         </StackPanel>
       </Border>
