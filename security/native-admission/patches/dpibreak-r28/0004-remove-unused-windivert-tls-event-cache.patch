@@ -1,0 +1,58 @@
+diff --git a/crates/windivert/src/divert/mod.rs b/crates/windivert/src/divert/mod.rs
+--- a/crates/windivert/src/divert/mod.rs
++++ b/crates/windivert/src/divert/mod.rs
+@@ -1,7 +1,7 @@
+ mod blocking;
+ 
+ use std::{
+-    ffi::{c_void, CString},
++    ffi::CString,
+     marker::PhantomData,
+ };
+ 
+@@ -12,11 +12,8 @@ use windows::{
+     core::{Error as WinError, Result as WinResult},
+     Win32::{
+         Foundation::{GetLastError, HANDLE},
+-        System::Threading::{CreateEventA, TlsAlloc, TlsGetValue, TlsSetValue},
+     },
+ };
+ 
+ /// Main wrapper struct around windivert functionalities.
+ #[non_exhaustive]
+ pub struct WinDivert<L: layer::WinDivertLayerTrait> {
+     handle: HANDLE,
+-    _tls_idx: u32,
+     _layer: PhantomData<L>,
+ }
+@@ -31,18 +28,14 @@ impl<L: layer::WinDivertLayerTrait> WinDivert<L> {
+         flags: WinDivertFlags,
+     ) -> Result<Self, WinDivertError> {
+         let filter = CString::new(filter)?;
+-        let windivert_tls_idx = unsafe { TlsAlloc() };
+         let handle = unsafe { sys::WinDivertOpen(filter.as_ptr(), layer, priority, flags) };
+         if handle.is_invalid() {
+             let open_err = WinDivertOpenError::try_from(std::io::Error::last_os_error())?;
+             Err(open_err.into())
+         } else {
+             Ok(Self {
+                 handle,
+-                _tls_idx: windivert_tls_idx,
+                 _layer: PhantomData::<L>,
+             })
+         }
+     }
+-
+-    pub(crate) fn _get_event(tls_idx: u32) -> Result<HANDLE, WinDivertError> {
+-        let mut event = HANDLE::default();
+-        unsafe {
+-            event.0 = TlsGetValue(tls_idx) as isize;
+-            if event.is_invalid() {
+-                event = CreateEventA(None, false, false, None)?;
+-                TlsSetValue(tls_idx, Some(event.0 as *mut c_void));
+-            }
+-        }
+-        Ok(event)
+-    }
+ 
+     /// Methods that allows to query the driver for parameters.
