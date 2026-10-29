@@ -20,6 +20,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private string _overallStatus = "Готов к проверке";
     private string _overallDetails = "Проверьте доступность сервисов одной кнопкой.";
+    private string _serviceStatus = "Служба NetPilot: проверяем состояние…";
     private string _engineStatus = "Состояние сетевого движка ещё не получено.";
     private string _lastAction = "Действий ещё не выполнялось.";
     private bool _isBusy;
@@ -91,6 +92,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         get => _overallDetails;
         private set => SetField(ref _overallDetails, value);
+    }
+
+    public string ServiceStatus
+    {
+        get => _serviceStatus;
+        private set => SetField(ref _serviceStatus, value);
     }
 
     public string EngineStatus
@@ -423,6 +430,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             var state = await _dashboardService.GetEngineInstallationStateAsync(cancellationToken);
+            ServiceStatus = "Служба NetPilot: доступна · защищённый IPC работает";
             IsEngineInstalled = state.IsInstalled;
             CanInstallEngine = !state.IsInstalled && state.CanInstall;
             CanUseEngine = state.IsInstalled && state.CanStart;
@@ -451,11 +459,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
         catch (Exception exception) when (IsExpectedOperationalException(exception))
         {
+            ServiceStatus = GetServiceStatus(exception);
             IsEngineInstalled = false;
             CanInstallEngine = false;
             CanUseEngine = false;
             UpdateProfileAvailability(canUseEngine: false);
-            EngineStatus = "Служба NetPilot недоступна или пользователь Windows не авторизован.";
+            EngineStatus = "Сетевой движок: состояние недоступно.";
         }
     }
 
@@ -464,6 +473,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             var state = await _dashboardService.GetProfileRuntimeStateAsync(cancellationToken);
+            ServiceStatus = "Служба NetPilot: доступна · защищённый IPC работает";
             var activeProfileId = state.IsRunning ? state.ProfileId : null;
             UpdateProfileAvailability(canUseEngine: true, activeProfileId);
             EngineStatus = state.IsRunning && !string.IsNullOrWhiteSpace(state.ProfileId)
@@ -472,8 +482,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
         catch (Exception exception) when (IsExpectedOperationalException(exception))
         {
+            ServiceStatus = GetServiceStatus(exception);
             UpdateProfileAvailability(canUseEngine: false);
-            EngineStatus = "Служба NetPilot недоступна или пользователь Windows не авторизован.";
+            EngineStatus = "Сетевой движок: состояние недоступно.";
         }
     }
 
@@ -510,13 +521,29 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             or OperationCanceledException
             or InvalidOperationException;
 
+    private static string GetServiceStatus(Exception exception) =>
+        exception switch
+        {
+            EngineProvisioningException engine when engine.Code == "EnrollmentRequired" =>
+                "Служба NetPilot: требуется завершить первичную регистрацию установки",
+            EngineProvisioningException engine when engine.Code == "ServiceAccessDenied" =>
+                "Служба NetPilot: Windows отклонила доступ к защищённому IPC",
+            EngineProvisioningException engine when engine.Code == "ServerAuthenticationFailed" =>
+                "Служба NetPilot: проверка identity LocalSystem-службы не пройдена",
+            EngineProvisioningException engine when engine.Code == "RequestTimeout" =>
+                "Служба NetPilot: превышено время ожидания ответа",
+            _ => "Служба NetPilot: недоступна или защищённый IPC не подтверждён"
+        };
+
     private static string GetUserMessage(Exception exception) =>
         exception switch
         {
+            EngineProvisioningException engine when engine.Code == "InstallationOwnerRequired" =>
+                "Эта системная операция доступна только владельцу установки NetPilot. Обычное использование программы для текущего пользователя не ограничено.",
             EngineProvisioningException engine when engine.Code == "UnauthorizedUser" =>
-                "Текущая учётная запись Windows не имеет права управлять этой установкой NetPilot.",
+                "Служба NetPilot использует устаревшую single-owner политику. Обновите или восстановите установку программы.",
             EngineProvisioningException engine when engine.Code == "EnrollmentRequired" =>
-                "Установка NetPilot не завершила безопасную привязку пользователя. Выполните восстановление установки.",
+                "Установка NetPilot не завершила безопасную первичную регистрацию. Выполните восстановление установки.",
             EngineProvisioningException =>
                 "Не удалось связаться со службой NetPilot или выполнить защищённую операцию.",
             ProfileOperationException => "Служба не смогла выполнить операцию с сетевым профилем.",
