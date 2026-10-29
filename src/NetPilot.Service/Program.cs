@@ -22,8 +22,11 @@ builder.Services.AddSingleton(OperationPolicy.CreateNoAdmittedEnginePolicy());
 var installationRoot = WindowsZapretEngineLocation.GetDefaultInstallationRoot();
 builder.Services.AddSingleton(_ =>
     new WindowsAuthorizedUserStore(installationRoot));
-builder.Services.AddSingleton(_ =>
-    new WindowsUserProfileStore(installationRoot));
+builder.Services.AddSingleton<IWindowsUserProfileDirectorySecurity, WindowsUserProfileDirectorySecurity>();
+builder.Services.AddSingleton(serviceProvider =>
+    new WindowsUserProfileStore(
+        installationRoot,
+        serviceProvider.GetRequiredService<IWindowsUserProfileDirectorySecurity>()));
 builder.Services.AddSingleton<UserResourceOwnership>();
 builder.Services.AddSingleton<WindowsNamedPipeServerFactory>();
 builder.Services.AddSingleton<WindowsNamedPipePeerAuthenticator>();
