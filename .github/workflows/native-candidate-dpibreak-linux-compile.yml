@@ -1,0 +1,160 @@
+name: Native Candidate DPIBreak Linux Compile
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/native-candidate-dpibreak-linux-compile.yml"
+      - ".github/workflows/native-candidate-dpibreak-provenance.yml"
+      - "security/native-admission/dpibreak-v0.6.2-candidate.yaml"
+      - "docs/DPIBREAK-*.md"
+
+permissions:
+  contents: read
+
+jobs:
+  linux-compile-only:
+    name: Build exact DPIBreak v0.6.2 twice without candidate execution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout NetPilot without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: netpilot
+          persist-credentials: false
+
+      - name: Checkout exact DPIBreak v0.6.2 source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: dilluti0n/dpibreak
+          ref: 334285b60aabd5a32a83a65211ac60bce968b211
+          fetch-depth: 1
+          path: dpibreak
+          persist-credentials: false
+
+      - name: Verify source and lock identity before build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C dpibreak rev-parse HEAD)" = "334285b60aabd5a32a83a65211ac60bce968b211"
+          test "$(git -C dpibreak rev-parse 'HEAD^{tree}')" = "7e95a17933fe9fda521865b1317c4f9f75d6c58c"
+          test "$(git -C dpibreak rev-parse 'HEAD:Cargo.lock')" = "e3adcd1b21711e7e754878b15625076c7bcaf7e9"
+          grep -Fq 'version = "0.6.2"' dpibreak/Cargo.toml
+          grep -Fq 'license = "GPL-3.0-or-later"' dpibreak/Cargo.toml
+
+      - name: Install exact compile toolchain prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools file
+          rustup toolchain install 1.97.0 --profile minimal
+          rustup target add --toolchain 1.97.0 x86_64-unknown-linux-musl
+          rustc +1.97.0 --version | tee rustc-version.txt
+          cargo +1.97.0 --version | tee cargo-version.txt
+          grep -Fq 'rustc 1.97.0 ' rustc-version.txt
+          grep -Fq 'cargo 1.97.0 ' cargo-version.txt
+
+      - name: Fetch only exact locked crates before offline builds
+        shell: bash
+        working-directory: dpibreak
+        run: |
+          set -euo pipefail
+          cargo +1.97.0 fetch --locked --target x86_64-unknown-linux-musl
+
+      - name: Compile release build twice without execution
+        id: compile
+        continue-on-error: true
+        shell: bash
+        working-directory: dpibreak
+        run: |
+          set -euo pipefail
+          mkdir -p ../evidence
+          export CARGO_NET_OFFLINE=true
+          export SOURCE_DATE_EPOCH=1784055514
+          target='x86_64-unknown-linux-musl'
+          binary="target/$target/release/dpibreak"
+
+          cargo +1.97.0 clean
+          cargo +1.97.0 build --locked --release --target "$target" --package dpibreak \
+            2>&1 | tee ../evidence/build-1.log
+          test -f "$binary"
+          file "$binary" | tee ../evidence/file.txt
+          sha1="$(sha256sum "$binary" | awk '{print $1}')"
+          size1="$(stat -c %s "$binary")"
+          printf '%s\n' "$sha1" > ../evidence/linux-binary-build-1.sha256
+          printf '%s\n' "$size1" > ../evidence/linux-binary-build-1.size
+
+          cargo +1.97.0 clean
+          cargo +1.97.0 build --locked --release --target "$target" --package dpibreak \
+            2>&1 | tee ../evidence/build-2.log
+          test -f "$binary"
+          sha2="$(sha256sum "$binary" | awk '{print $1}')"
+          size2="$(stat -c %s "$binary")"
+          printf '%s\n' "$sha2" > ../evidence/linux-binary-build-2.sha256
+          printf '%s\n' "$size2" > ../evidence/linux-binary-build-2.size
+
+          test "$sha1" = "$sha2"
+          test "$size1" = "$size2"
+
+          rm -f "$binary"
+          test ! -e "$binary"
+
+      - name: Produce text-only compile evidence
+        if: always()
+        shell: bash
+        env:
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cargo_lock_sha256="$(sha256sum dpibreak/Cargo.lock | awk '{print $1}')"
+          cargo_toml_sha256="$(sha256sum dpibreak/Cargo.toml | awk '{print $1}')"
+          {
+            echo 'schema_version=1'
+            echo 'scope=dpibreak-v0.6.2-linux-musl-compile-only'
+            echo 'release_commit=334285b60aabd5a32a83a65211ac60bce968b211'
+            echo 'release_tree=7e95a17933fe9fda521865b1317c4f9f75d6c58c'
+            echo 'cargo_lock_git_blob_sha1=e3adcd1b21711e7e754878b15625076c7bcaf7e9'
+            echo "cargo_lock_sha256=$cargo_lock_sha256"
+            echo "cargo_toml_sha256=$cargo_toml_sha256"
+            echo 'rust_toolchain=1.97.0'
+            echo 'target=x86_64-unknown-linux-musl'
+            echo "compile_outcome=$COMPILE_OUTCOME"
+            echo 'cargo_fetch_locked=true'
+            echo 'cargo_build_locked=true'
+            echo 'cargo_build_offline_after_fetch=true'
+            echo 'dependency_build_scripts_may_execute_during_compile=true'
+            echo 'candidate_binary_executed=false'
+            echo 'nfqueue_enabled=false'
+            echo 'firewall_changed=false'
+            echo 'windivert_present=false'
+            echo 'driver_installed=false'
+            echo 'network_interception_enabled=false'
+            echo 'admission_effect=NONE'
+            echo 'release_gate=BLOCK'
+          } > evidence/compile-summary.txt
+
+          rm -rf dpibreak/target
+          test ! -e dpibreak/target/x86_64-unknown-linux-musl/release/dpibreak
+          sha256sum evidence/* | sort > evidence/SHA256SUMS-dpibreak-linux-compile.txt
+
+      - name: Upload text evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dpibreak-r28-linux-compile-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce compile-only gate
+        if: always()
+        shell: bash
+        env:
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+        run: |
+          set -euo pipefail
+          test "$COMPILE_OUTCOME" = 'success'
