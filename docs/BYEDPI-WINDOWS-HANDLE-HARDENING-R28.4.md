@@ -36,7 +36,7 @@
 Identity:
 
 - Git blob SHA-1: `fb8a7f57dc577e9ee8664adb41d264a64dc81a0d`;
-- SHA-256: `edb9642146c3864007406b17b10253b3ca9f763d84454fa946ce162811160729`.
+- SHA-256: `3b8034c4cecdcd7b1551fbdf7b99f0fbdf82b00c0a7613046a06aa8b5182d050`.
 
 Семантика на Windows:
 
@@ -68,7 +68,7 @@ Identity:
 Identity:
 
 - Git blob SHA-1: `0815be26534c291848a8b16bdedb07a6ab1e485f`;
-- SHA-256: `1a80382fe64c3d1a568217cc775cb2cee5c3457664aad2868c0d28c3de806bde`.
+- SHA-256: `136b9fdf34b68a55f0f1a6ebf16e8b61c9b88e6d15eeb923594bdd7bf0fa2a3e`.
 
 После patch индексируются только значения ниже `WAIT_OBJECT_0 + MAX_TF`, то есть успешные object-result indices `0..MAX_TF-1`. `WAIT_TIMEOUT`, `WAIT_FAILED` и abandoned-result диапазон не используются как индекс.
 

@@ -65,8 +65,8 @@ jobs:
           echo "6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7  $canonical_patch_dir/0002-kavl-iterator-no-before-array-sentinel.patch" | sha256sum -c -
           echo "5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738  $canonical_patch_dir/0003-pid-file-fail-safe-write.patch" | sha256sum -c -
           echo "fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a  $canonical_patch_dir/0004-kavl-empty-erase-guard.patch" | sha256sum -c -
-          echo "edb9642146c3864007406b17b10253b3ca9f763d84454fa946ce162811160729  $canonical_patch_dir/0005-windows-socket-handle-narrowing-guard.patch" | sha256sum -c -
-          echo "1a80382fe64c3d1a568217cc775cb2cee5c3457664aad2868c0d28c3de806bde  $canonical_patch_dir/0006-windows-wait-result-range.patch" | sha256sum -c -
+          echo "3b8034c4cecdcd7b1551fbdf7b99f0fbdf82b00c0a7613046a06aa8b5182d050  $canonical_patch_dir/0005-windows-socket-handle-narrowing-guard.patch" | sha256sum -c -
+          echo "136b9fdf34b68a55f0f1a6ebf16e8b61c9b88e6d15eeb923594bdd7bf0fa2a3e  $canonical_patch_dir/0006-windows-wait-result-range.patch" | sha256sum -c -
 
           for patch in \
             0001-loopback-only-listener.patch \
@@ -201,8 +201,8 @@ jobs:
             echo 'patch_0002_sha256=6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7'
             echo 'patch_0003_sha256=5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738'
             echo 'patch_0004_sha256=fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a'
-            echo 'patch_0005_sha256=edb9642146c3864007406b17b10253b3ca9f763d84454fa946ce162811160729'
-            echo 'patch_0006_sha256=1a80382fe64c3d1a568217cc775cb2cee5c3457664aad2868c0d28c3de806bde'
+            echo 'patch_0005_sha256=3b8034c4cecdcd7b1551fbdf7b99f0fbdf82b00c0a7613046a06aa8b5182d050'
+            echo 'patch_0006_sha256=136b9fdf34b68a55f0f1a6ebf16e8b61c9b88e6d15eeb923594bdd7bf0fa2a3e'
             echo "windows_warning_gate_outcome=$WARNING_GATE_OUTCOME"
             echo "linux_compile_outcome=$LINUX_OUTCOME"
             echo "windows_x64_cross_compile_outcome=$WINDOWS_OUTCOME"
