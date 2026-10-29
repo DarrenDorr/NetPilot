@@ -22,7 +22,8 @@ public sealed record AuthorizedUserEnrollmentResult(
 }
 
 /// <summary>
-/// Хранит единственный разрешённый пользовательский SID и одноразовые данные регистрации.
+/// Хранит SID владельца системной установки NetPilot и одноразовые данные первичной регистрации.
+/// Этот SID не ограничивает обычный multi-user runtime: он используется для machine-level provisioning.
 /// Файлы располагаются только под защищённым системным корнем установки NetPilot.
 /// </summary>
 public sealed class WindowsAuthorizedUserStore
