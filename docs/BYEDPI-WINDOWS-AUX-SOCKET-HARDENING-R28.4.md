@@ -2,7 +2,7 @@
 
 Дата: 29.10.2026.
 
-Статус: **DESIGN FIXED / COMPILE EVIDENCE PENDING / NOT ADMITTED / RELEASE GATE BLOCK**.
+Статус: **DESIGN FIXED / REBASED ON HARDENED MAIN / COMPILE EVIDENCE PENDING / NOT ADMITTED / RELEASE GATE BLOCK**.
 
 ## Что обнаружено
 
@@ -17,7 +17,7 @@ Upstream хранит результат `socket()` в локальной пер
 
 На Windows `socket()` возвращает `SOCKET`, который является pointer-sized unsigned handle. Поэтому даже если такой socket не попадает в event-pool, раннее присваивание в `int` остаётся некорректной Win64 границей представления.
 
-Практический риск здесь уже уже, чем у event-pool:
+Практический риск здесь уже, чем у event-pool:
 
 - неверный handle может попасть в `getsockopt()`;
 - `close/closesocket()` может получить уже усечённое значение;
@@ -32,10 +32,12 @@ Upstream хранит результат `socket()` в локальной пер
 
 `security/native-admission/patches/byedpi-r28/0007-windows-aux-socket-probes.patch`
 
-Immutable identity:
+Текущая immutable identity после rebasing на состояние `main.c`, сформированное patches `0001–0006`:
 
-- Git blob SHA-1: `e1e7cf53a87e9f51224147d7b1d4faf39dcf8ef6`;
-- SHA-256: `ddfe7a3b6280c55dc89afd99ea89badea2f30348031f4f93a6ca6debcf939897`.
+- Git blob SHA-1: `e7b590a7d0594be0629bac221cb120c165dab8cd`;
+- SHA-256: `778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25`.
+
+Предыдущие identities `e1e7cf53…` и связанные с ним SHA считаются **устаревшими** и не должны использоваться для approval/evidence.
 
 ## Новая семантика
 
@@ -70,25 +72,39 @@ Immutable identity:
 - не раздувать уже проверяемый patch `0005`;
 - при upstream update понимать, какая именно граница была исправлена upstream и какой patch можно удалить.
 
+## Почему patch пришлось rebasing
+
+Первоначальная версия `0007` была подготовлена против чистого upstream `main.c`.
+
+Full-patchset gate применяет patches последовательно, и к моменту `0007` `main.c` уже изменён `0001`/`0003`. Поэтому первая цепочка корректно остановилась на `git apply --check`.
+
+Patch был перебазирован на exact hardened state после `0001–0006`. Логика Windows/Unix веток не изменилась; изменилась только applicability context и, соответственно, immutable identity.
+
 ## Compile gate
 
-Full-patchset ByeDPI теперь определяется как `0001–0007`.
+Full-patchset ByeDPI определяется как `0001–0007`.
 
 Workflow:
 
 `.github/workflows/native-candidate-byedpi-compile-smoke.yml`
 
-дополнительно требует:
+требует:
 
 - exact Git blob/SHA-256 `0007`;
-- успешное применение `0007` к exact `v0.17.3`;
-- наличие Windows `SOCKET` declarations в обоих probe после patch;
-- targeted compile `main.c` с усиленными conversion/sign warnings;
+- успешное последовательное применение `0001–0007`;
+- точные source-boundary assertions для `get_default_ttl()` и `ipv6_support()`;
+- targeted `conev.c` gate с `-Werror=sign-compare`;
+- targeted `desync.c` gate с `-Werror=type-limits`;
+- обычную Windows compile-проверку `main.c` после source assertions;
 - две воспроизводимые Linux build;
 - две воспроизводимые Windows x64 build;
 - candidate binary не запускается.
 
-Evidence schema для нового patchset повышена до `10`, а scope изменён на:
+Глобальный `-Werror=conversion` для всего upstream `main.c` больше не используется как доказательство patch `0007`, потому что он ловит множество исторических numeric conversions в несвязанных CLI/config путях. Эти warnings не скрыты: они остаются отдельным review debt.
+
+Evidence schema текущего gate: `11`.
+
+Scope:
 
 `byedpi-v0.17.3-netpilot-hardening-0001-0007-compile-only`.
 
