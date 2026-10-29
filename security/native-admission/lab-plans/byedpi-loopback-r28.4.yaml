@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 plan_id: byedpi-loopback-r28.4
 candidate: byedpi-v0.17.3-netpilot-fork-candidate
 platforms:
@@ -33,6 +33,9 @@ candidate_identity:
     - 0004-kavl-empty-erase-guard.patch
     - 0005-windows-socket-handle-narrowing-guard.patch
     - 0006-windows-wait-result-range.patch
+    - 0007-windows-aux-socket-probes.patch
+  patch_0007_git_blob_sha1: e1e7cf53a87e9f51224147d7b1d4faf39dcf8ef6
+  patch_0007_sha256: ddfe7a3b6280c55dc89afd99ea89badea2f30348031f4f93a6ca6debcf939897
   linux_runtime_binary_sha256: null
   windows_runtime_binary_sha256: null
   rule: exact runtime binary hashes must be pinned from controlled builds before approval
@@ -43,6 +46,7 @@ preconditions:
   full_patchset_linux_compile_must_be_green: true
   full_patchset_windows_compile_must_be_green: true
   targeted_windows_warning_gates_must_be_green: true
+  windows_aux_socket_probe_gate_must_be_green: true
   pidfile_static_gate_must_be_green: true
   kavl_sanitizer_gate_must_be_green: true
   additional_static_sanitizer_gate_must_be_green: true
@@ -103,6 +107,7 @@ stages:
     required_evidence:
       - exact source/patch identities
       - exact runtime binary SHA-256 for selected platform
+      - full patchset 0001-0007 compile evidence
       - clean disposable lab snapshot
       - baseline process/listener inventory
 
@@ -192,3 +197,4 @@ notes:
   - It does not authorize starting ciadpi/ciadpi.exe.
   - It does not authorize exposing a SOCKS listener outside loopback.
   - It does not authorize system-wide routing, Android VPN/TUN, or production integration.
+  - Any approval referencing patchset 0001-0006 is stale and invalid for the current candidate identity.
