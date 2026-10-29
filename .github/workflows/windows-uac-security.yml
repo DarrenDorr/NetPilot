@@ -131,7 +131,7 @@ jobs:
 
           Write-Host "PASS: standard-user SID $expectedSid survived the real Inno UAC boundary and owns machine-level NetPilot provisioning."
 
-      - name: Live IPC installation owner uses own SID profile
+      - name: Live IPC installation owner uses service-owned SID profile
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -148,20 +148,18 @@ jobs:
           if (-not ($output -contains 'RESULT=AUTHORIZED_PASS')) {
             throw 'Authorized live IPC probe did not return AUTHORIZED_PASS.'
           }
+          if (-not ($output -contains 'PROFILE_DIRECT_ACCESS=DENIED')) {
+            throw 'Owner SID profile was not proven service-owned and filesystem-isolated.'
+          }
 
           $expectedSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
           if (-not ($output -contains "SID=$expectedSid")) {
             throw 'Authorized live IPC probe did not run as the installation-owner SID.'
           }
 
-          $profileRoot = "$env:ProgramFiles\NetPilot\Users\$expectedSid"
-          if (-not (Test-Path $profileRoot)) {
-            throw "Owner per-SID profile was not created: $profileRoot"
-          }
+          Write-Host 'PASS: installation owner authenticated to LocalSystem service, received Ping=Ok, and cannot bypass IPC to read the service-owned SID profile directly.'
 
-          Write-Host 'PASS: installation owner authenticated to LocalSystem service, received Ping=Ok, and has a dedicated SID profile.'
-
-      - name: Live IPC accepts a different standard-user SID with isolated profile
+      - name: Live IPC accepts a different standard-user SID with isolated service-owned profile
         shell: pwsh
         env:
           NETPILOT_UAC_LAB_OTHER_USER: ${{ secrets.NETPILOT_UAC_LAB_OTHER_USER }}
@@ -180,7 +178,6 @@ jobs:
           if (-not (Test-Path $client)) { throw 'Live IPC lab client is missing.' }
 
           $ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-          $ownerProfile = "$env:ProgramFiles\NetPilot\Users\$ownerSid"
           $ownerSidPath = "$env:ProgramFiles\NetPilot\Config\authorized-user.sid"
           $securePassword = ConvertTo-SecureString $env:NETPILOT_UAC_LAB_OTHER_PASSWORD -AsPlainText -Force
           $credential = [PSCredential]::new($env:NETPILOT_UAC_LAB_OTHER_USER, $securePassword)
@@ -217,6 +214,9 @@ jobs:
           if (-not ($output -contains 'RESULT=AUTHORIZED_PASS')) {
             throw 'Different-SID live IPC probe did not receive Ping=Ok.'
           }
+          if (-not ($output -contains 'PROFILE_DIRECT_ACCESS=DENIED')) {
+            throw 'Second-user SID profile was not proven service-owned and filesystem-isolated.'
+          }
           if (-not ($output -contains 'IS_ADMIN=False')) {
             throw 'The second Windows lab account must be a standard user, not an administrator.'
           }
@@ -230,23 +230,12 @@ jobs:
             throw 'The multi-user IPC probe used the same SID as the installation owner.'
           }
 
-          $otherProfile = "$env:ProgramFiles\NetPilot\Users\$otherSid"
-          if (-not (Test-Path $ownerProfile)) {
-            throw 'Owner SID profile disappeared during multi-user probe.'
-          }
-          if (-not (Test-Path $otherProfile)) {
-            throw "Second-user per-SID profile was not created: $otherProfile"
-          }
-          if ($ownerProfile -eq $otherProfile) {
-            throw 'Different Windows SIDs resolved to the same profile root.'
-          }
-
           $ownerSidAfter = (Get-Content $ownerSidPath -Raw).Trim()
           if ($ownerSidAfter -ne $ownerSid) {
             throw "Second user changed machine-level installation owner SID. Expected $ownerSid, got $ownerSidAfter."
           }
 
-          Write-Host "PASS: different standard-user SID $otherSid received Ping=Ok in its own profile while machine-level owner remained $ownerSid."
+          Write-Host "PASS: different standard-user SID $otherSid received Ping=Ok through its own service-owned profile while machine-level owner remained $ownerSid."
 
       - name: Remove live IPC lab client
         if: always()
@@ -284,7 +273,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          Write-Host 'This workflow can provide live evidence for: interactive standard-user start, UAC enabled, Inno-initiated elevation, LocalSystem service account, machine-level owner SID binding, owner Ping=Ok, second standard-user Ping=Ok with a distinct SID profile, unchanged installation owner, and uninstall cleanup.'
+          Write-Host 'This workflow can provide live evidence for: interactive standard-user start, UAC enabled, Inno-initiated elevation, LocalSystem service account, machine-level owner SID binding, owner Ping=Ok, second standard-user Ping=Ok, service-owned per-SID filesystem isolation, unchanged installation owner, and uninstall cleanup.'
           Write-Host 'Launching Setup with PowerShell -Verb RunAs is intentionally forbidden because it destroys the original-user evidence required by ExecAsOriginalUser.'
           Write-Host 'The multi-user SID isolation test requires two pre-created distinct standard Windows lab accounts. Password is supplied only through a GitHub Actions secret and is never placed in a command line or printed.'
           Write-Host 'A PASS may be claimed only when every non-cleanup step above completed successfully on the isolated self-hosted Windows lab.'
