@@ -1,0 +1,205 @@
+name: Native Candidate DPIBreak Hardened Linux Compile
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/native-candidate-dpibreak-hardened-linux-compile.yml"
+      - "security/native-admission/patches/dpibreak-r28/**"
+      - "security/native-admission/dpibreak-v0.6.2-netpilot-fork-candidate.yaml"
+      - "security/native-admission/prelab-gate-matrix-r28.4.yaml"
+      - "docs/DPIBREAK-*.md"
+
+permissions:
+  contents: read
+
+jobs:
+  hardened-linux-compile-only:
+    name: Apply exact hardened patchset and build Linux twice without candidate execution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout NetPilot without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: netpilot
+          persist-credentials: false
+
+      - name: Checkout exact DPIBreak v0.6.2 source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: dilluti0n/dpibreak
+          ref: 334285b60aabd5a32a83a65211ac60bce968b211
+          fetch-depth: 1
+          path: dpibreak
+          persist-credentials: false
+
+      - name: Verify exact source and materialize canonical NetPilot patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence scratch
+          test "$(git -C dpibreak rev-parse HEAD)" = "334285b60aabd5a32a83a65211ac60bce968b211"
+          test "$(git -C dpibreak rev-parse 'HEAD^{tree}')" = "7e95a17933fe9fda521865b1317c4f9f75d6c58c"
+          test "$(git -C dpibreak rev-parse 'HEAD:Cargo.lock')" = "e3adcd1b21711e7e754878b15625076c7bcaf7e9"
+
+          patch1='security/native-admission/patches/dpibreak-r28/0001-remove-global-windivert-service-stop.patch'
+          patch2='security/native-admission/patches/dpibreak-r28/0002-always-revalidate-clienthello.patch'
+          patch3='security/native-admission/patches/dpibreak-r28/0003-disable-custom-nft-executable.patch'
+          test "$(git -C netpilot rev-parse "HEAD:$patch1")" = "3f731650c83e56f717a7709084fd5873e7cb99eb"
+          test "$(git -C netpilot rev-parse "HEAD:$patch2")" = "733a8c989e22790b5518468af61a5041e65c1238"
+          test "$(git -C netpilot rev-parse "HEAD:$patch3")" = "d27efdb337fabe15745832d00acbb6a039f7cb7c"
+
+          git -C netpilot show "HEAD:$patch1" > scratch/0001.patch
+          git -C netpilot show "HEAD:$patch2" > scratch/0002.patch
+          git -C netpilot show "HEAD:$patch3" > scratch/0003.patch
+
+          test "$(sha256sum scratch/0001.patch | awk '{print $1}')" = "aa3e7681be056dfc5f1a1c83872b2ae5ea7058744261a0c3040cd1a092d55bce"
+          test "$(sha256sum scratch/0002.patch | awk '{print $1}')" = "2620c5823e8b0f527048bd0e112b00565e5517d9923a537a9a947b4c5774d8ef"
+          test "$(sha256sum scratch/0003.patch | awk '{print $1}')" = "1a0cbde6714c05e35da0004b36dd3e5c25f32f3d4086195dd64015f8fdc2acb1"
+
+      - name: Apply exact active patchset without candidate execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          for patch in scratch/0001.patch scratch/0002.patch scratch/0003.patch; do
+            git -C dpibreak apply --check "$GITHUB_WORKSPACE/$patch"
+            git -C dpibreak apply "$GITHUB_WORKSPACE/$patch"
+          done
+          git -C dpibreak diff --check
+
+          grep -Fq 'if !tls::is_client_hello(view.tcp.payload()) {' dpibreak/src/pkt.rs
+          grep -Fq 'return Err(anyhow!("--nft-command is disabled in the NetPilot hardened build"));' dpibreak/src/opt.rs
+          ! grep -Fq '"--nft-command" => { nft_command = take_value' dpibreak/src/opt.rs
+          ! grep -R -Fq 'WinDivert::uninstall()' dpibreak/src dpibreak/crates/windivert/src
+
+          git -C dpibreak diff --binary > evidence/hardened-source.diff
+          sha256sum evidence/hardened-source.diff | awk '{print $1}' > evidence/hardened-source-diff.sha256
+
+      - name: Install exact compile toolchain prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools file
+          rustup toolchain install 1.97.0 --profile minimal
+          rustup target add --toolchain 1.97.0 x86_64-unknown-linux-musl
+          rustc +1.97.0 --version | tee evidence/rustc-version.txt
+          cargo +1.97.0 --version | tee evidence/cargo-version.txt
+          grep -Fq 'rustc 1.97.0 ' evidence/rustc-version.txt
+          grep -Fq 'cargo 1.97.0 ' evidence/cargo-version.txt
+
+      - name: Fetch only exact locked crates before offline builds
+        shell: bash
+        working-directory: dpibreak
+        run: |
+          set -euo pipefail
+          cargo +1.97.0 fetch --locked --target x86_64-unknown-linux-musl
+
+      - name: Compile hardened release build twice without execution
+        id: compile
+        continue-on-error: true
+        shell: bash
+        working-directory: dpibreak
+        run: |
+          set -euo pipefail
+          export CARGO_NET_OFFLINE=true
+          export SOURCE_DATE_EPOCH=1784055514
+          target='x86_64-unknown-linux-musl'
+          binary="target/$target/release/dpibreak"
+
+          cargo +1.97.0 clean
+          cargo +1.97.0 build --locked --release --target "$target" --package dpibreak \
+            2>&1 | tee ../evidence/hardened-build-1.log
+          test -f "$binary"
+          file "$binary" | tee ../evidence/hardened-file.txt
+          sha1="$(sha256sum "$binary" | awk '{print $1}')"
+          size1="$(stat -c %s "$binary")"
+          printf '%s\n' "$sha1" > ../evidence/hardened-linux-binary-build-1.sha256
+          printf '%s\n' "$size1" > ../evidence/hardened-linux-binary-build-1.size
+          rm -f "$binary"
+
+          cargo +1.97.0 clean
+          cargo +1.97.0 build --locked --release --target "$target" --package dpibreak \
+            2>&1 | tee ../evidence/hardened-build-2.log
+          test -f "$binary"
+          sha2="$(sha256sum "$binary" | awk '{print $1}')"
+          size2="$(stat -c %s "$binary")"
+          printf '%s\n' "$sha2" > ../evidence/hardened-linux-binary-build-2.sha256
+          printf '%s\n' "$size2" > ../evidence/hardened-linux-binary-build-2.size
+
+          test "$sha1" = "$sha2"
+          test "$size1" = "$size2"
+
+          rm -f "$binary"
+          cargo +1.97.0 clean
+          test ! -e "$binary"
+
+      - name: Produce text-only hardened compile evidence
+        if: always()
+        shell: bash
+        env:
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          binary_sha='not-produced'
+          binary_size='not-produced'
+          source_diff_sha='not-produced'
+          if [ -f evidence/hardened-linux-binary-build-1.sha256 ]; then binary_sha="$(cat evidence/hardened-linux-binary-build-1.sha256)"; fi
+          if [ -f evidence/hardened-linux-binary-build-1.size ]; then binary_size="$(cat evidence/hardened-linux-binary-build-1.size)"; fi
+          if [ -f evidence/hardened-source-diff.sha256 ]; then source_diff_sha="$(cat evidence/hardened-source-diff.sha256)"; fi
+          {
+            echo 'schema_version=1'
+            echo 'scope=dpibreak-v0.6.2-netpilot-patches-0001-0003-linux-musl-compile-only'
+            echo 'release_commit=334285b60aabd5a32a83a65211ac60bce968b211'
+            echo 'release_tree=7e95a17933fe9fda521865b1317c4f9f75d6c58c'
+            echo 'cargo_lock_git_blob_sha1=e3adcd1b21711e7e754878b15625076c7bcaf7e9'
+            echo 'patch_0001_git_blob_sha1=3f731650c83e56f717a7709084fd5873e7cb99eb'
+            echo 'patch_0001_sha256=aa3e7681be056dfc5f1a1c83872b2ae5ea7058744261a0c3040cd1a092d55bce'
+            echo 'patch_0002_git_blob_sha1=733a8c989e22790b5518468af61a5041e65c1238'
+            echo 'patch_0002_sha256=2620c5823e8b0f527048bd0e112b00565e5517d9923a537a9a947b4c5774d8ef'
+            echo 'patch_0003_git_blob_sha1=d27efdb337fabe15745832d00acbb6a039f7cb7c'
+            echo 'patch_0003_sha256=1a0cbde6714c05e35da0004b36dd3e5c25f32f3d4086195dd64015f8fdc2acb1'
+            echo "hardened_source_diff_sha256=$source_diff_sha"
+            echo 'rust_toolchain=1.97.0'
+            echo 'target=x86_64-unknown-linux-musl'
+            echo "compile_outcome=$COMPILE_OUTCOME"
+            echo "binary_sha256=$binary_sha"
+            echo "binary_size_bytes=$binary_size"
+            echo 'same_runner_reproducible=true'
+            echo 'cargo_fetch_locked=true'
+            echo 'cargo_build_locked=true'
+            echo 'cargo_build_offline_after_fetch=true'
+            echo 'candidate_binary_executed=false'
+            echo 'binary_retained=false'
+            echo 'nfqueue_enabled=false'
+            echo 'firewall_changed=false'
+            echo 'windivert_present=false'
+            echo 'driver_installed=false'
+            echo 'network_interception_enabled=false'
+            echo 'admission_effect=NONE'
+            echo 'release_gate=BLOCK'
+          } > evidence/hardened-compile-summary.txt
+
+          rm -rf dpibreak/target
+          sha256sum evidence/* | sort > evidence/SHA256SUMS-dpibreak-hardened-linux-compile.txt
+
+      - name: Upload text evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dpibreak-r28-hardened-linux-compile-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce hardened compile-only gate
+        if: always()
+        shell: bash
+        env:
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+        run: |
+          set -euo pipefail
+          test "$COMPILE_OUTCOME" = 'success'
