@@ -1,4 +1,4 @@
-schema_version: 8
+schema_version: 9
 matrix_id: netpilot-prelab-r28.4
 reviewed_at: 2026-10-29
 production_activation_allowed: false
@@ -193,7 +193,7 @@ candidates:
       cargo_advisory_review: PASS_FOR_EXACT_LOCKFILE_ADVISORY_AND_STATIC_INVENTORY_ONLY
       unsafe_ffi_review: PASS_FOR_EXACT_LOCKFILE_ADVISORY_AND_STATIC_INVENTORY_ONLY
       privileged_boundary_inventory: PASS_FOR_EXACT_LOCKFILE_ADVISORY_AND_STATIC_INVENTORY_ONLY
-      hardened_linux_compile_only: NOT_STARTED
+      hardened_linux_compile_only: PASS_FOR_EXACT_PATCHSET_0001_0003_COMPILE_ONLY
       hardened_windows_compile_only: NOT_STARTED
     provenance_evidence:
       workflow_run_id: 40809643722
@@ -242,6 +242,25 @@ candidates:
       unsafe_ffi_inventory_completed: true
       privileged_boundary_inventory_completed: true
       candidate_executed: false
+    hardened_linux_compile_evidence:
+      workflow_run_id: 40815748022
+      workflow_job_id: 123256260881
+      head_sha: 9dfa757ea01757b4e7507a29b63c8bfcf662d22f
+      artifact_id: 12872371597
+      artifact_zip_sha256: aefb990f661f6c2b3d0e346d901d0619e0a048c49c1d2f202a9fb87f5132a7f0
+      hardened_source_diff_sha256: 20b6b8e3e90199efd7783b08f5a0dccf02fe433d75b3ae2beae60feb98b60593
+      rust_toolchain: 1.97.0
+      target: x86_64-unknown-linux-musl
+      binary_sha256: 5b227ef4115c36c81427d8ca86135c7b509137045e3909afc391ffe2b016d09a
+      binary_size_bytes: 869464
+      same_runner_reproducible: true
+      candidate_binary_executed: false
+      binary_retained: false
+      nfqueue_enabled: false
+      firewall_changed: false
+      network_interception_enabled: false
+      warning_count: 2
+      warning_classification: EXPECTED_DEAD_CODE_AFTER_REVALIDATION_PATCH_REVIEW_DEBT
     known_scope_limits:
       - upstream issue 32 QUIC support is open
       - upstream issue 24 NFQUEUE GSO semantics is open
@@ -249,7 +268,7 @@ candidates:
       - upstream issue 28 hard-coded nft/iptables lifecycle requires rollback design
       - upstream issue 31 WireGuard coexistence remains a compatibility scope
     platform_boundaries:
-      linux: PRE_LAB_REVIEW_PATCHED_COMPILE_PENDING
+      linux: PRE_LAB_REVIEW
       windows: BLOCK_WINDIVERT_RUNTIME_AND_SIGNING
       android: NOT_SELECTED
     windows_release_boundary_document: docs/WINDIVERT-WINDOWS-RELEASE-DECISION-R28.5.md
@@ -263,9 +282,8 @@ candidates:
       quic_http3_in_scope: false
       discord_udp_in_scope: false
     next_decision:
-      - compile exact active patchset 0001-0003 on Linux with locked dependencies without execution
+      - design issue 24 GSO/MTU regression and issue 28 firewall ownership/rollback evidence without authorizing execution
       - keep Windows blocked by WinDivert R28.5 boundary
-      - review Linux GSO/MTU/firewall/local-LAN test design only after patched compile gate
       - keep all build hashes as references only, not approved runtime identities
       - do not execute DPIBreak before separate LAB_APPROVED decision
 
@@ -290,5 +308,5 @@ notes:
   - No native engine start/install path may be enabled in NetPilot production from this file.
   - Zapret2 controlled build hashes and synthetic caps are references only; no runtime hash or lab budget is pre-authorized.
   - ByeDPI compile-only PASS does not authorize candidate execution or network routing.
-  - DPIBreak upstream compile reference and source/static PASS do not authorize NFQUEUE, firewall mutation, driver load or candidate execution.
+  - DPIBreak hardened Linux compile PASS does not authorize NFQUEUE, firewall mutation, driver load or candidate execution.
   - Any review referring to older candidate/patch identities is stale unless explicitly retained as historical evidence.
