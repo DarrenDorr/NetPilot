@@ -1,4 +1,4 @@
-schema_version: 4
+schema_version: 5
 matrix_id: netpilot-prelab-r28.4
 reviewed_at: 2026-10-29
 production_activation_allowed: false
@@ -129,13 +129,51 @@ candidates:
       - do not start ciadpi before LAB_APPROVED
 
   dpibreak:
-    role: reserve-windows-linux-candidate
+    component_set: dpibreak-v0.6.2-candidate
+    role: reserve-windows-linux-https-candidate
     admission_status: REVIEW
     release_gate: BLOCK
     may_execute_in_netpilot: false
     may_integrate_in_netpilot: false
     manifest: security/native-admission/dpibreak-v0.6.2-candidate.yaml
-    note: Reserve candidate only; no NetPilot native runtime execution is authorized in R28.4.
+    source_identity:
+      release_tag: v0.6.2
+      annotated_tag_object: 7601532147fe92130964e49a644d3207e74b8a51
+      release_commit: 334285b60aabd5a32a83a65211ac60bce968b211
+      release_tree: 7e95a17933fe9fda521865b1317c4f9f75d6c58c
+      cargo_lock_git_blob_sha1: e3adcd1b21711e7e754878b15625076c7bcaf7e9
+    evidence_state:
+      manual_signed_tag_and_release_metadata_review: PASS_FOR_PROVENANCE_ONLY
+      automated_source_dependency_provenance: PENDING
+      linux_compile_only: PENDING
+      windows_compile_only: NOT_STARTED
+      cargo_advisory_review: NOT_STARTED
+      unsafe_ffi_review: NOT_STARTED
+    known_scope_limits:
+      - upstream issue 32 QUIC support is open
+      - upstream issue 24 NFQUEUE GSO semantics is open
+      - upstream issue 26 local HTTPS compatibility requires exclusion review
+      - upstream issue 28 hard-coded nft/iptables lifecycle requires rollback design
+      - upstream issue 31 WireGuard coexistence remains a compatibility scope
+    platform_boundaries:
+      linux: PRE_LAB_REVIEW
+      windows: BLOCK_PENDING_EXACT_WINDIVERT_COMPONENT_INVENTORY
+      android: NOT_SELECTED
+    lab:
+      linux_state: PRE_LAB_REVIEW
+      linux_plan: security/native-admission/lab-plans/dpibreak-linux-r28.4.yaml
+      linux_plan_status: DRAFT_NOT_APPROVED
+      runtime_binary_sha256: null
+      nfqueue_or_firewall_execution_allowed: false
+      quic_http3_in_scope: false
+      discord_udp_in_scope: false
+    next_decision:
+      - obtain automated exact source/Cargo.lock provenance PASS
+      - obtain controlled Linux compile-only evidence without candidate execution
+      - review exact Cargo.lock advisories and unsafe/FFI surfaces
+      - keep Windows blocked until exact WinDivert component inventory is complete
+      - review Linux GSO/MTU/firewall/local-LAN test design
+      - do not execute DPIBreak before separate LAB_APPROVED decision
 
 promotion_requirements:
   to_lab_approved:
@@ -157,4 +195,5 @@ notes:
   - No candidate is currently ADMIT.
   - No native engine start/install path may be enabled in NetPilot production from this file.
   - ByeDPI compile-only PASS does not authorize candidate execution or network routing.
-  - Any ByeDPI review referring to an older patch 0007 identity is stale for current candidate identity.
+  - DPIBreak draft plan does not authorize NFQUEUE, firewall mutation, driver load or candidate execution.
+  - Any review referring to older candidate/patch identities is stale unless explicitly retained as historical evidence.
