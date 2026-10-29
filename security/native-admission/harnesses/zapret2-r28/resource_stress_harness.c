@@ -250,10 +250,12 @@ static void stress_packet_queue(void)
     }
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     static const size_t caps[] = {64, 512, 2048};
 
+    (void)argc;
+    (void)argv;
     memset(&params, 0, sizeof(params));
 
     for (size_t i = 0; i < sizeof(caps) / sizeof(caps[0]); ++i)
