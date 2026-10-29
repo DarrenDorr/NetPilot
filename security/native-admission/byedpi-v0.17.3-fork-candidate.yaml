@@ -1,8 +1,8 @@
-schema_version: 2
+schema_version: 3
 component_set: byedpi-v0.17.3-netpilot-fork-candidate
 admission_status: REVIEW
 release_gate: BLOCK
-reviewed_at: 2026-10-28
+reviewed_at: 2026-10-29
 
 candidate:
   kind: source_fork_base
@@ -48,7 +48,7 @@ static_review:
   decision: EXACT_V0_17_3_PLUS_CURATED_PATCHES_ONLY
   full_post_release_head_as_base: REJECT
   reason: post-release delta adds new proxy/cache/plugin/raw-mode surfaces beyond first NetPilot need
-  next_gate: R28.3_STATIC_SANITIZER_LOOPBACK_RUNTIME_AND_RESOURCE_EVIDENCE
+  next_gate: R28.4_FULL_PATCHSET_COMPILE_THEN_ISOLATED_LOOPBACK_RUNTIME_LAB
 
 patch_series:
   - sequence: 1
@@ -56,46 +56,91 @@ patch_series:
     purpose: make loopback the default listener and reject non-loopback --ip values as defense in depth
     git_blob_sha1: fa9ba3349792d66f40d925bc612310e8d18aae8a
     sha256: 3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068
-    status: PASS_FOR_APPLICABILITY_AND_COMPILE_ONLY
-    expected_files:
-      - main.c
-    changes_network_exposure_policy: true
-    limitation: runtime loopback enforcement is not yet tested; this PASS does not allow candidate execution
+    status: PASS_FOR_APPLICABILITY_AND_HISTORICAL_COMPILE_ONLY
+    expected_files: [main.c]
+    limitation: runtime loopback enforcement is not yet tested
 
-compile_smoke:
-  status: PASS_FOR_COMPILE_ONLY
-  workflow: .github/workflows/native-candidate-byedpi-compile-smoke.yml
+  - sequence: 2
+    path: security/native-admission/patches/byedpi-r28/0002-kavl-iterator-no-before-array-sentinel.patch
+    purpose: remove one-before-array iterator sentinel UB and represent empty iterator with null top
+    git_blob_sha1: 6f51d66597847ee49e373922e4905c80b8ee2f47
+    sha256: 6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7
+    status: PASS_WITH_KAVL_SANITIZER_AFTER_PATCH_0004
+    expected_files: [kavl.h]
+    limitation: does not by itself fix empty-tree erase UB
+
+  - sequence: 3
+    path: security/native-admission/patches/byedpi-r28/0003-pid-file-fail-safe-write.patch
+    purpose: make PID-file locking/truncation/write handling fail safe and cleanup descriptor state deterministically
+    git_blob_sha1: d56d0f8659a49c48c923b6af85a523a952e77e0c
+    sha256: 5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738
+    status: PASS_FOR_STATIC_COMPILE_ON_PATCHSET_0001_0003_CURRENT_0001_0004_RERUN_PENDING
+    expected_files: [main.c]
+    limitation: runtime PID-file lifecycle is not admitted
+
+  - sequence: 4
+    path: security/native-admission/patches/byedpi-r28/0004-kavl-empty-erase-guard.patch
+    purpose: return safely when KAVL erase/erase-first is called on an empty tree instead of indexing path[-1]
+    git_blob_sha1: 9b196b289efd9a2ea1118c5504f4a811aa0becd2
+    sha256: fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a
+    status: PASS_FOR_ISOLATED_ASAN_UBSAN_KAVL_REGRESSION_ONLY
+    expected_files: [kavl.h]
+    finding: upstream empty-tree erase path produced UBSan index -1 out of bounds after final erase loop check
+    limitation: candidate runtime remains blocked
+
+kavl_sanitizer:
+  status: PASS_FOR_ISOLATED_KAVL_ASAN_UBSAN_REGRESSION_ONLY
+  workflow: .github/workflows/native-candidate-byedpi-static-sanitizer.yml
+  workflow_run_id: 40804649207
+  workflow_job_id: 123220567167
+  head_sha: 782994db855910b7d2d6a699cc22946bfea1cd0c
+  artifact_id: 12868200056
+  artifact_name: byedpi-r28-kavl-sanitizer-evidence
+  artifact_zip_sha256: 7815708ee7cbb57e06b36679c89a4686f0dbf74a01029c9f8074139436bd4134
+  sanitizers: [ASan, UBSan]
+  node_count_per_cycle: 1024
+  cycles: 40
+  no_network_syscalls: true
+  candidate_binary_executed: false
+  listener_opened: false
+
+historical_compile_smoke:
+  status: PASS_FOR_PATCH_0001_COMPILE_ONLY
   workflow_run_id: 40730956091
   workflow_job_id: 122966803718
-  head_sha: 9613ab48b10e849550f8b5a69113b88c8e890871
   artifact_id: 12834388188
-  artifact_name: byedpi-r28-compile-smoke-evidence
   artifact_zip_sha256: eef60dbe551ee908e0f9e4de0a18519d63a032e0948e07e46eebf0a9725771d4
-  evidence_file: security/native-admission/evidence/byedpi-r28/compile-smoke.txt
-  source_commit: 7efde1b1296eaaa187b70e951894dde17527489c
-  source_tree: 8d13f6f5939190cd27ee68696247073a00b3e7dc
-  linux:
-    compiler: gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
-    output: ciadpi
-    sha256: 6787ff3f5ed30f947b61860edbd7439cd6fb9d8eb21de9eb67d4d92ddd573e8a
-  windows_x64:
-    compiler: x86_64-w64-mingw32-gcc (GCC) 13-win32
-    output: ciadpi.exe
-    sha256: 1be8ab31e7089e8794e745d2ec1ee009517d7a1241cbf8e5289b6c45a26cfc58
-  safety:
-    candidate_binary_executed: false
-    listener_opened: false
-    routing_changed: false
-    binaries_persisted_in_repo: false
+  note: superseded for candidate identity; full 0001-0004 compile rerun is required
+
+current_patchset_gates:
+  patchset: 0001-0004
+  compile_smoke_linux_windows:
+    status: PENDING
+    workflow: .github/workflows/native-candidate-byedpi-compile-smoke.yml
+  pidfile_static:
+    status: PENDING
+    workflow: .github/workflows/native-candidate-byedpi-pidfile-static.yml
+  kavl_sanitizer:
+    status: PASS
+    workflow: .github/workflows/native-candidate-byedpi-static-sanitizer.yml
+  loopback_runtime:
+    status: NOT_STARTED
+    requires_lab_execution_policy: true
+  resource_lifecycle:
+    status: NOT_STARTED
+  android_vpn_tun:
+    status: NOT_STARTED
+  windows_transparent_routing:
+    status: NOT_STARTED
 
 compile_warning_review:
-  status: OPEN
+  status: PARTIALLY_MITIGATED
   findings:
-    - ignored write() result in init_pid_file on Linux
-    - GCC array-bounds warning around kavl_itr_first_my/dump_cache on Linux and Windows
-    - signed/unsigned event descriptor comparison warning on Windows
-    - compiler reports ret >= WAIT_OBJECT_0 as always true for unsigned type on Windows
-  required_action: targeted source review plus static-analysis/sanitizer gate before runtime admission
+    - ignored write() result in init_pid_file on Linux: patched by 0003; current full-patchset compile rerun pending
+    - GCC array-bounds warning around KAVL iterator: iterator sentinel patched by 0002; sanitizer then exposed separate empty-tree erase UB patched by 0004
+    - signed/unsigned event descriptor comparison warning on Windows remains open
+    - compiler reports ret >= WAIT_OBJECT_0 as always true for unsigned type on Windows remains open
+  required_action: complete full patchset compile/static gates, then review remaining Windows event warnings before any runtime admission
 
 curated_backport_candidates:
   - commit: 57f9606feba6e06f9974e8502a21ce6672251548
@@ -109,9 +154,10 @@ curated_backport_candidates:
     status: REVIEW_OR_REIMPLEMENT_NOT_APPLIED
 
 required_before_admit:
-  - Review compile warnings and complete targeted static-analysis/sanitizer tests on the exact patched source.
+  - Full patchset 0001-0004 must compile reproducibly for Linux x86-64 and Windows x64 without candidate execution.
   - Runtime loopback-only regression must prove no listener appears on wildcard or LAN interfaces.
   - Connection and UDP state resource budgets must be measured and fixed as internal typed policy.
+  - Remaining Windows event-loop warnings must be reviewed and either proven benign or patched with regression coverage.
   - File/path/raw-data CLI surfaces must remain unreachable from NetPilot UI, IPC and config.
   - Android VpnService and TUN-to-SOCKS components require separate provenance, lifecycle and DNS/UDP review.
   - Windows system-wide transparent routing requires a separately admitted routing component.
@@ -121,7 +167,6 @@ required_before_admit:
 
 notes:
   - ByeDPI itself is a local SOCKS proxy and does not make Windows applications transparently use it.
-  - The upstream default listener is 0.0.0.0:1080; NetPilot must never inherit that exposure.
-  - Patch identity is anchored by both Git blob SHA-1 and SHA-256 of canonical Git-object bytes; working-tree newline conversion is not a trust input.
-  - Compile-only PASS proves buildability, not runtime safety or loopback enforcement.
+  - Upstream v0.17.3 defaults to 0.0.0.0:1080; NetPilot patch 0001 changes this to loopback-only policy.
+  - KAVL sanitizer found a real empty-tree erase UB after the first iterator hardening patch; patch 0004 fixes only that exact condition.
   - No native binary from this candidate is currently allowed to execute from NetPilot.
