@@ -35,6 +35,17 @@ public sealed class WindowsUserProfileStoreTests
         Assert.Equal(first, again);
     }
 
+    [Fact]
+    public void Users_root_is_secured_before_profile_creation()
+    {
+        using var fixture = new StoreFixture();
+
+        fixture.Store.EnsureRoot();
+
+        Assert.Equal(1, fixture.Security.UsersRootSecureCalls);
+        Assert.Equal(fixture.UsersRoot, fixture.Security.LastUsersRoot);
+    }
+
     [Theory]
     [InlineData("S-1-5-18")]
     [InlineData("S-1-5-19")]
@@ -53,9 +64,7 @@ public sealed class WindowsUserProfileStoreTests
         using var fixture = new StoreFixture();
 
         Assert.Throws<InvalidDataException>(() => fixture.Store.EnsureProfile("..\\escape"));
-        Assert.Empty(Directory.Exists(fixture.UsersRoot)
-            ? Directory.GetDirectories(fixture.UsersRoot)
-            : Array.Empty<string>());
+        Assert.Empty(Directory.GetDirectories(fixture.UsersRoot));
     }
 
     private sealed class StoreFixture : IDisposable
@@ -63,13 +72,15 @@ public sealed class WindowsUserProfileStoreTests
         public StoreFixture()
         {
             Root = Path.Combine(Path.GetTempPath(), $"NetPilot-Users-{Guid.NewGuid():N}");
-            Directory.CreateDirectory(Root);
             UsersRoot = Path.Combine(Root, "Users");
-            Store = new WindowsUserProfileStore(Root);
+            Directory.CreateDirectory(UsersRoot);
+            Security = new TestDirectorySecurity();
+            Store = new WindowsUserProfileStore(Root, Security);
         }
 
         public string Root { get; }
         public string UsersRoot { get; }
+        public TestDirectorySecurity Security { get; }
         public WindowsUserProfileStore Store { get; }
 
         public void Dispose()
@@ -78,6 +89,23 @@ public sealed class WindowsUserProfileStoreTests
             {
                 Directory.Delete(Root, recursive: true);
             }
+        }
+    }
+
+    private sealed class TestDirectorySecurity : IWindowsUserProfileDirectorySecurity
+    {
+        public int UsersRootSecureCalls { get; private set; }
+        public string? LastUsersRoot { get; private set; }
+
+        public void SecureUsersRoot(string path)
+        {
+            UsersRootSecureCalls++;
+            LastUsersRoot = path;
+        }
+
+        public void CreateOrSecureProfileRoot(string path)
+        {
+            Directory.CreateDirectory(path);
         }
     }
 }
