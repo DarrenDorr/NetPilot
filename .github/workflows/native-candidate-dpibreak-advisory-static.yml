@@ -209,8 +209,8 @@ jobs:
           grep -Fq 'SERVICE_CONTROL_STOP' dpibreak/crates/windivert/src/divert/mod.rs
           grep -Fq 'TlsAlloc()' dpibreak/crates/windivert/src/divert/mod.rs
 
-          tls_free_count="$(grep -R -F -h 'TlsFree' dpibreak/crates/windivert/src 2>/dev/null | wc -l | tr -d ' ')"
-          drop_count="$(grep -R -E -h 'impl.*Drop.*WinDivert|impl Drop for WinDivert' dpibreak/crates/windivert/src 2>/dev/null | wc -l | tr -d ' ')"
+          tls_free_count="$({ grep -R -F -h 'TlsFree' dpibreak/crates/windivert/src 2>/dev/null || true; } | wc -l | tr -d ' ')"
+          drop_count="$({ grep -R -E -h 'impl.*Drop.*WinDivert|impl Drop for WinDivert' dpibreak/crates/windivert/src 2>/dev/null || true; } | wc -l | tr -d ' ')"
           test "$tls_free_count" -ge 0
           test "$drop_count" -ge 0
 
