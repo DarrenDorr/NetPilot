@@ -6,7 +6,7 @@ namespace NetPilot.Core.Tests;
 public sealed class NoAdmittedEngineProfileRuntimeTests
 {
     [Fact]
-    public async Task Runtime_is_inactive_and_exposes_no_profiles()
+    public async Task Runtime_is_inactive_and_exposes_no_profiles_or_capabilities()
     {
         var runtime = new NoAdmittedEngineProfileRuntime();
 
@@ -14,6 +14,7 @@ public sealed class NoAdmittedEngineProfileRuntimeTests
         var state = await runtime.GetProfileStateAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("no-admitted-engine", runtime.EngineId);
+        Assert.Equal(EngineTrafficCapability.None, runtime.Capabilities.Value);
         Assert.Empty(profiles);
         Assert.False(state.IsActive);
         Assert.Null(state.ActiveProfileId);
