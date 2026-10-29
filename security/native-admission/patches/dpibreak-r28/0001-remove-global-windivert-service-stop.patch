@@ -110,7 +110,7 @@ diff --git a/crates/windivert/src/divert/mod.rs b/crates/windivert/src/divert/mo
 -
 -/// Action parameter for  [`WinDivert::close()`](`fn@WinDivert::close`)
 -pub enum CloseAction {
--    /// Close the handle and try to uninstall the driver.
+-    /// Close the handle and try to uninstall the WinDivert driver.
 -    Uninstall,
 -    /// Close the handle without uninstalling the driver.
 -    Nothing,
