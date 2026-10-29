@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using NetPilot.Engine.Abstractions;
 
@@ -30,7 +29,7 @@ public interface IWindowsVerifiedEngineProcessLauncher
 
 /// <summary>
 /// Production default while native runtime admission is BLOCK. This type contains no
-/// Process/System.Diagnostics state and cannot create a process under any input.
+/// process state and cannot create a process under any input.
 /// </summary>
 public sealed class NoAdmittedWindowsVerifiedEngineProcessLauncher
     : IWindowsVerifiedEngineProcessLauncher
@@ -47,47 +46,6 @@ public sealed class NoAdmittedWindowsVerifiedEngineProcessLauncher
             "Запуск native engine запрещён: production runtime admission остаётся BLOCK.");
 }
 
-/// <summary>
-/// Реальный Windows launcher для отдельного lab/admission composition. Он принимает
-/// только уже compiled typed plan из verified handoff и не имеет overload с path,
-/// command line или raw arguments.
-/// </summary>
-public sealed class SystemWindowsVerifiedEngineProcessLauncher
-    : IWindowsVerifiedEngineProcessLauncher
-{
-    public IWindowsManagedEngineProcess Launch(WindowsCompiledEngineArgumentPlan compiledPlan)
-    {
-        ArgumentNullException.ThrowIfNull(compiledPlan);
-        compiledPlan.EnsureReady();
-
-        var startInfo = WindowsVerifiedEngineProcessStartInfoFactory.Create(compiledPlan);
-        var process = Process.Start(startInfo)
-            ?? throw new WindowsServiceOwnedEngineProcessException(
-                "ProcessCreationFailed",
-                "Windows не вернула дескриптор запущенного verified native process.");
-
-        return new ManagedProcess(process);
-    }
-
-    private sealed class ManagedProcess(Process process) : IWindowsManagedEngineProcess
-    {
-        public int Id => process.Id;
-
-        public bool HasExited => process.HasExited;
-
-        public void KillEntireTree() => process.Kill(entireProcessTree: true);
-
-        public Task WaitForExitAsync(CancellationToken cancellationToken) =>
-            process.WaitForExitAsync(cancellationToken);
-
-        public ValueTask DisposeAsync()
-        {
-            process.Dispose();
-            return ValueTask.CompletedTask;
-        }
-    }
-}
-
 public enum WindowsServiceOwnedEngineProcessState
 {
     Stopped,
@@ -102,6 +60,8 @@ public sealed record WindowsServiceOwnedEngineProcessSnapshot(
 /// Bounded single-process lifecycle for the reviewed ByeDPI loopback shape.
 /// No IPC/user data is accepted here. The controller rejects every plan except the
 /// exact typed R32-compatible shape: -i 127.0.0.1 -p PORT -N -U -c 8 -x 0.
+/// Process creation itself belongs to the single audited launcher in the Windows
+/// engine host layer; production DI uses NoAdmittedWindowsVerifiedEngineProcessLauncher.
 /// </summary>
 public sealed class WindowsByeDpiServiceOwnedProcessController(
     IWindowsVerifiedEngineProcessLauncher launcher) : IAsyncDisposable
