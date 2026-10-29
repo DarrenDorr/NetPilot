@@ -1,0 +1,20 @@
+diff --git a/src/pkt.rs b/src/pkt.rs
+--- a/src/pkt.rs
++++ b/src/pkt.rs
+@@ -232,15 +232,8 @@ pub fn put_hop(pkt: &[u8]) {
+ 
+ /// Return Ok(true) if packet is handled
+ pub fn handle_packet(pkt: &[u8], buf: &mut Vec::<u8>) -> Result<bool> {
+-    #[cfg(target_os = "linux")]
+-    let is_filtered = platform::is_kernel_filtered_clienthello();
+-
+-    #[cfg(windows)]
+-    let is_filtered = true;
+-
+     let view = PktView::from_raw(pkt)?;
+ 
+-    if !is_filtered && !tls::is_client_hello(view.tcp.payload()) {
++    if !tls::is_client_hello(view.tcp.payload()) {
+         return Ok(false);
+     }
+ 
