@@ -1,0 +1,135 @@
+schema_version: 1
+matrix_id: netpilot-prelab-r28.4
+reviewed_at: 2026-10-29
+production_activation_allowed: false
+native_runtime_allowed_by_matrix: false
+
+states:
+  - REVIEW
+  - PRE_LAB_REVIEW
+  - DRAFT_NOT_APPROVED
+  - LAB_APPROVED
+  - ADMIT
+  - BLOCK
+
+rules:
+  lab_plan_does_not_authorize_execution: true
+  lab_pass_does_not_imply_admit: true
+  current_release_gate_remains_block_until_separate_admit: true
+  high_assurance_human_approval_required_for_real_candidate_lab_execution: true
+
+candidates:
+  zapret2:
+    component_set: zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0005
+    role: primary-windows-linux-candidate
+    admission_status: REVIEW
+    release_gate: BLOCK
+    may_execute_in_netpilot: false
+    may_integrate_in_netpilot: false
+    source_identity:
+      base_release_commit: 221d7dff24bfec0cd5ac0a5070b8acef2008af3d
+      required_uaf_fix_commit: 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d
+      source_tree: 5c2a77786cc7089145abe2ca99bcc53a8ed7de15
+    verified_evidence:
+      source_and_patch_provenance: PASS
+      linux_compile_only: PASS
+      windows_compile_only: PASS
+      static_sanitizer_compile: PASS
+      deterministic_parser_asan_ubsan: PASS
+      bounded_parser_fuzz: PASS
+      conntrack_budget_regression: PASS
+      synthetic_resource_stress: PASS
+      packet_queue_asan_ubsan: PASS
+      windivert_inventory_only: PASS
+    evidence_scope_limits:
+      - no production engine execution
+      - no WinDivert driver load
+      - no NFQUEUE/firewall interception
+      - no real Discord/YouTube workload measurement
+      - production conntrack/queue numeric budgets not selected
+    lab:
+      linux_state: PRE_LAB_REVIEW
+      linux_plan: security/native-admission/lab-plans/zapret2-linux-r28.4.yaml
+      linux_plan_status: DRAFT_NOT_APPROVED
+      windows_state: BLOCK
+      windows_blockers:
+        - WD-RUNTIME-001
+        - WD-LIFECYCLE-002
+        - WD-DEFENDER-003
+    next_decision:
+      - complete current CI reruns without regression
+      - define evidence-based temporary nonzero lab resource budgets
+      - human review exact Linux lab plan
+      - do not execute before LAB_APPROVED
+
+  byedpi:
+    component_set: byedpi-v0.17.3-netpilot-fork-candidate
+    role: android-primary-or-secondary-proxy-candidate
+    windows_role: secondary-requires-separate-transparent-routing-admission
+    admission_status: REVIEW
+    release_gate: BLOCK
+    may_execute_in_netpilot: false
+    may_integrate_in_netpilot: false
+    source_identity:
+      release_commit: 7efde1b1296eaaa187b70e951894dde17527489c
+      release_tree: 8d13f6f5939190cd27ee68696247073a00b3e7dc
+    patchset:
+      - 0001-loopback-only-listener.patch
+      - 0002-kavl-iterator-no-before-array-sentinel.patch
+      - 0003-pid-file-fail-safe-write.patch
+      - 0004-kavl-empty-erase-guard.patch
+      - 0005-windows-socket-handle-narrowing-guard.patch
+      - 0006-windows-wait-result-range.patch
+    verified_evidence:
+      historical_patch_0001_linux_windows_compile: PASS
+      targeted_kavl_asan_ubsan: PASS
+      full_patchset_0001_0006_compile: PENDING_RERUN_AFTER_CANONICAL_GIT_BYTES_IDENTITY_FIX
+      pidfile_static_full_identity: PENDING
+      windows_targeted_warning_gates: PENDING
+    current_ci_fix:
+      issue: working-tree patch bytes differed from canonical Git blob bytes during SHA-256 verification
+      resolution: materialize reviewed patches with git-show and verify/apply canonical blob bytes
+      workflow: .github/workflows/native-candidate-byedpi-compile-smoke.yml
+      commit: fc79c25c2fcadd5c7dbc636fe717786d8743cf3e
+      security_effect: identity_check_stricter_not_weaker
+    lab:
+      state: PRE_LAB_REVIEW_ONLY_AFTER_GREEN_FULL_PATCHSET_GATES
+      plan: security/native-admission/lab-plans/byedpi-loopback-r28.4.yaml
+      plan_status: DRAFT_NOT_APPROVED
+      listener_scope: loopback_only
+      transparent_windows_routing_in_scope: false
+      android_vpn_tun_in_scope: false
+    next_decision:
+      - require full patchset Linux/Windows compile success
+      - require targeted Windows warning gates success
+      - require PID-file/static/sanitizer evidence for exact patchset
+      - human review exact loopback lab plan
+      - do not start ciadpi before LAB_APPROVED
+
+  dpibreak:
+    role: reserve-windows-linux-candidate
+    admission_status: SURVEY_ONLY
+    release_gate: NOT_EVALUATED_FOR_ADMIT
+    may_execute_in_netpilot: false
+    may_integrate_in_netpilot: false
+    note: Keep as independent fallback candidate; no NetPilot fork or native runtime integration is authorized in R28.4.
+
+promotion_requirements:
+  to_lab_approved:
+    - exact candidate binary hashes pinned
+    - exact source and patch identities pinned
+    - all boundary-relevant compile/static/sanitizer/resource gates green
+    - no unresolved blocker inside requested execution boundary
+    - candidate-specific lab plan complete
+    - HIGH_ASSURANCE human approval recorded
+  to_admit:
+    - successful scoped lab evidence where required
+    - component/advisory review repeated for exact build
+    - production resource policy fixed and typed
+    - update/provenance model fixed
+    - separate HIGH_ASSURANCE security decision
+
+notes:
+  - This matrix is status/evidence metadata only and cannot authorize execution.
+  - No candidate is currently ADMIT.
+  - No native engine start/install path may be enabled in NetPilot production from this file.
