@@ -141,6 +141,20 @@ jobs:
           git apply "$patch_file"
           grep -Fq '!max_entries || HASH_COUNT(*pp) >= max_entries' nfq2/conntrack.c
 
+      - name: Verify and apply NetPilot patch 0006
+        shell: bash
+        working-directory: zapret2
+        run: |
+          set -euo pipefail
+          patch_file="../netpilot/security/native-admission/patches/zapret2-r28/0006-fail-closed-zero-delayed-queue-budget.patch"
+          echo 'f5f3c01c73db3584513adc345da838bef6035c95a59762c469a386c7ad201d97  '"$patch_file" | sha256sum -c -
+          git apply --check "$patch_file"
+          mapfile -t patched_files < <(git apply --numstat "$patch_file" | awk '{print $3}' | sort)
+          test "${#patched_files[@]}" -eq 1
+          test "${patched_files[0]}" = "nfq2/packet_queue.c"
+          git apply "$patch_file"
+          grep -Fq 'if (!q->max_bytes || new_queued_bytes > q->max_bytes) return NULL;' nfq2/packet_queue.c
+
       - name: Produce provenance evidence
         shell: bash
         working-directory: zapret2
@@ -152,9 +166,10 @@ jobs:
           patch_0003="../netpilot/security/native-admission/patches/zapret2-r28/0003-bounded-delayed-queue-bytes.patch"
           patch_0004="../netpilot/security/native-admission/patches/zapret2-r28/0004-explicit-daemon-stdio-redirection.patch"
           patch_0005="../netpilot/security/native-admission/patches/zapret2-r28/0005-fail-closed-zero-conntrack-budget.patch"
+          patch_0006="../netpilot/security/native-admission/patches/zapret2-r28/0006-fail-closed-zero-delayed-queue-budget.patch"
           {
-            echo "schema_version=6"
-            echo "candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0005"
+            echo "schema_version=7"
+            echo "candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0006-proposed"
             echo "repository=https://github.com/bol-van/zapret2"
             echo "head_commit=$(git rev-parse HEAD)"
             echo "parent_commit=$(git rev-parse HEAD^)"
@@ -164,6 +179,7 @@ jobs:
             echo "netpilot_patch_0003_sha256=$(sha256sum "$patch_0003" | awk '{print $1}')"
             echo "netpilot_patch_0004_sha256=$(sha256sum "$patch_0004" | awk '{print $1}')"
             echo "netpilot_patch_0005_sha256=$(sha256sum "$patch_0005" | awk '{print $1}')"
+            echo "netpilot_patch_0006_sha256=$(sha256sum "$patch_0006" | awk '{print $1}')"
             echo "patched_worktree_files_begin"
             git diff --name-only HEAD | sort
             echo "patched_worktree_files_end"
@@ -174,6 +190,7 @@ jobs:
           cp "$patch_0003" ../evidence/netpilot-0003-bounded-delayed-queue-bytes.patch
           cp "$patch_0004" ../evidence/netpilot-0004-explicit-daemon-stdio-redirection.patch
           cp "$patch_0005" ../evidence/netpilot-0005-fail-closed-zero-conntrack-budget.patch
+          cp "$patch_0006" ../evidence/netpilot-0006-fail-closed-zero-delayed-queue-budget.patch
           git diff --binary HEAD > ../evidence/netpilot-patched-worktree.diff
           sha256sum ../evidence/* | sort > ../evidence/SHA256SUMS.txt
 
