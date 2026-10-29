@@ -215,16 +215,11 @@ public sealed class PrivilegedIpcWorker(
             clientSid,
             clientSessionId);
 
-        if (result.Success)
-        {
-            userProfileStore.EnsureProfile(clientSid);
-        }
-
         return result.Success
             ? Success(
                 request,
                 result.Status == AuthorizedUserEnrollmentStatus.Enrolled
-                    ? "Владелец системной установки NetPilot зарегистрирован; пользовательский SID-профиль создан."
+                    ? "Владелец системной установки NetPilot зарегистрирован."
                     : "Этот пользователь Windows уже является владельцем системной установки NetPilot.")
             : Failure(
                 request,
