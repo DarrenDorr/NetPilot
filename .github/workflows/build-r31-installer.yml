@@ -20,7 +20,7 @@ jobs:
       - name: Checkout exact R31.1 checkpoint
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: c2ec951cb8062e4377a302f704863455c48a9ad0
+          ref: 39e1aa76d298f814a534dbb76d1237d07f89b698
           persist-credentials: false
           fetch-depth: 1
 
@@ -28,7 +28,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $expected = 'c2ec951cb8062e4377a302f704863455c48a9ad0'
+          $expected = '39e1aa76d298f814a534dbb76d1237d07f89b698'
           $actual = (git rev-parse HEAD).Trim()
           if ($actual -ne $expected) {
             throw "Unexpected checkout SHA: $actual"
