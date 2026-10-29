@@ -1,0 +1,144 @@
+schema_version: 1
+component_set: windivert-v2.2.2-a-x64-candidate
+admission_status: BLOCK
+release_gate: BLOCK
+reviewed_at: 2026-10-29
+
+candidate:
+  kind: kernel_driver_dependency_candidate
+  role: windows-packet-diversion-boundary-for-zapret2-and-dpibreak
+  may_execute: false
+  may_integrate: false
+  may_install_driver: false
+  may_load_driver: false
+  production_activation_allowed: false
+
+upstream:
+  repository: https://github.com/basil00/WinDivert
+  release_tag: v2.2.2
+  release_commit: 1789526ecfb9ff5397c94f9f54c1a3dc2fb60440
+  release_tree: 214b01fe064d851b7ba037fb5b9c7b8fd890c55a
+  release_asset: WinDivert-2.2.2-A.zip
+  release_asset_id: 78510020
+  release_asset_size_bytes: 405137
+  release_asset_sha256: 63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15
+  license_options:
+    - LGPL-3.0
+    - GPL-2.0
+  preferred_netpilot_boundary: separate_component_under_lgpl3_if_ever_admitted
+
+inventory:
+  status: PASS_FOR_INVENTORY_AND_SIGNATURE_OBSERVATION_ONLY
+  workflow_run_id: 40726114320
+  artifact_id: 12832851711
+  artifact_name: windivert-2.2.2-a-x64-inventory-evidence
+  artifact_zip_sha256: c444ac9e5f17e0760606df17f983f6b1674d9fe42fbfe5c1755ce5aa85ce0ae8
+  dll:
+    filename: WinDivert.dll
+    size_bytes: 47616
+    sha256: c1e060ee19444a259b2162f8af0f3fe8c4428a1c6f694dce20de194ac8d7d9a2
+    authenticode_status: NotSigned
+  driver:
+    filename: WinDivert64.sys
+    size_bytes: 94144
+    sha256: 8da085332782708d8767bcace5327a6ec7283c17cfb85e40b03cd2323a90ddc2
+    file_version: "2.2"
+    product_version: "2.2"
+    authenticode_status: Valid
+    signer_thumbprint: 043589F75FCE2795E7F2CC3E526D46784D5DDAB3
+  files_executed: false
+  driver_installed: false
+  driver_loaded: false
+  admission_effect: NONE
+
+blockers:
+  - id: WD-RUNTIME-001
+    severity: RELEASE_BLOCKER
+    upstream_issue: https://github.com/basil00/WinDivert/issues/408
+    upstream_issue_state: OPEN
+    finding: control device can receive startup I/O before reflect state is initialized during first driver load, allowing a race that may produce bugcheck 0xD1
+    current_master_observation_commit: 97101072dbe31d744ca3429da389350a3df39e18
+    current_master_fix_confirmed: false
+    release_effect: BLOCK
+  - id: WD-LIFECYCLE-002
+    severity: RELEASE_BLOCKER
+    upstream_issue: https://github.com/basil00/WinDivert/issues/406
+    upstream_issue_state: OPEN
+    finding: global service stop while other handles exist can leave ERROR_SERVICE_DISABLED 1058/lifecycle conflict
+    netpilot_policy: never force-stop-or-remove a shared WinDivert service without exclusive lifecycle ownership evidence
+    release_effect: BLOCK
+  - id: WD-DEFENDER-003
+    severity: RELEASE_REVIEW_BLOCKER
+    upstream_issue: https://github.com/basil00/WinDivert/issues/411
+    upstream_issue_state: OPEN
+    finding: artifact-specific Microsoft Defender detection is unresolved for the exact official 2.2.2-A archive
+    netpilot_policy:
+      - never disable Defender
+      - never add automatic exclusions
+      - never restore quarantined components automatically
+      - require artifact-specific reviewed disposition or replacement component set
+    release_effect: BLOCK
+  - id: WD-SIGNING-003
+    severity: RELEASE_BLOCKER_FOR_MODIFIED_DRIVER
+    finding: any modified kernel driver requires an independently acceptable Microsoft production driver-signing path before public Windows distribution
+    test_signing_is_production_solution: false
+    self_signed_driver_is_production_solution: false
+    release_effect: BLOCK
+
+r28_5_fix_design:
+  document: docs/WINDIVERT-WINDOWS-RELEASE-DECISION-R28.5.md
+  status: RECOMMENDED_FOR_REVIEW_NOT_APPLIED
+  fork_created: false
+  preferred_design:
+    - keep WdfDeviceCreate/default queue/symbolic-link creation as construction steps
+    - do not call WdfControlFinishInitializing while WFP/reflect initialization is incomplete
+    - complete injection handles, buffer pools and WFP transaction
+    - complete windivert_reflect_init(device)
+    - call WdfControlFinishInitializing(device) only after all required initialization succeeds
+  rationale: KMDF does not send IO/WMI requests to a control device before WdfControlFinishInitializing, providing an initialization barrier rather than silently dropping reflect events
+  requires_before_patch:
+    - independent HIGH_ASSURANCE kernel/WDF lifecycle review
+    - error/unload path review before control-device finish
+    - WDK/KMDF compile and static analysis without driver load
+    - confirmed production signing feasibility
+
+fork_policy:
+  upstream_repository_read_only: true
+  netpilot_owned_fork_allowed: true
+  fork_creation_now: false
+  fork_creation_requires:
+    - upstream fixed tagged release unavailable or unsuitable
+    - HIGH_ASSURANCE approval of exact kernel patch design
+    - confirmed license/distribution boundary
+    - confirmed Microsoft production signing path
+  fork_must_use_own_name_and_version: true
+  automatic_upstream_master_merge_allowed: false
+
+forbidden_workarounds:
+  - disable_secure_boot_for_production
+  - disable_defender
+  - automatic_defender_exclusion
+  - test_signing_as_production
+  - self_signed_kernel_driver_as_production
+  - force_stop_or_remove_foreign_windivert_service
+  - trust_floating_master_or_latest
+
+required_before_lab_approved:
+  - exact fixed source/component identity pinned
+  - blocker WD-RUNTIME-001 closed by reviewed source or replacement component
+  - blocker WD-LIFECYCLE-002 addressed by reviewed ownership/lifecycle design
+  - driver signing path appropriate for the lab and future production decision documented
+  - candidate-specific isolated Windows driver lab plan
+  - explicit HIGH_ASSURANCE human approval
+
+required_before_admit:
+  - successful isolated lifecycle/concurrency/crash/reboot evidence
+  - exact DLL/SYS hashes and signatures pinned
+  - current advisory/Defender disposition reviewed
+  - production signing/distribution compliance complete
+  - separate HIGH_ASSURANCE production decision
+
+notes:
+  - Inventory PASS is not runtime safety evidence.
+  - A valid Authenticode signature on WinDivert64.sys is not an ADMIT decision for the full archive or driver lifecycle.
+  - No WinDivert driver may be installed or loaded from NetPilot while this manifest remains BLOCK.
