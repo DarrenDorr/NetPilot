@@ -1,0 +1,204 @@
+name: Native Candidate ByeDPI Static and Sanitizer
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/native-candidate-byedpi-static-sanitizer.yml"
+      - "security/native-admission/harnesses/byedpi-r28/**"
+      - "security/native-admission/patches/byedpi-r28/**"
+      - "security/native-admission/byedpi-v0.17.3-fork-candidate.yaml"
+      - "docs/BYEDPI-*.md"
+
+permissions:
+  contents: read
+
+jobs:
+  kavl-sanitizer:
+    name: ByeDPI KAVL iterator ASan/UBSan without candidate execution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout NetPilot without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: netpilot
+          persist-credentials: false
+
+      - name: Checkout exact ByeDPI v0.17.3 source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: hufrea/byedpi
+          ref: 7efde1b1296eaaa187b70e951894dde17527489c
+          fetch-depth: 1
+          path: byedpi
+          persist-credentials: false
+
+      - name: Verify exact source, harness and patch identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C byedpi rev-parse HEAD)" = "7efde1b1296eaaa187b70e951894dde17527489c"
+          test "$(git -C byedpi rev-parse 'HEAD^{tree}')" = "8d13f6f5939190cd27ee68696247073a00b3e7dc"
+          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/harnesses/byedpi-r28/kavl_iterator_harness.c')" = "62b6558bfb90284d97cc1d023454591f749c27e5"
+
+          patch1='security/native-admission/patches/byedpi-r28/0001-loopback-only-listener.patch'
+          patch2='security/native-admission/patches/byedpi-r28/0002-kavl-iterator-no-before-array-sentinel.patch'
+          test "$(git -C netpilot rev-parse "HEAD:$patch1")" = "fa9ba3349792d66f40d925bc612310e8d18aae8a"
+          test "$(git -C netpilot rev-parse "HEAD:$patch2")" = "82921e2f9e594ca406948307a2ca0566c4283b0d"
+
+          mkdir -p scratch evidence
+          git -C netpilot show "HEAD:$patch1" > scratch/0001.patch
+          git -C netpilot show "HEAD:$patch2" > scratch/0002.patch
+          test "$(sha256sum scratch/0001.patch | awk '{print $1}')" = "3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068"
+          test "$(sha256sum scratch/0002.patch | awk '{print $1}')" = "69a690868e5ed86cb06eb2600863144a2414734513150f116695f6b7634762d4"
+
+          git -C byedpi apply --verbose --check "$PWD/scratch/0001.patch"
+          git -C byedpi apply --verbose "$PWD/scratch/0001.patch"
+          git -C byedpi apply --verbose --check "$PWD/scratch/0002.patch"
+          git -C byedpi apply --verbose "$PWD/scratch/0002.patch"
+
+          if grep -Fq 'itr->stack - 1' byedpi/kavl.h; then
+            echo 'legacy one-before-array iterator sentinel remains after hardening patch' >&2
+            exit 1
+          fi
+          grep -Fq '#define kavl_at(itr) ((itr)->top? *(itr)->top : 0)' byedpi/kavl.h
+
+      - name: Install isolated sanitizer dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential strace
+
+      - name: Compile real ByeDPI mpool with array-bounds warning promoted to error
+        id: mpool_compile
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcc \
+            -D_DEFAULT_SOURCE \
+            -Ibyedpi \
+            -std=c99 -O2 \
+            -Wall -Wextra -Wno-unused -Wno-unused-parameter -pedantic \
+            -Werror=array-bounds \
+            -c byedpi/mpool.c \
+            -o scratch/mpool.o \
+            2>&1 | tee evidence/mpool-compile.log
+          test -f scratch/mpool.o
+
+      - name: Strict-compile KAVL harness with ASan/UBSan
+        id: harness_compile
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcc \
+            -D_DEFAULT_SOURCE \
+            -std=c11 -O1 -g \
+            -fsanitize=address,undefined \
+            -fno-sanitize-recover=all \
+            -fno-omit-frame-pointer \
+            -Wall -Wextra -Werror \
+            -Ibyedpi \
+            netpilot/security/native-admission/harnesses/byedpi-r28/kavl_iterator_harness.c \
+            -o scratch/kavl_iterator_harness \
+            2>&1 | tee evidence/harness-compile.log
+          test -x scratch/kavl_iterator_harness
+
+      - name: Run deterministic KAVL sanitizer regression
+        id: regression
+        if: steps.mpool_compile.outcome == 'success' && steps.harness_compile.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          ASAN_OPTIONS='detect_leaks=1:abort_on_error=1:strict_string_checks=1' \
+          UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1' \
+          timeout 30s ./scratch/kavl_iterator_harness \
+            2>&1 | tee evidence/regression.log
+          grep -Fxq 'kavl_iterator_harness: PASS' evidence/regression.log
+
+      - name: Verify harness performs no network syscalls
+        id: no_network
+        if: steps.regression.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          ASAN_OPTIONS='detect_leaks=0:abort_on_error=1' \
+          UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1' \
+          strace -f -qq -e trace=network -o evidence/network-syscalls.log \
+            ./scratch/kavl_iterator_harness >/dev/null 2>&1
+
+          if grep -Eq 'socket\(|socketpair\(|connect\(|accept\(|accept4\(|bind\(|listen\(|sendto\(|recvfrom\(|sendmsg\(|recvmsg\(' evidence/network-syscalls.log; then
+            cat evidence/network-syscalls.log
+            exit 1
+          fi
+
+      - name: Produce text-only evidence and remove binaries
+        if: always()
+        shell: bash
+        env:
+          MPOOL_COMPILE_OUTCOME: ${{ steps.mpool_compile.outcome }}
+          HARNESS_COMPILE_OUTCOME: ${{ steps.harness_compile.outcome }}
+          REGRESSION_OUTCOME: ${{ steps.regression.outcome }}
+          NO_NETWORK_OUTCOME: ${{ steps.no_network.outcome }}
+        run: |
+          set -euo pipefail
+          harness_sha256="$(sha256sum netpilot/security/native-admission/harnesses/byedpi-r28/kavl_iterator_harness.c | awk '{print $1}')"
+          {
+            echo 'schema_version=1'
+            echo 'scope=byedpi-v0.17.3-kavl-iterator-sanitizer'
+            echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
+            echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
+            echo 'patch_0001_git_blob_sha1=fa9ba3349792d66f40d925bc612310e8d18aae8a'
+            echo 'patch_0001_sha256=3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068'
+            echo 'patch_0002_git_blob_sha1=82921e2f9e594ca406948307a2ca0566c4283b0d'
+            echo 'patch_0002_sha256=69a690868e5ed86cb06eb2600863144a2414734513150f116695f6b7634762d4'
+            echo 'harness_git_blob_sha1=62b6558bfb90284d97cc1d023454591f749c27e5'
+            echo "harness_sha256=$harness_sha256"
+            echo "compiler=$(gcc --version | head -n1)"
+            echo 'sanitizers=ASan,UBSan'
+            echo 'node_count_per_cycle=1024'
+            echo 'cycles=40'
+            echo 'tests=empty-first,empty-next,empty-find,in-order,exact-find,lower-bound-find,above-max,repeat-destroy'
+            echo "mpool_array_bounds_compile_outcome=$MPOOL_COMPILE_OUTCOME"
+            echo "harness_compile_outcome=$HARNESS_COMPILE_OUTCOME"
+            echo "regression_outcome=$REGRESSION_OUTCOME"
+            echo "no_network_syscalls_outcome=$NO_NETWORK_OUTCOME"
+            echo 'candidate_binary_executed=false'
+            echo 'listener_opened=false'
+            echo 'routing_changed=false'
+            echo 'admission_effect=NONE'
+            echo 'release_gate=BLOCK'
+          } > evidence/byedpi-kavl-sanitizer.txt
+
+          rm -f scratch/mpool.o scratch/kavl_iterator_harness scratch/0001.patch scratch/0002.patch
+          sha256sum evidence/* | sort > evidence/SHA256SUMS-byedpi-kavl-sanitizer.txt
+
+      - name: Upload text evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: byedpi-r28-kavl-sanitizer-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce ByeDPI KAVL sanitizer gate
+        if: always()
+        shell: bash
+        env:
+          MPOOL_COMPILE_OUTCOME: ${{ steps.mpool_compile.outcome }}
+          HARNESS_COMPILE_OUTCOME: ${{ steps.harness_compile.outcome }}
+          REGRESSION_OUTCOME: ${{ steps.regression.outcome }}
+          NO_NETWORK_OUTCOME: ${{ steps.no_network.outcome }}
+        run: |
+          set -euo pipefail
+          test "$MPOOL_COMPILE_OUTCOME" = 'success'
+          test "$HARNESS_COMPILE_OUTCOME" = 'success'
+          test "$REGRESSION_OUTCOME" = 'success'
+          test "$NO_NETWORK_OUTCOME" = 'success'
