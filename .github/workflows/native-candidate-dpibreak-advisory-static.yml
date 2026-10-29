@@ -1,0 +1,195 @@
+name: Native Candidate DPIBreak Advisory and Static Intake
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/native-candidate-dpibreak-advisory-static.yml"
+      - "security/native-admission/dpibreak-v0.6.2-candidate.yaml"
+      - "docs/DPIBREAK-*.md"
+
+permissions:
+  contents: read
+
+jobs:
+  dpibreak-advisory-static:
+    name: Exact Cargo.lock advisory audit and unsafe/FFI inventory without candidate execution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout NetPilot without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: netpilot
+          persist-credentials: false
+
+      - name: Checkout exact DPIBreak v0.6.2 source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: dilluti0n/dpibreak
+          ref: 334285b60aabd5a32a83a65211ac60bce968b211
+          fetch-depth: 1
+          path: dpibreak
+          persist-credentials: false
+
+      - name: Verify exact source and lockfile identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C dpibreak rev-parse HEAD)" = "334285b60aabd5a32a83a65211ac60bce968b211"
+          test "$(git -C dpibreak rev-parse 'HEAD^{tree}')" = "7e95a17933fe9fda521865b1317c4f9f75d6c58c"
+          test "$(git -C dpibreak rev-parse 'HEAD:Cargo.lock')" = "e3adcd1b21711e7e754878b15625076c7bcaf7e9"
+          mkdir -p evidence
+          sha256sum dpibreak/Cargo.lock | tee evidence/cargo-lock.sha256
+          printf 'source_commit=%s\nsource_tree=%s\ncargo_lock_git_blob_sha1=%s\n' \
+            "$(git -C dpibreak rev-parse HEAD)" \
+            "$(git -C dpibreak rev-parse 'HEAD^{tree}')" \
+            "$(git -C dpibreak rev-parse 'HEAD:Cargo.lock')" \
+            > evidence/source-identity.txt
+
+      - name: Install pinned cargo-audit outside candidate source
+        id: install_audit
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo audit --version | tee evidence/cargo-audit-version.txt
+
+      - name: Audit exact Cargo.lock from neutral directory
+        id: rustsec
+        continue-on-error: true
+        if: steps.install_audit.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          lockfile="$GITHUB_WORKSPACE/dpibreak/Cargo.lock"
+          audit_bin="$(command -v cargo-audit)"
+          mkdir -p "$RUNNER_TEMP/netpilot-rustsec-neutral"
+          cd "$RUNNER_TEMP/netpilot-rustsec-neutral"
+          "$audit_bin" audit --file "$lockfile" --json > "$GITHUB_WORKSPACE/evidence/cargo-audit.json"
+
+      - name: Inventory unsafe and native-boundary source without execution
+        id: inventory
+        continue-on-error: true
+        shell: python
+        run: |
+          from pathlib import Path
+          import json
+          import re
+
+          root = Path("dpibreak")
+          evidence = Path("evidence")
+          evidence.mkdir(exist_ok=True)
+
+          scopes = [root / "src", root / "windivert"]
+          patterns = {
+              "unsafe_block_or_fn": re.compile(r"\bunsafe\b"),
+              "extern_boundary": re.compile(r"\bextern\b|extern\s+\"(?:C|system)\""),
+              "raw_pointer": re.compile(r"\*const\s+|\*mut\s+"),
+              "transmute": re.compile(r"\btransmute(?:_copy)?\b"),
+              "from_raw": re.compile(r"\bfrom_raw(?:_parts|_parts_mut)?\b"),
+              "as_ptr": re.compile(r"\bas_(?:mut_)?ptr\b"),
+          }
+
+          findings = []
+          counts = {key: 0 for key in patterns}
+          files_scanned = 0
+
+          for scope in scopes:
+              if not scope.exists():
+                  continue
+              for path in sorted(scope.rglob("*.rs")):
+                  files_scanned += 1
+                  text = path.read_text(encoding="utf-8", errors="replace")
+                  for lineno, line in enumerate(text.splitlines(), start=1):
+                      hits = [name for name, pattern in patterns.items() if pattern.search(line)]
+                      if not hits:
+                          continue
+                      for hit in hits:
+                          counts[hit] += 1
+                      findings.append({
+                          "path": path.as_posix(),
+                          "line": lineno,
+                          "kinds": hits,
+                          "text": line.strip()[:240],
+                      })
+
+          summary = {
+              "schema_version": 1,
+              "scope": "dpibreak-v0.6.2-static-unsafe-ffi-inventory",
+              "source_commit": "334285b60aabd5a32a83a65211ac60bce968b211",
+              "files_scanned": files_scanned,
+              "counts": counts,
+              "candidate_binary_executed": False,
+              "network_interception_enabled": False,
+          }
+          (evidence / "unsafe-ffi-summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+          (evidence / "unsafe-ffi-findings.json").write_text(json.dumps(findings, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+          lines = [
+              "schema_version=1",
+              "scope=dpibreak-v0.6.2-static-unsafe-ffi-inventory",
+              f"files_scanned={files_scanned}",
+          ]
+          for key in sorted(counts):
+              lines.append(f"{key}_occurrences={counts[key]}")
+          lines += [
+              "candidate_binary_executed=false",
+              "network_interception_enabled=false",
+              "result=INVENTORY_ONLY_REVIEW_REQUIRED",
+          ]
+          (evidence / "unsafe-ffi-inventory.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+      - name: Produce text-only gate evidence
+        if: always()
+        shell: bash
+        env:
+          INSTALL_AUDIT_OUTCOME: ${{ steps.install_audit.outcome }}
+          RUSTSEC_OUTCOME: ${{ steps.rustsec.outcome }}
+          INVENTORY_OUTCOME: ${{ steps.inventory.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          {
+            echo 'schema_version=1'
+            echo 'scope=dpibreak-v0.6.2-advisory-static-intake'
+            echo 'source_commit=334285b60aabd5a32a83a65211ac60bce968b211'
+            echo 'source_tree=7e95a17933fe9fda521865b1317c4f9f75d6c58c'
+            echo 'cargo_lock_git_blob_sha1=e3adcd1b21711e7e754878b15625076c7bcaf7e9'
+            echo 'cargo_audit_version=0.22.2'
+            echo "cargo_audit_install_outcome=$INSTALL_AUDIT_OUTCOME"
+            echo "rustsec_audit_outcome=$RUSTSEC_OUTCOME"
+            echo "unsafe_ffi_inventory_outcome=$INVENTORY_OUTCOME"
+            echo 'audit_mode=exact-lockfile-from-neutral-directory'
+            echo 'candidate_binary_executed=false'
+            echo 'nfqueue_enabled=false'
+            echo 'firewall_changed=false'
+            echo 'windivert_loaded=false'
+            echo 'admission_effect=NONE'
+            echo 'release_gate=BLOCK'
+          } > evidence/dpibreak-advisory-static.txt
+          sha256sum evidence/* | sort > evidence/SHA256SUMS-dpibreak-advisory-static.txt
+
+      - name: Upload text and JSON evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dpibreak-r28-advisory-static-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce advisory/static gate
+        if: always()
+        shell: bash
+        env:
+          INSTALL_AUDIT_OUTCOME: ${{ steps.install_audit.outcome }}
+          RUSTSEC_OUTCOME: ${{ steps.rustsec.outcome }}
+          INVENTORY_OUTCOME: ${{ steps.inventory.outcome }}
+        run: |
+          set -euo pipefail
+          test "$INSTALL_AUDIT_OUTCOME" = 'success'
+          test "$RUSTSEC_OUTCOME" = 'success'
+          test "$INVENTORY_OUTCOME" = 'success'
