@@ -8,6 +8,7 @@ on:
       - "security/native-admission/patches/dpibreak-r28/**"
       - "security/native-admission/dpibreak-windows-hardening-r28.4.yaml"
       - "security/native-admission/dpibreak-v0.6.2-candidate.yaml"
+      - "security/native-admission/dpibreak-v0.6.2-netpilot-fork-candidate.yaml"
       - "docs/DPIBREAK-PRIVILEGED-BOUNDARY-R28.4.md"
 
 permissions:
@@ -50,7 +51,7 @@ jobs:
           patch3='security/native-admission/patches/dpibreak-r28/0003-disable-custom-nft-executable.patch'
           test "$(git -C netpilot rev-parse "HEAD:$patch1")" = "3b0cf8644b58ca924cfe616c2907b02e7b42497f"
           test "$(git -C netpilot rev-parse "HEAD:$patch2")" = "46f70538b5d5ea05573f22f83fd0e071c7bed489"
-          test "$(git -C netpilot rev-parse "HEAD:$patch3")" = "e1d4e90d2de7f51df83a3f8e3d09d03a675cab8f"
+          test "$(git -C netpilot rev-parse "HEAD:$patch3")" = "d27efdb337fabe15745832d00acbb6a039f7cb7c"
 
           git -C netpilot show "HEAD:$patch1" > scratch/0001.patch
           git -C netpilot show "HEAD:$patch2" > scratch/0002.patch
@@ -72,8 +73,6 @@ jobs:
           done
           git -C dpibreak diff --check
 
-          # Patch 0001: candidate must not retain an app-controlled global
-          # WinDivert service stop/uninstall surface.
           ! grep -R -Fq 'WinDivert::uninstall()' dpibreak/src dpibreak/crates/windivert/src
           ! grep -R -Fq 'CloseAction::Uninstall' dpibreak/src dpibreak/crates/windivert/src
           ! grep -R -Fq 'SERVICE_CONTROL_STOP' dpibreak/crates/windivert/src
@@ -83,20 +82,15 @@ jobs:
           grep -Fq 'if let Err(e) = wd.close()' dpibreak/src/platform/windows.rs
           grep -Fq 'pub fn close(&mut self) -> WinResult<()>' dpibreak/crates/windivert/src/divert/mod.rs
 
-          # Patch 0002: userspace always revalidates TLS ClientHello instead
-          # of trusting that a kernel/NFQUEUE prefilter still describes every
-          # post-segmentation packet delivered to userspace.
           grep -Fq 'if !tls::is_client_hello(view.tcp.payload()) {' dpibreak/src/pkt.rs
           ! grep -Fq 'let is_filtered = platform::is_kernel_filtered_clienthello();' dpibreak/src/pkt.rs
           ! grep -Fq 'if !is_filtered && !tls::is_client_hello' dpibreak/src/pkt.rs
 
-          # Patch 0003: custom privileged executable selection must fail closed.
+          grep -Fq 'let nft_command = String::from(DEFAULT_NFT_COMMAND);' dpibreak/src/opt.rs
           grep -Fq 'return Err(anyhow!("--nft-command is disabled in the NetPilot hardened build"));' dpibreak/src/opt.rs
           ! grep -Fq '"--nft-command" => { nft_command = take_value' dpibreak/src/opt.rs
           grep -Fq 'const DEFAULT_NFT_COMMAND: &str = "nft";' dpibreak/src/opt.rs
 
-          # Still-open review boundaries are intentionally pinned rather than
-          # hidden by this patchset.
           grep -Fq 'TlsAlloc()' dpibreak/crates/windivert/src/divert/mod.rs
           grep -Fq 'WinDivert::network' dpibreak/src/platform/windows.rs
 
@@ -122,13 +116,13 @@ jobs:
           if [ -f evidence/patch-0002.sha256 ]; then patch2_sha256="$(cat evidence/patch-0002.sha256)"; fi
           if [ -f evidence/patch-0003.sha256 ]; then patch3_sha256="$(cat evidence/patch-0003.sha256)"; fi
           {
-            echo 'schema_version=3'
+            echo 'schema_version=4'
             echo 'scope=dpibreak-v0.6.2-netpilot-source-hardening-0001-0003'
             echo 'release_commit=334285b60aabd5a32a83a65211ac60bce968b211'
             echo 'release_tree=7e95a17933fe9fda521865b1317c4f9f75d6c58c'
             echo 'patch_0001_git_blob_sha1=3b0cf8644b58ca924cfe616c2907b02e7b42497f'
             echo 'patch_0002_git_blob_sha1=46f70538b5d5ea05573f22f83fd0e071c7bed489'
-            echo 'patch_0003_git_blob_sha1=e1d4e90d2de7f51df83a3f8e3d09d03a675cab8f'
+            echo 'patch_0003_git_blob_sha1=d27efdb337fabe15745832d00acbb6a039f7cb7c'
             echo "patch_0001_sha256=$patch1_sha256"
             echo "patch_0002_sha256=$patch2_sha256"
             echo "patch_0003_sha256=$patch3_sha256"
