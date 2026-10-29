@@ -1,4 +1,4 @@
-schema_version: 3
+schema_version: 4
 matrix_id: netpilot-prelab-r28.4
 reviewed_at: 2026-10-29
 production_activation_allowed: false
@@ -87,33 +87,45 @@ candidates:
       patch_0007_git_blob_sha1: e7b590a7d0594be0629bac221cb120c165dab8cd
       patch_0007_sha256: 778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25
     verified_evidence:
-      historical_patch_0001_linux_windows_compile: PASS
+      historical_patch_0001_linux_windows_compile: PASS_SUPERSEDED
       targeted_kavl_asan_ubsan: PASS
       targeted_kavl_erase_asan_ubsan: PASS
       targeted_pidfile_static: PASS
-      full_patchset_0001_0007_compile: PENDING_CURRENT_RERUN
-      windows_targeted_warning_and_source_boundary_gates: PENDING_CURRENT_RERUN
+      full_patchset_0001_0007_compile: PASS_FOR_COMPILE_ONLY
+      windows_targeted_warning_and_source_boundary_gates: PASS
+    full_patchset_compile_evidence:
+      workflow_run_id: 40809161345
+      workflow_job_id: 123235119893
+      head_sha: 27a64c64868fc7d4d09b0f165f48df9431485f23
+      artifact_id: 12869671269
+      artifact_zip_sha256: f5ab931aff6867048a73ca81b4e50c4a090c4e366665c3f7ba1738ad637bddc7
+      linux_binary_sha256: a54f71634020ef43421fa6b4c22800409226d29450ad143df949940c2290f33a
+      windows_binary_sha256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+      linux_reproducible_in_run: true
+      windows_reproducible_in_run: true
+      candidate_binary_executed: false
+      listener_opened: false
+      routing_changed: false
     current_ci_state:
-      canonical_git_bytes_identity_check: ACTIVE
+      canonical_git_bytes_identity_check: PASS
       patch_0005_malformed_diff_detected_fail_closed: true
       patch_0005_hunk_metadata_repaired: true
       patch_0007_rebased_on_hardened_main: true
-      patch_0007_broad_conversion_gate_replaced_with_targeted_source_boundary_gate: true
+      patch_0007_source_boundary_validator_false_positive_fixed: true
       workflow: .github/workflows/native-candidate-byedpi-compile-smoke.yml
-      security_effect: exact_full_patchset_expanded_not_weakened
+      security_effect: full_patchset_compile_only_gate_closed_without_enabling_runtime
     lab:
-      state: PRE_LAB_REVIEW_ONLY_AFTER_GREEN_FULL_PATCHSET_GATES
+      state: PRE_LAB_REVIEW
       plan: security/native-admission/lab-plans/byedpi-loopback-r28.4.yaml
       plan_status: DRAFT_NOT_APPROVED
       listener_scope: loopback_only
       transparent_windows_routing_in_scope: false
       android_vpn_tun_in_scope: false
     next_decision:
-      - require full patchset 0001-0007 Linux/Windows compile success
-      - require targeted Windows warning/source-boundary gates success
       - keep unrelated upstream conversion warnings as separately reviewed debt
-      - keep targeted PID-file/KAVL evidence scoped and separate
-      - human review exact loopback lab plan only after full patchset is green
+      - define evidence requirements for supervised loopback lifecycle/resource lab
+      - pin exact build hash in any future candidate-specific lab approval
+      - human review exact loopback lab plan before any execution
       - do not start ciadpi before LAB_APPROVED
 
   dpibreak:
@@ -144,4 +156,5 @@ notes:
   - This matrix is status/evidence metadata only and cannot authorize execution.
   - No candidate is currently ADMIT.
   - No native engine start/install path may be enabled in NetPilot production from this file.
+  - ByeDPI compile-only PASS does not authorize candidate execution or network routing.
   - Any ByeDPI review referring to an older patch 0007 identity is stale for current candidate identity.
