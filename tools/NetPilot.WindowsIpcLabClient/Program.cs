@@ -67,6 +67,24 @@ internal static class Program
                 return 10;
             }
 
+            // Read-only capability probe. Он не устанавливает, не запускает и не
+            // останавливает native engine; нужен только для доказательства полного
+            // GUI/client -> authenticated IPC -> LocalSystem service round-trip.
+            var installationResponse = await client.GetZapretInstallationStatusAsync(timeout.Token);
+            Console.WriteLine($"ENGINE_STATUS_SUCCESS={installationResponse.Success}");
+            Console.WriteLine($"ENGINE_STATUS_CODE={installationResponse.Code}");
+
+            if (!installationResponse.Success
+                || !string.Equals(installationResponse.Code, "Ok", StringComparison.Ordinal)
+                || installationResponse.ZapretInstallation is null)
+            {
+                Console.Error.WriteLine("ERROR=EngineStatusProbeFailed");
+                return 15;
+            }
+
+            Console.WriteLine($"ENGINE_INSTALLED={installationResponse.ZapretInstallation.IsInstalled}");
+            Console.WriteLine($"ENGINE_VERSION={installationResponse.ZapretInstallation.Version ?? string.Empty}");
+
             var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
             var profileRoot = Path.Combine(programFiles, "NetPilot", "Users", sid);
 
