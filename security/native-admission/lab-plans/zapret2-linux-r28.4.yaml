@@ -1,0 +1,183 @@
+schema_version: 1
+plan_id: zapret2-linux-r28.4
+candidate: zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0005
+platform: linux-x86_64
+status: DRAFT_NOT_APPROVED
+execution_allowed: false
+production_effect: NONE
+
+approval:
+  required: true
+  kind: HIGH_ASSURANCE_HUMAN
+  approval_id: null
+  approved_candidate_hashes: []
+  approved_at: null
+
+purpose:
+  - validate supervised process lifecycle in a disposable Linux lab
+  - validate fail-safe cleanup of temporary NetPilot-owned NFQUEUE/firewall objects
+  - measure bounded conntrack and delayed-queue behavior under controlled workloads
+  - collect text-only operational evidence without packet payload capture
+
+preconditions:
+  exact_source_identity_required: true
+  exact_patchset_identity_required: true
+  provenance_gate_must_be_green: true
+  linux_compile_gate_must_be_green: true
+  static_sanitizer_gate_must_be_green: true
+  parser_sanitizer_gate_must_be_green: true
+  parser_fuzz_gate_must_be_green: true
+  conntrack_budget_gate_must_be_green: true
+  resource_stress_gate_must_be_green: true
+  unresolved_execution_boundary_blockers_allowed: false
+  disposable_vm_required: true
+  clean_snapshot_required: true
+  user_data_allowed: false
+  browser_sessions_allowed: false
+  credentials_allowed: false
+  packet_capture_allowed: false
+
+candidate_identity:
+  upstream_repository: https://github.com/bol-van/zapret2
+  base_release_tag: v1.0.6
+  base_release_commit: 221d7dff24bfec0cd5ac0a5070b8acef2008af3d
+  required_fix_commit: 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d
+  patchset:
+    - 0001-explicit-conntrack-feed-result.patch
+    - 0002-bounded-conntrack-resource-result.patch
+    - 0003-bounded-delayed-queue-bytes.patch
+    - 0004-explicit-daemon-stdio-redirection.patch
+    - 0005-fail-closed-zero-conntrack-budget.patch
+  runtime_binary_sha256: null
+  rule: runtime_binary_sha256 must be pinned before approval and must match the controlled build evidence
+
+execution_boundary:
+  engine_mode: foreground_supervised_only
+  service_installation_allowed: false
+  autostart_allowed: false
+  arbitrary_shell_allowed: false
+  arbitrary_cli_allowed: false
+  user_lua_allowed: false
+  user_paths_allowed: false
+  user_urls_allowed: false
+  persistent_auto_hostlist_allowed: false
+  experimental_ipcache_hostname_allowed: false
+  profile_source: typed_allowlisted_netpilot_profile_only
+  hard_timeout_seconds: 120
+  process_tree_cleanup_required: true
+
+resource_policy:
+  conntrack_max_entries: null
+  delayed_queue_max_packets: null
+  delayed_queue_max_bytes: null
+  rule: all runtime resource budgets must be explicit, nonzero and derived from accepted pre-lab evidence before approval
+
+network_boundary:
+  first_stage_targets: synthetic_local_only
+  public_service_targets_allowed_initially: false
+  nftables_or_iptables_objects_must_be_netpilot_owned: true
+  unique_rule_prefix_required: true
+  rule_prefix: NETPILOT_LAB_R284_
+  pre_test_rules_snapshot_required: true
+  pre_test_routes_snapshot_required: true
+  pre_test_listeners_snapshot_required: true
+  fail_safe_traffic_path_required: true
+  rollback_on_normal_stop_required: true
+  rollback_on_crash_required: true
+  rollback_on_timeout_required: true
+  post_test_rules_diff_must_be_empty_for_netpilot_objects: true
+  post_test_routes_diff_must_show_no_netpilot_residue: true
+  post_test_listener_diff_must_show_no_candidate_listener: true
+
+stages:
+  - id: LNX-0
+    name: identity-and-environment-verification
+    executable_run_allowed: false
+    required_evidence:
+      - exact binary SHA-256
+      - exact source and patch identities
+      - disposable VM and snapshot confirmation
+      - baseline process/listener/firewall/route inventory
+
+  - id: LNX-1
+    name: supervised-lifecycle-local-synthetic
+    executable_run_allowed: false
+    unlock_requires: HIGH_ASSURANCE_HUMAN_APPROVAL
+    targets: synthetic_local_only
+    checks:
+      - foreground start
+      - controlled stop
+      - hard timeout
+      - forced process termination
+      - process-tree cleanup
+      - firewall/NFQUEUE rollback
+      - no residual listener
+      - no residual NetPilot-owned rules
+
+  - id: LNX-2
+    name: bounded-resource-measurement
+    executable_run_allowed: false
+    unlock_requires:
+      - LNX-1 PASS
+      - separate HIGH_ASSURANCE_HUMAN_APPROVAL
+    targets: controlled_lab_workloads_only
+    workloads:
+      - browser-shaped synthetic TCP
+      - video-shaped synthetic TCP/UDP
+      - realtime-shaped synthetic UDP
+      - combined bounded burst
+      - hostile resource-pressure synthetic workload
+    evidence_limits:
+      packet_payloads_stored: false
+      credentials_stored: false
+      account_identifiers_stored: false
+      raw_url_history_stored: false
+
+  - id: LNX-3
+    name: public-service-compatibility
+    executable_run_allowed: false
+    unlock_requires:
+      - LNX-1 PASS
+      - LNX-2 PASS
+      - separate scope review
+      - separate HIGH_ASSURANCE_HUMAN_APPROVAL
+    note: This stage is intentionally not approved by this draft plan.
+
+evidence_schema:
+  required_fields:
+    - plan_id
+    - candidate_binary_sha256
+    - source_commit
+    - patchset_sha256s
+    - profile_id
+    - started_at_utc
+    - stopped_at_utc
+    - stop_reason
+    - process_exit_code
+    - cleanup_result
+    - residual_process_count
+    - residual_listener_count
+    - residual_netpilot_rule_count
+    - routing_rollback_result
+    - conntrack_peak_entries
+    - delayed_queue_peak_packets
+    - delayed_queue_peak_bytes
+  forbidden_fields:
+    - packet_payload
+    - credential
+    - cookie
+    - token
+    - private_key
+    - full_browsing_history
+    - unnecessary_remote_ip_history
+
+promotion:
+  lab_pass_implies_admit: false
+  lab_pass_changes_release_gate: false
+  production_activation_allowed: false
+  separate_admission_decision_required: true
+
+notes:
+  - This file is a non-executing draft plan only.
+  - It does not authorize running nfqws2/winws2 or creating NFQUEUE/firewall interception rules.
+  - All executable stages remain false until an explicit candidate-specific approval updates the plan through a separately reviewed change.
