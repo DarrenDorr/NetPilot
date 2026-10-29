@@ -49,7 +49,7 @@ jobs:
           patch1='security/native-admission/patches/dpibreak-r28/0001-remove-global-windivert-service-stop.patch'
           patch2='security/native-admission/patches/dpibreak-r28/0002-always-revalidate-clienthello.patch'
           patch3='security/native-admission/patches/dpibreak-r28/0003-disable-custom-nft-executable.patch'
-          test "$(git -C netpilot rev-parse "HEAD:$patch1")" = "0b3808cf413bb56d9d50b12fe55d686f60beb325"
+          test "$(git -C netpilot rev-parse "HEAD:$patch1")" = "3f731650c83e56f717a7709084fd5873e7cb99eb"
           test "$(git -C netpilot rev-parse "HEAD:$patch2")" = "46f70538b5d5ea05573f22f83fd0e071c7bed489"
           test "$(git -C netpilot rev-parse "HEAD:$patch3")" = "d27efdb337fabe15745832d00acbb6a039f7cb7c"
 
@@ -120,7 +120,7 @@ jobs:
             echo 'scope=dpibreak-v0.6.2-netpilot-source-hardening-0001-0003'
             echo 'release_commit=334285b60aabd5a32a83a65211ac60bce968b211'
             echo 'release_tree=7e95a17933fe9fda521865b1317c4f9f75d6c58c'
-            echo 'patch_0001_git_blob_sha1=0b3808cf413bb56d9d50b12fe55d686f60beb325'
+            echo 'patch_0001_git_blob_sha1=3f731650c83e56f717a7709084fd5873e7cb99eb'
             echo 'patch_0002_git_blob_sha1=46f70538b5d5ea05573f22f83fd0e071c7bed489'
             echo 'patch_0003_git_blob_sha1=d27efdb337fabe15745832d00acbb6a039f7cb7c'
             echo "patch_0001_sha256=$patch1_sha256"
