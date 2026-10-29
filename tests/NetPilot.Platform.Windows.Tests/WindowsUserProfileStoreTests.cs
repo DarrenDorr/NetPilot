@@ -20,8 +20,8 @@ public sealed class WindowsUserProfileStoreTests
         Assert.NotEqual(first.ProfileRoot, second.ProfileRoot);
         Assert.True(Directory.Exists(first.ProfileRoot));
         Assert.True(Directory.Exists(second.ProfileRoot));
-        Assert.StartsWith(fixture.UsersRoot, first.ProfileRoot, StringComparison.OrdinalIgnoreCase);
-        Assert.StartsWith(fixture.UsersRoot, second.ProfileRoot, StringComparison.OrdinalIgnoreCase);
+        Assert.True(first.ProfileRoot.StartsWith(fixture.UsersRoot, StringComparison.OrdinalIgnoreCase));
+        Assert.True(second.ProfileRoot.StartsWith(fixture.UsersRoot, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
