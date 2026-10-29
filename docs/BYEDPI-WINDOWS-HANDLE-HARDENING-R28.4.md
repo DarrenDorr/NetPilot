@@ -2,7 +2,7 @@
 
 Дата: 29.10.2026.
 
-Статус: **DESIGN FIXED / COMPILE EVIDENCE PENDING / NOT ADMITTED / RELEASE GATE BLOCK**.
+Статус: **DESIGN FIXED / PATCH FORMAT REPAIRED / COMPILE EVIDENCE PENDING / NOT ADMITTED / RELEASE GATE BLOCK**.
 
 ## Контекст
 
@@ -33,10 +33,10 @@
 
 `security/native-admission/patches/byedpi-r28/0005-windows-socket-handle-narrowing-guard.patch`
 
-Identity:
+Текущая canonical identity после исправления unified-diff metadata:
 
-- Git blob SHA-1: `fb8a7f57dc577e9ee8664adb41d264a64dc81a0d`;
-- SHA-256: `3b8034c4cecdcd7b1551fbdf7b99f0fbdf82b00c0a7613046a06aa8b5182d050`.
+- Git blob SHA-1: `d5cde98057a0ded600468b1f1c69d2e55c3b4d6e`;
+- SHA-256: `7c8f4eee9ff2624346cb886027df66378773d0af04f5f84f54c30815104b4356`.
 
 Семантика на Windows:
 
@@ -46,6 +46,24 @@ Identity:
 4. сравнение с `WSAPoll` descriptor выполняется как `SOCKET` только после гарантии ingress-представимости.
 
 Это намеренно минимальный patch: upstream int-based event-pool ABI пока не переписывается целиком.
+
+### Fail-closed исправление формата patch
+
+Первый full-patchset compile gate после перехода на canonical Git bytes остановился до компиляции с:
+
+`patch fragment without header`
+
+Причина находилась в самом файле `0005`: несколько unified-diff hunk headers имели неверные old/new line-counts. `git apply` корректно отказался применять такой patch.
+
+Исправление:
+
+- логика SOCKET guard не менялась;
+- исправлены только hunk start/count metadata под exact upstream `v0.17.3`;
+- каждый hunk повторно проверен на соответствие фактическому old/new line count;
+- после изменения patch получил новую immutable identity, указанную выше;
+- workflow и manifest перепинены на новую identity.
+
+Этот stop считается положительным evidence работы fail-closed gate, но **не является PASS самого hardening patch**. Нужен новый compile run.
 
 ## 2. WaitForMultipleObjects result range
 
@@ -74,7 +92,7 @@ Identity:
 
 ## Compile gate
 
-`.github/workflows/native-candidate-byedpi-compile-smoke.yml` переведён на полный patchset `0001–0006`.
+`.github/workflows/native-candidate-byedpi-compile-smoke.yml` работает с полным patchset `0001–0006` и применяет reviewed patches из canonical Git blob bytes.
 
 Кроме двух воспроизводимых полных сборок Linux x86-64 и Windows x64, добавлены targeted Windows gates:
 
@@ -85,9 +103,9 @@ Identity:
 
 ## Что пока НЕ доказано
 
-До успешного CI-run не считаются доказанными:
+До успешного нового CI-run не считаются доказанными:
 
-- применимость полной цепочки `0001–0006`;
+- применимость исправленной полной цепочки `0001–0006`;
 - отсутствие новых compile regressions;
 - reproducible output hashes полного hardened build;
 - runtime поведение Windows socket ingress;
@@ -102,4 +120,4 @@ Identity:
 - `may_execute: false`;
 - `may_integrate: false`.
 
-Следующий обязательный шаг — успешный full patchset compile/static gate. Только после этого можно переходить к изолированному loopback runtime lab по R28.4 lab-execution policy.
+Следующий обязательный шаг — успешный full patchset compile/static gate. Только после этого можно рассматривать изолированный loopback runtime lab по R28.4 lab-execution policy, причём отдельный `HIGH_ASSURANCE` approval всё равно обязателен.
