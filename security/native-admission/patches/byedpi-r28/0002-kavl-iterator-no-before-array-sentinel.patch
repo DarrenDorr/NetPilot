@@ -1,7 +1,7 @@
 diff --git a/kavl.h b/kavl.h
 --- a/kavl.h
 +++ b/kavl.h
-@@ -275,35 +275,48 @@
+@@ -275,38 +275,52 @@
  	struct kavl_itr_##suf { \
  		const __type *stack[KAVL_MAX_DEPTH], **top, *right; /* _right_ points to the right child of *top */ \
  	}; \
@@ -64,7 +64,8 @@ diff --git a/kavl.h b/kavl.h
  			itr->right = (*itr->top)->__head.p[1]; \
  			return 1; \
  		} \
-@@ -381,7 +394,7 @@
+ 	}
+@@ -381,7 +395,7 @@
   *
   * @return pointer if present; NULL otherwise
   */
