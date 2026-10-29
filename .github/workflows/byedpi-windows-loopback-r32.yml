@@ -1,0 +1,183 @@
+name: R32 ByeDPI Windows Loopback Runtime Lab
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: netpilot-r32-byedpi-windows-loopback
+  cancel-in-progress: false
+
+env:
+  NETPILOT_R32_SHA: 8262bb559411af524c70370c5b0c9f2e1e3f32cf
+  BYEDPI_SOURCE_SHA: 7efde1b1296eaaa187b70e951894dde17527489c
+  BYEDPI_SOURCE_TREE: 8d13f6f5939190cd27ee68696247073a00b3e7dc
+  BYEDPI_WINDOWS_SHA256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+
+jobs:
+  build-exact-candidate:
+    name: Build exact reviewed ByeDPI Windows candidate without execution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout exact NetPilot R32 checkpoint
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.NETPILOT_R32_SHA }}
+          path: netpilot
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Checkout exact ByeDPI v0.17.3 source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: hufrea/byedpi
+          ref: ${{ env.BYEDPI_SOURCE_SHA }}
+          path: byedpi
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify exact identities and apply reviewed patchset
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C netpilot rev-parse HEAD)" = "$NETPILOT_R32_SHA"
+          test "$(git -C byedpi rev-parse HEAD)" = "$BYEDPI_SOURCE_SHA"
+          test "$(git -C byedpi rev-parse 'HEAD^{tree}')" = "$BYEDPI_SOURCE_TREE"
+
+          patch_dir="$PWD/canonical-byedpi-patches"
+          mkdir -p "$patch_dir"
+
+          declare -A blob_sha=(
+            [0001-loopback-only-listener.patch]=fa9ba3349792d66f40d925bc612310e8d18aae8a
+            [0002-kavl-iterator-no-before-array-sentinel.patch]=6f51d66597847ee49e373922e4905c80b8ee2f47
+            [0003-pid-file-fail-safe-write.patch]=d56d0f8659a49c48c923b6af85a523a952e77e0c
+            [0004-kavl-empty-erase-guard.patch]=9b196b289efd9a2ea1118c5504f4a811aa0becd2
+            [0005-windows-socket-handle-narrowing-guard.patch]=d5cde98057a0ded600468b1f1c69d2e55c3b4d6e
+            [0006-windows-wait-result-range.patch]=0815be26534c291848a8b16bdedb07a6ab1e485f
+            [0007-windows-aux-socket-probes.patch]=e7b590a7d0594be0629bac221cb120c165dab8cd
+          )
+
+          declare -A patch_sha256=(
+            [0001-loopback-only-listener.patch]=3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068
+            [0002-kavl-iterator-no-before-array-sentinel.patch]=6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7
+            [0003-pid-file-fail-safe-write.patch]=5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738
+            [0004-kavl-empty-erase-guard.patch]=fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a
+            [0005-windows-socket-handle-narrowing-guard.patch]=7c8f4eee9ff2624346cb886027df66378773d0af04f5f84f54c30815104b4356
+            [0006-windows-wait-result-range.patch]=136b9fdf34b68a55f0f1a6ebf16e8b61c9b88e6d15eeb923594bdd7bf0fa2a3e
+            [0007-windows-aux-socket-probes.patch]=778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25
+          )
+
+          for patch in \
+            0001-loopback-only-listener.patch \
+            0002-kavl-iterator-no-before-array-sentinel.patch \
+            0003-pid-file-fail-safe-write.patch \
+            0004-kavl-empty-erase-guard.patch \
+            0005-windows-socket-handle-narrowing-guard.patch \
+            0006-windows-wait-result-range.patch \
+            0007-windows-aux-socket-probes.patch
+          do
+            actual_blob="$(git -C netpilot rev-parse "HEAD:security/native-admission/patches/byedpi-r28/$patch")"
+            test "$actual_blob" = "${blob_sha[$patch]}"
+            git -C netpilot show "HEAD:security/native-admission/patches/byedpi-r28/$patch" > "$patch_dir/$patch"
+            actual_sha="$(sha256sum "$patch_dir/$patch" | awk '{print $1}')"
+            test "$actual_sha" = "${patch_sha256[$patch]}"
+            git -C byedpi apply --check "$patch_dir/$patch"
+            git -C byedpi apply "$patch_dir/$patch"
+          done
+
+          grep -Fq 'Listening IP, loopback only; default 127.0.0.1' byedpi/main.c
+          grep -Fq 'netpilot_is_loopback_addr' byedpi/main.c
+          grep -Fq 'get_addr("127.0.0.1", &params.laddr)' byedpi/main.c
+
+      - name: Install Windows cross-compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mingw-w64 file
+
+      - name: Build deterministic Windows x64 candidate and require known SHA-256
+        shell: bash
+        working-directory: byedpi
+        run: |
+          set -euo pipefail
+          make clean >/dev/null
+          make windows CC=x86_64-w64-mingw32-gcc WIN_LDFLAGS='-Wl,--no-insert-timestamp -lws2_32 -lmswsock'
+          test -f ciadpi.exe
+          file ciadpi.exe
+          actual="$(sha256sum ciadpi.exe | awk '{print $1}')"
+          echo "BYEDPI_WINDOWS_SHA256_ACTUAL=$actual"
+          test "$actual" = "$BYEDPI_WINDOWS_SHA256"
+
+      - name: Transfer exact candidate to isolated Windows lab job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: r32-byedpi-lab-transfer
+          path: byedpi/ciadpi.exe
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  execute-loopback-lab:
+    name: Execute exact candidate on loopback only
+    needs: build-exact-candidate
+    runs-on: windows-2025
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout exact NetPilot R32 checkpoint
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.NETPILOT_R32_SHA }}
+          path: netpilot
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Download exact candidate transfer artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: r32-byedpi-lab-transfer
+          path: candidate
+
+      - name: Re-verify exact candidate identity before execution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath 'candidate\ciadpi.exe').Hash.ToLowerInvariant()
+          Write-Host "BYEDPI_WINDOWS_SHA256_ACTUAL=$actual"
+          if ($actual -ne $env:BYEDPI_WINDOWS_SHA256) {
+            throw "Candidate hash drift before execution."
+          }
+
+      - name: Run loopback-only lifecycle and SOCKS5 lab
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path evidence | Out-Null
+          & 'netpilot\scripts\security\byedpi-windows-loopback-r32.ps1' `
+            -BinaryPath 'candidate\ciadpi.exe' `
+            -EvidencePath 'evidence\byedpi-windows-loopback-r32-evidence.txt'
+
+      - name: Show text logs on failure or success
+        if: always()
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path evidence -File -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "===== $($_.Name) ====="
+            Get-Content -LiteralPath $_.FullName -ErrorAction SilentlyContinue
+          }
+
+      - name: Upload text-only R32 evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: r32-byedpi-windows-loopback-evidence
+          path: |
+            evidence/*.txt
+          if-no-files-found: warn
+          retention-days: 30
+          compression-level: 9
