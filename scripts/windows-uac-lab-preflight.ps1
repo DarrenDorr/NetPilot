@@ -32,12 +32,20 @@ function Resolve-LocalUserName([string]$Value) {
         return $Value.Substring(2)
     }
 
-    if ($Value.Contains('\')) {
-        $parts = $Value.Split('\', 2)
-        if ($parts[0] -ne $env:COMPUTERNAME) {
+    $separatorIndex = $Value.IndexOf('\')
+    if ($separatorIndex -ge 0) {
+        $machinePart = $Value.Substring(0, $separatorIndex)
+        $userPart = $Value.Substring($separatorIndex + 1)
+
+        if ([string]::IsNullOrWhiteSpace($userPart)) {
+            throw 'Имя Account B после разделителя не задано.'
+        }
+
+        if ($machinePart -ne $env:COMPUTERNAME) {
             throw "Для R29 preflight используйте локальную учётную запись Account B в формате .\\Имя или $env:COMPUTERNAME\\Имя."
         }
-        return $parts[1]
+
+        return $userPart
     }
 
     return $Value
