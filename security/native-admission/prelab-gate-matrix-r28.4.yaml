@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 3
 matrix_id: netpilot-prelab-r28.4
 reviewed_at: 2026-10-29
 production_activation_allowed: false
@@ -84,20 +84,21 @@ candidates:
     patchset_identity:
       patch_0005_git_blob_sha1: d5cde98057a0ded600468b1f1c69d2e55c3b4d6e
       patch_0005_sha256: 7c8f4eee9ff2624346cb886027df66378773d0af04f5f84f54c30815104b4356
-      patch_0007_git_blob_sha1: e1e7cf53a87e9f51224147d7b1d4faf39dcf8ef6
-      patch_0007_sha256: ddfe7a3b6280c55dc89afd99ea89badea2f30348031f4f93a6ca6debcf939897
+      patch_0007_git_blob_sha1: e7b590a7d0594be0629bac221cb120c165dab8cd
+      patch_0007_sha256: 778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25
     verified_evidence:
       historical_patch_0001_linux_windows_compile: PASS
       targeted_kavl_asan_ubsan: PASS
       targeted_kavl_erase_asan_ubsan: PASS
       targeted_pidfile_static: PASS
-      full_patchset_0001_0007_compile: PENDING
-      windows_targeted_warning_gates: PENDING
+      full_patchset_0001_0007_compile: PENDING_CURRENT_RERUN
+      windows_targeted_warning_and_source_boundary_gates: PENDING_CURRENT_RERUN
     current_ci_state:
       canonical_git_bytes_identity_check: ACTIVE
       patch_0005_malformed_diff_detected_fail_closed: true
       patch_0005_hunk_metadata_repaired: true
-      auxiliary_socket_narrowing_review_found_patch_0007: true
+      patch_0007_rebased_on_hardened_main: true
+      patch_0007_broad_conversion_gate_replaced_with_targeted_source_boundary_gate: true
       workflow: .github/workflows/native-candidate-byedpi-compile-smoke.yml
       security_effect: exact_full_patchset_expanded_not_weakened
     lab:
@@ -109,7 +110,8 @@ candidates:
       android_vpn_tun_in_scope: false
     next_decision:
       - require full patchset 0001-0007 Linux/Windows compile success
-      - require targeted Windows warning/conversion gates success
+      - require targeted Windows warning/source-boundary gates success
+      - keep unrelated upstream conversion warnings as separately reviewed debt
       - keep targeted PID-file/KAVL evidence scoped and separate
       - human review exact loopback lab plan only after full patchset is green
       - do not start ciadpi before LAB_APPROVED
@@ -142,4 +144,4 @@ notes:
   - This matrix is status/evidence metadata only and cannot authorize execution.
   - No candidate is currently ADMIT.
   - No native engine start/install path may be enabled in NetPilot production from this file.
-  - Any ByeDPI review referring only to patchset 0001-0006 is stale for current candidate identity.
+  - Any ByeDPI review referring to an older patch 0007 identity is stale for current candidate identity.
