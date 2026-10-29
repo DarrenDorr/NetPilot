@@ -34,6 +34,42 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
             });
     }
 
+    [Fact]
+    public async Task ListStrategiesAsync_FiltersProxyOnlyBackendFromFullProfiles()
+    {
+        var runtime = new FakeProfileRuntime
+        {
+            Capabilities = new EngineCapabilitySet(
+                EngineTrafficCapability.ExplicitProxyTcp
+                | EngineTrafficCapability.ExplicitProxyUdp),
+            Profiles =
+            [
+                new EngineProfileDescriptor(EngineProfileId.Parse("discord"), "Discord"),
+                new EngineProfileDescriptor(EngineProfileId.Parse("youtube"), "YouTube")
+            ]
+        };
+        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime);
+
+        var strategies = await adapter.ListStrategiesAsync();
+
+        Assert.Empty(strategies);
+    }
+
+    [Fact]
+    public async Task ListStrategiesAsync_RejectsNonEmptyCatalogWithoutCapabilities()
+    {
+        var runtime = new LegacyProfileRuntime(
+        [
+            new EngineProfileDescriptor(EngineProfileId.Parse("youtube"), "YouTube")
+        ]);
+        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime);
+
+        var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
+            () => adapter.ListStrategiesAsync());
+
+        Assert.Equal("MissingEngineCapabilities", exception.Code);
+    }
+
     [Theory]
     [InlineData("--help")]
     [InlineData("../profile")]
@@ -64,6 +100,28 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
         Assert.Equal(
             EngineProfileId.Parse("discord-youtube"),
             runtime.LastActivatedProfileId);
+    }
+
+    [Fact]
+    public async Task ActivateAsync_RejectsPublishedProfileMissingRequiredCapabilities()
+    {
+        var runtime = new FakeProfileRuntime
+        {
+            Capabilities = new EngineCapabilitySet(
+                EngineTrafficCapability.ExplicitProxyTcp
+                | EngineTrafficCapability.ExplicitProxyUdp),
+            Profiles =
+            [
+                new EngineProfileDescriptor(EngineProfileId.Parse("discord"), "Discord")
+            ]
+        };
+        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime);
+
+        var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
+            () => adapter.ActivateAsync("discord"));
+
+        Assert.Equal("UnsupportedProfileCapabilities", exception.Code);
+        Assert.Null(runtime.LastActivatedProfileId);
     }
 
     [Fact]
@@ -100,9 +158,30 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
         Assert.Equal("discord", state.StrategyId);
     }
 
-    private sealed class FakeProfileRuntime : IEngineProfileRuntime
+    [Fact]
+    public async Task GetStateAsync_RejectsActiveProfileCapabilitiesMismatch()
+    {
+        var runtime = new FakeProfileRuntime
+        {
+            Capabilities = new EngineCapabilitySet(EngineTrafficCapability.TransparentTcp),
+            State = EngineProfileRuntimeState.Active(
+                EngineProfileId.Parse("discord"))
+        };
+        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime);
+
+        var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
+            () => adapter.GetStateAsync());
+
+        Assert.Equal("ActiveProfileCapabilitiesMismatch", exception.Code);
+    }
+
+    private sealed class FakeProfileRuntime : IEngineProfileRuntime, IEngineCapabilityProvider
     {
         public string EngineId => "fake";
+
+        public EngineCapabilitySet Capabilities { get; init; } = new(
+            EngineTrafficCapability.TransparentTcp
+            | EngineTrafficCapability.TransparentUdp);
 
         public IReadOnlyList<EngineProfileDescriptor> Profiles { get; init; } = [];
 
@@ -133,5 +212,24 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
             LastActivatedProfileId = profileId;
             return ValueTask.CompletedTask;
         }
+    }
+
+    private sealed class LegacyProfileRuntime(
+        IReadOnlyList<EngineProfileDescriptor> profiles) : IEngineProfileRuntime
+    {
+        public string EngineId => "legacy-no-capabilities";
+
+        public ValueTask<IReadOnlyList<EngineProfileDescriptor>> ListProfilesAsync(
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(profiles);
+
+        public ValueTask<EngineProfileRuntimeState> GetProfileStateAsync(
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(EngineProfileRuntimeState.Inactive);
+
+        public ValueTask ActivateProfileAsync(
+            EngineProfileId profileId,
+            CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
     }
 }
