@@ -1,4 +1,4 @@
-schema_version: 6
+schema_version: 7
 matrix_id: netpilot-prelab-r28.4
 reviewed_at: 2026-10-29
 production_activation_allowed: false
@@ -178,11 +178,35 @@ candidates:
       cargo_lock_git_blob_sha1: e3adcd1b21711e7e754878b15625076c7bcaf7e9
     evidence_state:
       manual_signed_tag_and_release_metadata_review: PASS_FOR_PROVENANCE_ONLY
-      automated_source_dependency_provenance: PENDING
-      linux_compile_only: PENDING
+      automated_source_dependency_provenance: PASS_FOR_SOURCE_AND_LOCK_PROVENANCE_ONLY
+      linux_compile_only: PASS_FOR_COMPILE_ONLY
       windows_compile_only: NOT_STARTED
       cargo_advisory_review: NOT_STARTED
       unsafe_ffi_review: NOT_STARTED
+    provenance_evidence:
+      workflow_run_id: 40809643722
+      workflow_job_id: 123236663919
+      artifact_id: 12869199809
+      artifact_zip_sha256: 92b68f56ea91c3751cfe9175cbda9bad921d2c8a53d097c17419465fa9e5f44b
+      package_count: 110
+      registry_package_count: 108
+      local_package_count: 2
+      unexpected_dependency_sources: 0
+      registry_packages_without_checksum: 0
+    linux_compile_evidence:
+      workflow_run_id: 40809820544
+      workflow_job_id: 123237225747
+      artifact_id: 12869892327
+      artifact_zip_sha256: 0459eb9ec298f8dcba9258615d3787d8d357682d7ffc23f4d1bd63fd2c779f34
+      rust_toolchain: 1.97.0
+      target: x86_64-unknown-linux-musl
+      binary_sha256: 238c9be41859865374cf68a80288ebab6229963486956f09d577640ff844fc5e
+      binary_size_bytes: 878336
+      same_runner_reproducible: true
+      binary_executed: false
+      binary_retained: false
+      nfqueue_enabled: false
+      firewall_changed: false
     known_scope_limits:
       - upstream issue 32 QUIC support is open
       - upstream issue 24 NFQUEUE GSO semantics is open
@@ -198,15 +222,15 @@ candidates:
       linux_plan: security/native-admission/lab-plans/dpibreak-linux-r28.4.yaml
       linux_plan_status: DRAFT_NOT_APPROVED
       runtime_binary_sha256: null
+      approved_candidate_hashes: []
       nfqueue_or_firewall_execution_allowed: false
       quic_http3_in_scope: false
       discord_udp_in_scope: false
     next_decision:
-      - obtain automated exact source/Cargo.lock provenance PASS
-      - obtain controlled Linux compile-only evidence without candidate execution
       - review exact Cargo.lock advisories and unsafe/FFI surfaces
-      - keep Windows blocked until exact WinDivert component inventory is complete
+      - keep Windows blocked until exact WinDivert component inventory and compile-only evidence are complete
       - review Linux GSO/MTU/firewall/local-LAN test design
+      - keep controlled Linux build hash as reference only, not an approved runtime identity
       - do not execute DPIBreak before separate LAB_APPROVED decision
 
 promotion_requirements:
@@ -230,5 +254,5 @@ notes:
   - No native engine start/install path may be enabled in NetPilot production from this file.
   - Zapret2 controlled build hashes and synthetic caps are references only; no runtime hash or lab budget is pre-authorized.
   - ByeDPI compile-only PASS does not authorize candidate execution or network routing.
-  - DPIBreak draft plan does not authorize NFQUEUE, firewall mutation, driver load or candidate execution.
+  - DPIBreak provenance/Linux compile PASS does not authorize NFQUEUE, firewall mutation, driver load or candidate execution.
   - Any review referring to older candidate/patch identities is stale unless explicitly retained as historical evidence.
