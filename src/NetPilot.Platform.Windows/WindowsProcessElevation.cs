@@ -14,8 +14,13 @@ public enum WindowsProcessElevationState
 
 public static class WindowsInstallerEnrollmentPolicy
 {
+    // Elevation itself is not an authentication boundary. The LocalSystem service
+    // performs the authoritative checks: authenticated named-pipe peer, interactive
+    // session, exact Session ID match and one-time enrollment nonce. The client only
+    // rejects an indeterminate token state so enrollment still fails closed when the
+    // Windows token cannot be inspected at all.
     public static bool MayCompleteEnrollment(WindowsProcessElevationState elevationState) =>
-        elevationState == WindowsProcessElevationState.NotElevated;
+        elevationState != WindowsProcessElevationState.Unknown;
 }
 
 public static class WindowsProcessElevation
