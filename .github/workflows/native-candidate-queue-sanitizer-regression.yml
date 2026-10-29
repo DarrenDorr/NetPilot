@@ -49,13 +49,15 @@ jobs:
           echo "33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68  $patch_dir/0003-bounded-delayed-queue-bytes.patch" | sha256sum -c -
           echo "f32e0c27393bcdfa30aa7e8c58749bb9e70e2a870350f5c3cfa429597a887777  $patch_dir/0004-explicit-daemon-stdio-redirection.patch" | sha256sum -c -
           echo "67cbbfa656c47b7342a8c56ab178716e7890de0f05efc25eed2cc20b299c4ed1  $patch_dir/0005-fail-closed-zero-conntrack-budget.patch" | sha256sum -c -
+          echo "f5f3c01c73db3584513adc345da838bef6035c95a59762c469a386c7ad201d97  $patch_dir/0006-fail-closed-zero-delayed-queue-budget.patch" | sha256sum -c -
 
           for patch in \
             0001-explicit-conntrack-feed-result.patch \
             0002-bounded-conntrack-resource-result.patch \
             0003-bounded-delayed-queue-bytes.patch \
             0004-explicit-daemon-stdio-redirection.patch \
-            0005-fail-closed-zero-conntrack-budget.patch
+            0005-fail-closed-zero-conntrack-budget.patch \
+            0006-fail-closed-zero-delayed-queue-budget.patch
           do
             git -C zapret2 apply --check "$patch_dir/$patch"
             git -C zapret2 apply "$patch_dir/$patch"
@@ -64,6 +66,7 @@ jobs:
           grep -Fq 'size_t max_bytes;' zapret2/nfq2/packet_queue.h
           grep -Fq 'size_t queued_bytes;' zapret2/nfq2/packet_queue.h
           grep -Fq 'len > SIZE_MAX - q->queued_bytes' zapret2/nfq2/packet_queue.c
+          grep -Fq 'if (!q->max_bytes || new_queued_bytes > q->max_bytes) return NULL;' zapret2/nfq2/packet_queue.c
           grep -Fq 'dup2(nullfd, STDOUT_FILENO)' zapret2/nfq2/sec.c
           grep -Fq '!max_entries || HASH_COUNT(*pp) >= max_entries' zapret2/nfq2/conntrack.c
 
@@ -145,13 +148,14 @@ jobs:
           fi
 
           {
-            echo 'schema_version=4'
+            echo 'schema_version=5'
             echo 'scope=isolated-packet-queue-sanitizer-regression'
-            echo 'candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0005'
+            echo 'candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0006-proposed'
             echo 'source_commit=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d'
             echo 'source_tree=5c2a77786cc7089145abe2ca99bcc53a8ed7de15'
             echo 'patch_0004_sha256=f32e0c27393bcdfa30aa7e8c58749bb9e70e2a870350f5c3cfa429597a887777'
             echo 'patch_0005_sha256=67cbbfa656c47b7342a8c56ab178716e7890de0f05efc25eed2cc20b299c4ed1'
+            echo 'patch_0006_sha256=f5f3c01c73db3584513adc345da838bef6035c95a59762c469a386c7ad201d97'
             echo "compiler=$(gcc --version | head -n1)"
             echo "harness_sha256=$harness_sha256"
             echo "instrumented_harness_binary_sha256=$binary_sha256"
