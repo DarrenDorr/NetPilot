@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 plan_id: zapret2-linux-r28.4
 candidate: zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0005
 platform: linux-x86_64
@@ -42,14 +42,35 @@ candidate_identity:
   base_release_tag: v1.0.6
   base_release_commit: 221d7dff24bfec0cd5ac0a5070b8acef2008af3d
   required_fix_commit: 4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d
+  required_fix_tree: 5c2a77786cc7089145abe2ca99bcc53a8ed7de15
   patchset:
     - 0001-explicit-conntrack-feed-result.patch
     - 0002-bounded-conntrack-resource-result.patch
     - 0003-bounded-delayed-queue-bytes.patch
     - 0004-explicit-daemon-stdio-redirection.patch
     - 0005-fail-closed-zero-conntrack-budget.patch
+  controlled_compile_reference:
+    linux:
+      workflow_run_id: 40734378302
+      artifact_id: 12837081078
+      artifact_zip_sha256: 348af9c8fcb8339a3561b368e338060263df5536dea7b8794a19a84a6c27f2c6
+      binary_name: nfqws2
+      binary_sha256: 61219de00f9728d401fdb484b929aac2245d5dfebacc460f9d109f2cc721d72e
+      binary_size: 242824
+      binary_executed: false
+    windows:
+      workflow_run_id: 40734378565
+      artifact_id: 12836008002
+      artifact_zip_sha256: f159c38cc1a5161a5b61c07d1d24543b58ec14fcb178e885a0b043649cd2538a
+      binary_name: winws2
+      binary_sha256: 9e6ab76c661d0d2bd8a51a035452b397c11ab2978c6d53ec650d04ffde19508c
+      binary_size: 650240
+      authenticode_status: NotSigned
+      binary_executed: false
+      windivert_present: false
+      driver_installed: false
   runtime_binary_sha256: null
-  rule: runtime_binary_sha256 must be pinned before approval and must match the controlled build evidence
+  rule: any future Linux lab binary must be rebuilt from the exact pinned source/patch/toolchain recipe and its SHA-256 must be explicitly approved before an executable stage is enabled
 
 execution_boundary:
   engine_mode: foreground_supervised_only
@@ -70,7 +91,17 @@ resource_policy:
   conntrack_max_entries: null
   delayed_queue_max_packets: null
   delayed_queue_max_bytes: null
-  rule: all runtime resource budgets must be explicit, nonzero and derived from accepted pre-lab evidence before approval
+  production_values_selected: false
+  lab_values_selected: false
+  synthetic_stress_reference:
+    conntrack_caps_tested: [64, 512, 2048]
+    resource_stress_run_id: 40802559408
+    resource_stress_artifact_id: 12866926284
+    resource_stress_artifact_zip_sha256: 41ef8ae61b65fe2bcc674b2626bbd3a0689069ad332f51d62212cb66567a8992
+    parser_fuzz_run_id: 40802559290
+    parser_fuzz_artifact_id: 12866891622
+    parser_fuzz_artifact_zip_sha256: 353d9d59a765d8517ad2a6bdd02a4db522b988ab92f5a111609005c5daab8155
+  rule: synthetic stress caps are measurement references only; all executable lab resource budgets must be explicit, nonzero and separately approved, and production budgets require later real workload evidence
 
 network_boundary:
   first_stage_targets: synthetic_local_only
@@ -94,7 +125,8 @@ stages:
     name: identity-and-environment-verification
     executable_run_allowed: false
     required_evidence:
-      - exact binary SHA-256
+      - exact rebuilt Linux binary SHA-256
+      - exact match to an explicitly approved candidate hash
       - exact source and patch identities
       - disposable VM and snapshot confirmation
       - baseline process/listener/firewall/route inventory
@@ -180,4 +212,6 @@ promotion:
 notes:
   - This file is a non-executing draft plan only.
   - It does not authorize running nfqws2/winws2 or creating NFQUEUE/firewall interception rules.
-  - All executable stages remain false until an explicit candidate-specific approval updates the plan through a separately reviewed change.
+  - Controlled compile hashes are reference identities only and do not pre-authorize runtime binaries.
+  - Synthetic stress caps are references, not selected lab or production limits.
+  - All executable stages remain false until an explicit candidate-specific HIGH_ASSURANCE approval updates the plan through a separately reviewed change.
