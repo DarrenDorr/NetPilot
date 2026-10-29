@@ -31,6 +31,15 @@ public sealed class WindowsProtectedEngineInstallLocationTests
     }
 
     [Fact]
+    public void Resolved_path_output_types_have_no_public_constructors()
+    {
+        Assert.Empty(typeof(WindowsResolvedEngineComponentPath)
+            .GetConstructors(BindingFlags.Instance | BindingFlags.Public));
+        Assert.Empty(typeof(WindowsProtectedEngineInstallLayout)
+            .GetConstructors(BindingFlags.Instance | BindingFlags.Public));
+    }
+
+    [Fact]
     public void Resolve_places_components_only_under_fixed_managed_program_files_root()
     {
         var identity = CreateIdentity(

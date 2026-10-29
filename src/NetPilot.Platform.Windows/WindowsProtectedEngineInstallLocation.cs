@@ -4,11 +4,22 @@ namespace NetPilot.Platform.Windows;
 
 /// <summary>
 /// Разрешённый абсолютный путь одного immutable component внутри managed root.
-/// Объект не является командой запуска.
+/// Объект создаётся только protected resolver и не является командой запуска.
 /// </summary>
-public sealed record WindowsResolvedEngineComponentPath(
-    string ComponentId,
-    string FullPath);
+public sealed class WindowsResolvedEngineComponentPath
+{
+    internal WindowsResolvedEngineComponentPath(
+        string componentId,
+        string fullPath)
+    {
+        ComponentId = componentId;
+        FullPath = fullPath;
+    }
+
+    public string ComponentId { get; }
+
+    public string FullPath { get; }
+}
 
 /// <summary>
 /// Неисполняемый результат fixed-root resolution. Resolver ничего не создаёт
