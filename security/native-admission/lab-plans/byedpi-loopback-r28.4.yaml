@@ -1,0 +1,194 @@
+schema_version: 1
+plan_id: byedpi-loopback-r28.4
+candidate: byedpi-v0.17.3-netpilot-fork-candidate
+platforms:
+  - linux-x86_64
+  - windows-x64
+status: DRAFT_NOT_APPROVED
+execution_allowed: false
+production_effect: NONE
+
+approval:
+  required: true
+  kind: HIGH_ASSURANCE_HUMAN
+  approval_id: null
+  approved_candidate_hashes: []
+  approved_at: null
+
+purpose:
+  - validate loopback-only listener enforcement for the exact hardened ByeDPI patchset
+  - validate supervised start/stop/crash/timeout cleanup without external listener exposure
+  - validate bounded connection and UDP-association lifecycle in an isolated lab
+  - collect text-only evidence without storing proxied payloads or user browsing history
+
+candidate_identity:
+  upstream_repository: https://github.com/hufrea/byedpi
+  release_tag: v0.17.3
+  release_commit: 7efde1b1296eaaa187b70e951894dde17527489c
+  release_tree: 8d13f6f5939190cd27ee68696247073a00b3e7dc
+  patchset:
+    - 0001-loopback-only-listener.patch
+    - 0002-kavl-iterator-no-before-array-sentinel.patch
+    - 0003-pid-file-fail-safe-write.patch
+    - 0004-kavl-empty-erase-guard.patch
+    - 0005-windows-socket-handle-narrowing-guard.patch
+    - 0006-windows-wait-result-range.patch
+  linux_runtime_binary_sha256: null
+  windows_runtime_binary_sha256: null
+  rule: exact runtime binary hashes must be pinned from controlled builds before approval
+
+preconditions:
+  exact_source_identity_required: true
+  exact_patchset_identity_required: true
+  full_patchset_linux_compile_must_be_green: true
+  full_patchset_windows_compile_must_be_green: true
+  targeted_windows_warning_gates_must_be_green: true
+  pidfile_static_gate_must_be_green: true
+  kavl_sanitizer_gate_must_be_green: true
+  additional_static_sanitizer_gate_must_be_green: true
+  unresolved_execution_boundary_blockers_allowed: false
+  disposable_lab_required: true
+  clean_snapshot_required: true
+  user_data_allowed: false
+  browser_sessions_allowed: false
+  credentials_allowed: false
+  packet_capture_allowed: false
+
+listener_policy:
+  external_listener_allowed: false
+  wildcard_ipv4_allowed: false
+  wildcard_ipv6_allowed: false
+  lan_bind_allowed: false
+  allowed_ipv4_scope: 127.0.0.0/8
+  allowed_ipv6_scope: ::1/128
+  default_bind: 127.0.0.1
+  runtime_test_must_verify:
+    - listener_is_loopback_only
+    - no_listener_on_0_0_0_0
+    - no_listener_on_ipv6_any
+    - no_listener_on_non_loopback_interface
+    - non_loopback_bind_request_is_rejected
+
+execution_boundary:
+  candidate_runs_foreground_or_supervised: true
+  service_installation_allowed: false
+  autostart_allowed: false
+  arbitrary_shell_allowed: false
+  raw_cli_from_user_allowed: false
+  user_paths_allowed: false
+  user_files_allowed: false
+  user_raw_data_allowed: false
+  user_bind_address_allowed: false
+  profile_source: typed_allowlisted_netpilot_profile_only
+  hard_timeout_seconds: 120
+  process_tree_cleanup_required: true
+  residual_listener_check_required: true
+
+routing_boundary:
+  transparent_routing_enabled: false
+  windows_system_wide_routing_allowed: false
+  android_vpn_tun_allowed: false
+  note: Transparent Windows routing and Android VpnService/TUN are separate component admissions and are outside this plan.
+
+resource_policy:
+  max_concurrent_tcp_connections: null
+  max_udp_associations: null
+  max_pending_connections: null
+  rule: numeric budgets must be evidence-based, nonzero and pinned before any production admission
+
+stages:
+  - id: BYE-0
+    name: identity-and-environment-verification
+    executable_run_allowed: false
+    required_evidence:
+      - exact source/patch identities
+      - exact runtime binary SHA-256 for selected platform
+      - clean disposable lab snapshot
+      - baseline process/listener inventory
+
+  - id: BYE-1
+    name: loopback-listener-regression
+    executable_run_allowed: false
+    unlock_requires: HIGH_ASSURANCE_HUMAN_APPROVAL
+    checks:
+      - default bind appears only on loopback
+      - explicit IPv4 loopback bind succeeds
+      - explicit IPv6 loopback bind succeeds when platform support exists
+      - wildcard bind is rejected
+      - non-loopback/LAN bind is rejected
+      - no residual listener after controlled stop
+
+  - id: BYE-2
+    name: supervised-lifecycle
+    executable_run_allowed: false
+    unlock_requires:
+      - BYE-1 PASS
+      - separate HIGH_ASSURANCE_HUMAN_APPROVAL
+    checks:
+      - controlled stop
+      - hard timeout
+      - forced termination
+      - process-tree cleanup
+      - PID-file cleanup where applicable
+      - no residual listener
+
+  - id: BYE-3
+    name: bounded-resource-lifecycle
+    executable_run_allowed: false
+    unlock_requires:
+      - BYE-1 PASS
+      - BYE-2 PASS
+      - separate HIGH_ASSURANCE_HUMAN_APPROVAL
+    workloads:
+      - synthetic loopback TCP connections
+      - synthetic loopback UDP associations
+      - bounded connection burst
+      - repeated open-close cycles
+    evidence_limits:
+      proxied_payloads_stored: false
+      credentials_stored: false
+      account_identifiers_stored: false
+      browsing_history_stored: false
+
+  - id: BYE-4
+    name: platform-routing-integration
+    executable_run_allowed: false
+    unlock_requires: SEPARATE_COMPONENT_ADMISSION
+    note: This plan never authorizes Windows transparent routing or Android VPN/TUN integration.
+
+evidence_schema:
+  required_fields:
+    - plan_id
+    - platform
+    - candidate_binary_sha256
+    - source_commit
+    - patchset_sha256s
+    - profile_id
+    - bound_addresses_observed
+    - residual_listener_count
+    - residual_process_count
+    - stop_reason
+    - process_exit_code
+    - cleanup_result
+    - peak_tcp_connections
+    - peak_udp_associations
+  forbidden_fields:
+    - proxied_payload
+    - credential
+    - cookie
+    - token
+    - private_key
+    - full_url_history
+    - unnecessary_remote_ip_history
+
+promotion:
+  lab_pass_implies_admit: false
+  lab_pass_changes_release_gate: false
+  production_activation_allowed: false
+  separate_admission_decision_required: true
+
+notes:
+  - This is a non-executing draft only.
+  - It does not authorize starting ciadpi/ciadpi.exe.
+  - It does not authorize exposing a SOCKS listener outside loopback.
+  - It does not authorize system-wide routing, Android VPN/TUN, or production integration.
