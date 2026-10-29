@@ -1,7 +1,7 @@
 diff --git a/src/pkt.rs b/src/pkt.rs
 --- a/src/pkt.rs
 +++ b/src/pkt.rs
-@@ -232,15 +232,8 @@ pub fn put_hop(pkt: &[u8]) {
+@@ -232,15 +232,9 @@ pub fn put_hop(pkt: &[u8]) {
  
  /// Return Ok(true) if packet is handled
  pub fn handle_packet(pkt: &[u8], buf: &mut Vec::<u8>) -> Result<bool> {
