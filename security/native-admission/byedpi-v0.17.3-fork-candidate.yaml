@@ -1,4 +1,4 @@
-schema_version: 3
+schema_version: 4
 component_set: byedpi-v0.17.3-netpilot-fork-candidate
 admission_status: REVIEW
 release_gate: BLOCK
@@ -41,14 +41,16 @@ policy:
   strategy_must_compile_from_typed_allowlisted_profile: true
   transparent_windows_routing_requires_separate_component_admission: true
   android_vpn_tun_path_requires_separate_component_admission: true
+  windows_socket_handle_narrowing_must_fail_closed: true
 
 static_review:
   document: docs/BYEDPI-STATIC-ADMISSION-R28.1.md
   compile_smoke_document: docs/BYEDPI-COMPILE-SMOKE-R28.3.md
+  windows_handle_hardening_document: docs/BYEDPI-WINDOWS-HANDLE-HARDENING-R28.4.md
   decision: EXACT_V0_17_3_PLUS_CURATED_PATCHES_ONLY
   full_post_release_head_as_base: REJECT
   reason: post-release delta adds new proxy/cache/plugin/raw-mode surfaces beyond first NetPilot need
-  next_gate: R28.4_FULL_PATCHSET_COMPILE_THEN_ISOLATED_LOOPBACK_RUNTIME_LAB
+  next_gate: R28.4_FULL_PATCHSET_0001_0006_COMPILE_THEN_ISOLATED_LOOPBACK_RUNTIME_LAB
 
 patch_series:
   - sequence: 1
@@ -74,7 +76,7 @@ patch_series:
     purpose: make PID-file locking/truncation/write handling fail safe and cleanup descriptor state deterministically
     git_blob_sha1: d56d0f8659a49c48c923b6af85a523a952e77e0c
     sha256: 5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738
-    status: PASS_FOR_STATIC_COMPILE_ON_PATCHSET_0001_0003_CURRENT_0001_0004_RERUN_PENDING
+    status: TARGETED_STATIC_PASS_FULL_PATCHSET_RERUN_PENDING
     expected_files: [main.c]
     limitation: runtime PID-file lifecycle is not admitted
 
@@ -87,6 +89,33 @@ patch_series:
     expected_files: [kavl.h]
     finding: upstream empty-tree erase path produced UBSan index -1 out of bounds after final erase loop check
     limitation: candidate runtime remains blocked
+
+  - sequence: 5
+    path: security/native-admission/patches/byedpi-r28/0005-windows-socket-handle-narrowing-guard.patch
+    purpose: validate pointer-sized Windows SOCKET values before narrowing them into the upstream int-based event-pool representation
+    git_blob_sha1: fb8a7f57dc577e9ee8664adb41d264a64dc81a0d
+    sha256: edb9642146c3864007406b17b10253b3ca9f763d84454fa946ce162811160729
+    status: DESIGN_FIXED_COMPILE_GATE_PENDING
+    expected_files: [proxy.c, conev.c]
+    finding: upstream v0.17.3 stores socket()/accept() results in int while Win64 SOCKET is pointer-sized unsigned
+    semantics:
+      invalid_socket: reject
+      socket_above_INT_MAX: close_and_reject
+      representable_socket: narrow_only_after_explicit_check
+    limitation: full Windows compile/warning gate must pass before any runtime test
+
+  - sequence: 6
+    path: security/native-admission/patches/byedpi-r28/0006-windows-wait-result-range.patch
+    purpose: classify WaitForMultipleObjects result without a redundant unsigned lower-bound test and only index successful object results
+    git_blob_sha1: 0815be26534c291848a8b16bdedb07a6ab1e485f
+    sha256: 1a80382fe64c3d1a568217cc775cb2cee5c3457664aad2868c0d28c3de806bde
+    status: DESIGN_FIXED_COMPILE_GATE_PENDING
+    expected_files: [desync.c]
+    finding: upstream comparison ret >= WAIT_OBJECT_0 is always true for DWORD because WAIT_OBJECT_0 is zero
+    semantics:
+      indexed_results: WAIT_OBJECT_0_through_WAIT_OBJECT_0_plus_MAX_TF_minus_one
+      timeout_failed_abandoned_results: not_indexed
+    limitation: full Windows compile/warning gate must pass before any runtime test
 
 kavl_sanitizer:
   status: PASS_FOR_ISOLATED_KAVL_ASAN_UBSAN_REGRESSION_ONLY
@@ -110,18 +139,21 @@ historical_compile_smoke:
   workflow_job_id: 122966803718
   artifact_id: 12834388188
   artifact_zip_sha256: eef60dbe551ee908e0f9e4de0a18519d63a032e0948e07e46eebf0a9725771d4
-  note: superseded for candidate identity; full 0001-0004 compile rerun is required
+  note: superseded for candidate identity; full 0001-0006 compile rerun is required
 
 current_patchset_gates:
-  patchset: 0001-0004
+  patchset: 0001-0006
   compile_smoke_linux_windows:
     status: PENDING
     workflow: .github/workflows/native-candidate-byedpi-compile-smoke.yml
+    required_windows_warning_gates:
+      - conev.c with -Werror=sign-compare
+      - desync.c with -Werror=type-limits
   pidfile_static:
-    status: PENDING
+    status: TARGETED_PRE_0005_0006_PASS_FULL_IDENTITY_RERUN_PENDING
     workflow: .github/workflows/native-candidate-byedpi-pidfile-static.yml
   kavl_sanitizer:
-    status: PASS
+    status: PASS_TARGETED_SUBSET
     workflow: .github/workflows/native-candidate-byedpi-static-sanitizer.yml
   loopback_runtime:
     status: NOT_STARTED
@@ -134,13 +166,14 @@ current_patchset_gates:
     status: NOT_STARTED
 
 compile_warning_review:
-  status: PARTIALLY_MITIGATED
+  status: DESIGN_FIXES_ADDED_EVIDENCE_PENDING
   findings:
-    - ignored write() result in init_pid_file on Linux: patched by 0003; current full-patchset compile rerun pending
-    - GCC array-bounds warning around KAVL iterator: iterator sentinel patched by 0002; sanitizer then exposed separate empty-tree erase UB patched by 0004
-    - signed/unsigned event descriptor comparison warning on Windows remains open
-    - compiler reports ret >= WAIT_OBJECT_0 as always true for unsigned type on Windows remains open
-  required_action: complete full patchset compile/static gates, then review remaining Windows event warnings before any runtime admission
+    - ignored write() result in init_pid_file on Linux: patched by 0003
+    - KAVL one-before-array iterator sentinel: patched by 0002
+    - KAVL empty-tree erase index -1 UB: patched by 0004 and isolated sanitizer PASS
+    - Windows event descriptor signed/unsigned warning exposed a wider representation boundary: socket()/accept() return SOCKET but upstream event pool stores int; patched fail-closed at ingress by 0005
+    - Windows WaitForMultipleObjects lower-bound comparison was always true for DWORD; patched by 0006 with explicit successful-object range
+  required_action: full patchset 0001-0006 reproducible Linux/Windows compile plus targeted warning gates before runtime admission
 
 curated_backport_candidates:
   - commit: 57f9606feba6e06f9974e8502a21ce6672251548
@@ -154,10 +187,10 @@ curated_backport_candidates:
     status: REVIEW_OR_REIMPLEMENT_NOT_APPLIED
 
 required_before_admit:
-  - Full patchset 0001-0004 must compile reproducibly for Linux x86-64 and Windows x64 without candidate execution.
+  - Full patchset 0001-0006 must compile reproducibly for Linux x86-64 and Windows x64 without candidate execution.
+  - Targeted Windows sign-compare and type-limits gates must pass on the patched source.
   - Runtime loopback-only regression must prove no listener appears on wildcard or LAN interfaces.
   - Connection and UDP state resource budgets must be measured and fixed as internal typed policy.
-  - Remaining Windows event-loop warnings must be reviewed and either proven benign or patched with regression coverage.
   - File/path/raw-data CLI surfaces must remain unreachable from NetPilot UI, IPC and config.
   - Android VpnService and TUN-to-SOCKS components require separate provenance, lifecycle and DNS/UDP review.
   - Windows system-wide transparent routing requires a separately admitted routing component.
@@ -168,5 +201,5 @@ required_before_admit:
 notes:
   - ByeDPI itself is a local SOCKS proxy and does not make Windows applications transparently use it.
   - Upstream v0.17.3 defaults to 0.0.0.0:1080; NetPilot patch 0001 changes this to loopback-only policy.
-  - KAVL sanitizer found a real empty-tree erase UB after the first iterator hardening patch; patch 0004 fixes only that exact condition.
   - No native binary from this candidate is currently allowed to execute from NetPilot.
+  - Patch 0005 intentionally preserves upstream int-based event-pool ABI but makes any non-representable Win64 SOCKET fail closed before narrowing.
