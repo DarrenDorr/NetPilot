@@ -1,9 +1,31 @@
 #include "protocol.h"
+#include "params.h"
 
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+/*
+ * Link-only stubs for protocol.c sections retained by Clang/libFuzzer.
+ * The fuzz target never intentionally calls TLS mutation/logging paths.
+ * If such a path becomes reachable from the parser entry points below,
+ * abort immediately instead of silently hiding the dependency.
+ */
+struct params_s params;
+const char *tld[6] = { NULL, NULL, NULL, NULL, NULL, NULL };
+
+int DLOG(const char *format, ...)
+{
+    (void)format;
+    abort();
+}
+
+int DLOG_ERR(const char *format, ...)
+{
+    (void)format;
+    abort();
+}
 
 static void abort_if(bool condition)
 {
