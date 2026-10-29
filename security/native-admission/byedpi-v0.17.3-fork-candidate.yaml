@@ -1,4 +1,4 @@
-schema_version: 5
+schema_version: 6
 component_set: byedpi-v0.17.3-netpilot-fork-candidate
 admission_status: REVIEW
 release_gate: BLOCK
@@ -51,7 +51,7 @@ static_review:
   decision: EXACT_V0_17_3_PLUS_CURATED_PATCHES_ONLY
   full_post_release_head_as_base: REJECT
   reason: post-release delta adds new proxy/cache/plugin/raw-mode surfaces beyond first NetPilot need
-  next_gate: R28.4_FULL_PATCHSET_0001_0006_COMPILE_THEN_ISOLATED_LOOPBACK_RUNTIME_LAB
+  next_gate: R28.4_FULL_PATCHSET_0001_0007_COMPILE_THEN_ISOLATED_LOOPBACK_RUNTIME_LAB
 
 patch_series:
   - sequence: 1
@@ -119,6 +119,21 @@ patch_series:
       timeout_failed_abandoned_results: not_indexed
     limitation: full Windows compile/warning gate must pass before any runtime test
 
+  - sequence: 7
+    path: security/native-admission/patches/byedpi-r28/0007-windows-aux-socket-probes.patch
+    purpose: preserve pointer-sized SOCKET values in get_default_ttl and ipv6_support auxiliary probes instead of narrowing them to int on Win64
+    git_blob_sha1: e1e7cf53a87e9f51224147d7b1d4faf39dcf8ef6
+    sha256: ddfe7a3b6280c55dc89afd99ea89badea2f30348031f4f93a6ca6debcf939897
+    status: DESIGN_FIXED_COMPILE_GATE_PENDING
+    expected_files: [main.c]
+    finding: exact v0.17.3 also narrows socket(AF_INET/AF_INET6) results to int in two helper probes outside the event-pool ingress covered by patch 0005
+    semantics:
+      windows_socket_type: SOCKET
+      windows_failure_check: INVALID_SOCKET
+      linux_socket_type: int
+      linux_failure_check: fd_less_than_zero
+    limitation: full Windows compile/warning gate must pass before any runtime test
+
 kavl_sanitizer:
   status: PASS_FOR_ISOLATED_KAVL_ASAN_UBSAN_REGRESSION_ONLY
   workflow: .github/workflows/native-candidate-byedpi-static-sanitizer.yml
@@ -136,16 +151,17 @@ historical_compile_smoke:
   workflow_job_id: 122966803718
   artifact_id: 12834388188
   artifact_zip_sha256: eef60dbe551ee908e0f9e4de0a18519d63a032e0948e07e46eebf0a9725771d4
-  note: superseded for candidate identity; full 0001-0006 compile rerun is required
+  note: superseded for candidate identity; full 0001-0007 compile rerun is required
 
 current_patchset_gates:
-  patchset: 0001-0006
+  patchset: 0001-0007
   compile_smoke_linux_windows:
-    status: PENDING_AFTER_PATCH_0005_UNIFIED_DIFF_REPAIR
+    status: PENDING_AFTER_PATCH_0007_ADDITION
     workflow: .github/workflows/native-candidate-byedpi-compile-smoke.yml
     required_windows_warning_gates:
       - conev.c with -Werror=sign-compare
       - desync.c with -Werror=type-limits
+      - main.c with -Werror=sign-compare and -Werror=conversion
   pidfile_static:
     status: PASS_TARGETED_SUBSET
     workflow: .github/workflows/native-candidate-byedpi-pidfile-static.yml
@@ -176,7 +192,8 @@ compile_warning_review:
     - KAVL empty-tree erase index -1 UB: patched by 0004 and isolated sanitizer PASS
     - Windows event descriptor signed/unsigned warning exposed a wider representation boundary: socket()/accept() return SOCKET but upstream event pool stores int; patched fail-closed at ingress by 0005
     - Windows WaitForMultipleObjects lower-bound comparison was always true for DWORD; patched by 0006 with explicit successful-object range
-  required_action: full patchset 0001-0006 reproducible Linux/Windows compile plus targeted warning gates before runtime admission
+    - Windows get_default_ttl/ipv6_support auxiliary probes also stored SOCKET in int; patched by 0007 to retain SOCKET on Windows
+  required_action: full patchset 0001-0007 reproducible Linux/Windows compile plus targeted warning gates before runtime admission
 
 upstream_issue_review:
   document: docs/BYEDPI-UPSTREAM-ISSUE-REVIEW-R28.4.md
@@ -206,8 +223,8 @@ curated_backport_candidates:
     status: REVIEW_OR_REIMPLEMENT_NOT_APPLIED
 
 required_before_admit:
-  - Full patchset 0001-0006 must compile reproducibly for Linux x86-64 and Windows x64 without candidate execution.
-  - Targeted Windows sign-compare and type-limits gates must pass on the patched source.
+  - Full patchset 0001-0007 must compile reproducibly for Linux x86-64 and Windows x64 without candidate execution.
+  - Targeted Windows sign-compare, type-limits and conversion gates must pass on the patched source.
   - Runtime loopback-only regression must prove no listener appears on wildcard or LAN interfaces.
   - Connection and UDP state resource budgets must be measured and fixed as internal typed policy.
   - File/path/raw-data CLI surfaces must remain unreachable from NetPilot UI, IPC and config.
@@ -221,4 +238,5 @@ notes:
   - ByeDPI itself is a local SOCKS proxy and does not make Windows applications transparently use it.
   - Upstream v0.17.3 defaults to 0.0.0.0:1080; NetPilot patch 0001 changes this to loopback-only policy.
   - No native binary from this candidate is currently allowed to execute from NetPilot.
-  - Patch 0005 intentionally preserves upstream int-based event-pool ABI but makes any non-representable Win64 SOCKET fail closed before narrowing.
+  - Patch 0005 preserves upstream int-based event-pool ABI but makes non-representable Win64 SOCKET fail closed before narrowing.
+  - Patch 0007 covers the two auxiliary Windows socket probes that do not enter the event pool but still must retain pointer-sized SOCKET handles.
