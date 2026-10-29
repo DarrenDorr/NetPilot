@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 matrix_id: netpilot-prelab-r28.4
 reviewed_at: 2026-10-29
 production_activation_allowed: false
@@ -80,18 +80,26 @@ candidates:
       - 0004-kavl-empty-erase-guard.patch
       - 0005-windows-socket-handle-narrowing-guard.patch
       - 0006-windows-wait-result-range.patch
+      - 0007-windows-aux-socket-probes.patch
+    patchset_identity:
+      patch_0005_git_blob_sha1: d5cde98057a0ded600468b1f1c69d2e55c3b4d6e
+      patch_0005_sha256: 7c8f4eee9ff2624346cb886027df66378773d0af04f5f84f54c30815104b4356
+      patch_0007_git_blob_sha1: e1e7cf53a87e9f51224147d7b1d4faf39dcf8ef6
+      patch_0007_sha256: ddfe7a3b6280c55dc89afd99ea89badea2f30348031f4f93a6ca6debcf939897
     verified_evidence:
       historical_patch_0001_linux_windows_compile: PASS
       targeted_kavl_asan_ubsan: PASS
-      full_patchset_0001_0006_compile: PENDING_RERUN_AFTER_CANONICAL_GIT_BYTES_IDENTITY_FIX
-      pidfile_static_full_identity: PENDING
+      targeted_kavl_erase_asan_ubsan: PASS
+      targeted_pidfile_static: PASS
+      full_patchset_0001_0007_compile: PENDING
       windows_targeted_warning_gates: PENDING
-    current_ci_fix:
-      issue: working-tree patch bytes differed from canonical Git blob bytes during SHA-256 verification
-      resolution: materialize reviewed patches with git-show and verify/apply canonical blob bytes
+    current_ci_state:
+      canonical_git_bytes_identity_check: ACTIVE
+      patch_0005_malformed_diff_detected_fail_closed: true
+      patch_0005_hunk_metadata_repaired: true
+      auxiliary_socket_narrowing_review_found_patch_0007: true
       workflow: .github/workflows/native-candidate-byedpi-compile-smoke.yml
-      commit: fc79c25c2fcadd5c7dbc636fe717786d8743cf3e
-      security_effect: identity_check_stricter_not_weaker
+      security_effect: exact_full_patchset_expanded_not_weakened
     lab:
       state: PRE_LAB_REVIEW_ONLY_AFTER_GREEN_FULL_PATCHSET_GATES
       plan: security/native-admission/lab-plans/byedpi-loopback-r28.4.yaml
@@ -100,19 +108,20 @@ candidates:
       transparent_windows_routing_in_scope: false
       android_vpn_tun_in_scope: false
     next_decision:
-      - require full patchset Linux/Windows compile success
-      - require targeted Windows warning gates success
-      - require PID-file/static/sanitizer evidence for exact patchset
-      - human review exact loopback lab plan
+      - require full patchset 0001-0007 Linux/Windows compile success
+      - require targeted Windows warning/conversion gates success
+      - keep targeted PID-file/KAVL evidence scoped and separate
+      - human review exact loopback lab plan only after full patchset is green
       - do not start ciadpi before LAB_APPROVED
 
   dpibreak:
     role: reserve-windows-linux-candidate
-    admission_status: SURVEY_ONLY
-    release_gate: NOT_EVALUATED_FOR_ADMIT
+    admission_status: REVIEW
+    release_gate: BLOCK
     may_execute_in_netpilot: false
     may_integrate_in_netpilot: false
-    note: Keep as independent fallback candidate; no NetPilot fork or native runtime integration is authorized in R28.4.
+    manifest: security/native-admission/dpibreak-v0.6.2-candidate.yaml
+    note: Reserve candidate only; no NetPilot native runtime execution is authorized in R28.4.
 
 promotion_requirements:
   to_lab_approved:
@@ -133,3 +142,4 @@ notes:
   - This matrix is status/evidence metadata only and cannot authorize execution.
   - No candidate is currently ADMIT.
   - No native engine start/install path may be enabled in NetPilot production from this file.
+  - Any ByeDPI review referring only to patchset 0001-0006 is stale for current candidate identity.
