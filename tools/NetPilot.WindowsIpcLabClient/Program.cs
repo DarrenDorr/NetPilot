@@ -60,15 +60,29 @@ internal static class Program
             Console.WriteLine($"SERVICE_SUCCESS={response.Success}");
             Console.WriteLine($"SERVICE_CODE={response.Code}");
 
-            if (response.Success
-                && string.Equals(response.Code, "Ok", StringComparison.Ordinal))
+            if (!response.Success
+                || !string.Equals(response.Code, "Ok", StringComparison.Ordinal))
             {
-                Console.WriteLine("RESULT=AUTHORIZED_PASS");
-                return 0;
+                Console.Error.WriteLine("ERROR=ExpectedAuthorizedResponse");
+                return 10;
             }
 
-            Console.Error.WriteLine("ERROR=ExpectedAuthorizedResponse");
-            return 10;
+            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            var profileRoot = Path.Combine(programFiles, "NetPilot", "Users", sid);
+
+            try
+            {
+                _ = Directory.GetFileSystemEntries(profileRoot);
+                Console.Error.WriteLine("ERROR=ProfileDirectAccessUnexpectedlyAllowed");
+                return 11;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                Console.WriteLine("PROFILE_DIRECT_ACCESS=DENIED");
+            }
+
+            Console.WriteLine("RESULT=AUTHORIZED_PASS");
+            return 0;
         }
         catch (UnauthorizedAccessException exception)
         {
