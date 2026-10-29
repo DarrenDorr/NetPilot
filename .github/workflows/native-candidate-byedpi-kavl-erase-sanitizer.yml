@@ -1,0 +1,146 @@
+name: Native Candidate ByeDPI KAVL Erase Sanitizer
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/native-candidate-byedpi-kavl-erase-sanitizer.yml"
+      - "security/native-admission/harnesses/byedpi-r28/kavl_erase_harness.c"
+      - "security/native-admission/patches/byedpi-r28/**"
+      - "security/native-admission/byedpi-v0.17.3-fork-candidate.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  erase-sanitizer:
+    name: ByeDPI exact KAVL erase ASan/UBSan baseline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout NetPilot without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: netpilot
+          persist-credentials: false
+
+      - name: Checkout exact ByeDPI v0.17.3 source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: hufrea/byedpi
+          ref: 7efde1b1296eaaa187b70e951894dde17527489c
+          fetch-depth: 1
+          path: byedpi
+          persist-credentials: false
+
+      - name: Verify exact source and harness identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C byedpi rev-parse HEAD)" = "7efde1b1296eaaa187b70e951894dde17527489c"
+          test "$(git -C byedpi rev-parse 'HEAD^{tree}')" = "8d13f6f5939190cd27ee68696247073a00b3e7dc"
+          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/harnesses/byedpi-r28/kavl_erase_harness.c')" = "79ecce91a522dd0401c1bb71d963c7273626dc9f"
+
+      - name: Install sanitizer dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential
+
+      - name: Strict-compile exact upstream KAVL erase harness
+        id: compile
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence scratch
+          gcc -D_DEFAULT_SOURCE -std=c11 -O1 -g \
+            -fsanitize=address,undefined \
+            -fno-sanitize-recover=all -fno-omit-frame-pointer \
+            -Wall -Wextra -Werror -Ibyedpi \
+            netpilot/security/native-admission/harnesses/byedpi-r28/kavl_erase_harness.c \
+            -o scratch/kavl_erase_harness \
+            2>&1 | tee evidence/compile.log
+          test -x scratch/kavl_erase_harness
+
+      - name: Run exact-key erase mode
+        id: exact
+        if: steps.compile.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          ASAN_OPTIONS='detect_leaks=1:abort_on_error=1:strict_string_checks=1' \
+          UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1' \
+          timeout 30s ./scratch/kavl_erase_harness exact \
+            2>&1 | tee evidence/exact.log
+          grep -Fxq 'kavl_erase_harness: PASS mode=exact' evidence/exact.log
+
+      - name: Run erase-first mode
+        id: first
+        if: steps.compile.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          ASAN_OPTIONS='detect_leaks=1:abort_on_error=1:strict_string_checks=1' \
+          UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1' \
+          timeout 30s ./scratch/kavl_erase_harness first \
+            2>&1 | tee evidence/first.log
+          grep -Fxq 'kavl_erase_harness: PASS mode=first' evidence/first.log
+
+      - name: Produce baseline evidence
+        if: always()
+        shell: bash
+        env:
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+          EXACT_OUTCOME: ${{ steps.exact.outcome }}
+          FIRST_OUTCOME: ${{ steps.first.outcome }}
+        run: |
+          set -euo pipefail
+          harness_sha256="$(sha256sum netpilot/security/native-admission/harnesses/byedpi-r28/kavl_erase_harness.c | awk '{print $1}')"
+          {
+            echo 'schema_version=1'
+            echo 'scope=byedpi-v0.17.3-exact-upstream-kavl-erase-sanitizer-baseline'
+            echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
+            echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
+            echo 'harness_git_blob_sha1=79ecce91a522dd0401c1bb71d963c7273626dc9f'
+            echo "harness_sha256=$harness_sha256"
+            echo 'sanitizers=ASan,UBSan'
+            echo 'node_count_per_cycle=1024'
+            echo 'cycles_per_mode=20'
+            echo "compile_outcome=$COMPILE_OUTCOME"
+            echo "exact_key_erase_outcome=$EXACT_OUTCOME"
+            echo "erase_first_outcome=$FIRST_OUTCOME"
+            echo 'candidate_binary_executed=false'
+            echo 'listener_opened=false'
+            echo 'routing_changed=false'
+            echo 'admission_effect=NONE'
+            echo 'release_gate=BLOCK'
+          } > evidence/byedpi-kavl-erase-baseline.txt
+          rm -f scratch/kavl_erase_harness
+          sha256sum evidence/* | sort > evidence/SHA256SUMS-byedpi-kavl-erase-baseline.txt
+
+      - name: Upload text evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: byedpi-r28-kavl-erase-baseline-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce exact upstream KAVL erase sanitizer baseline
+        if: always()
+        shell: bash
+        env:
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+          EXACT_OUTCOME: ${{ steps.exact.outcome }}
+          FIRST_OUTCOME: ${{ steps.first.outcome }}
+        run: |
+          set -euo pipefail
+          test "$COMPILE_OUTCOME" = 'success'
+          test "$EXACT_OUTCOME" = 'success'
+          test "$FIRST_OUTCOME" = 'success'
