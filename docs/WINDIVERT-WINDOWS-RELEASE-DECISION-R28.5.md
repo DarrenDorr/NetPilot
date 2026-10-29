@@ -25,9 +25,54 @@
 
 Upstream issue #408 остаётся открытым. Описана race при первой загрузке драйвера: device/symlink становятся доступны до полной инициализации reflect state, после чего concurrent `WinDivertOpen()` может привести к использованию неинициализированных `reflect_lock` / list heads и bugcheck `0xD1`.
 
-Проверка текущего upstream source также показывает, что `windivert_reflect_open_event()` использует reflect state без fail-closed проверки `reflect_inited` перед queue operation.
+Повторная проверка current upstream source на commit `97101072dbe31d744ca3429da389350a3df39e18` подтверждает порядок:
+
+1. создаётся control device;
+2. создаётся default I/O queue;
+3. создаётся symbolic link;
+4. вызывается `WdfControlFinishInitializing(device)`;
+5. только после этого выполняется длительная настройка injection handles / WFP sublayers;
+6. `windivert_reflect_init((WDFOBJECT)device)` вызывается в самом конце успешной настройки.
+
+`windivert_reflect_init()` инициализирует `reflect_lock`, три list heads и work item, после чего выставляет `reflect_inited = TRUE`. При этом `windivert_reflect_open_event()` использует `reflect_lock`, `reflect_event_queue` и `reflect_worker` без предварительной fail-closed проверки `reflect_inited`.
 
 **Решение Net.Pilot:** Windows runtime на exact v2.2.2 и на непроверенном current master запрещён.
+
+### Предпочтительный source-level fix design для #408
+
+Наиболее узкий и архитектурно чистый candidate fix — **не публиковать control device для I/O до завершения всей инициализации драйвера**.
+
+Предлагаемый порядок для будущего отдельного NetPilot-owned fork, если он вообще потребуется:
+
+1. сохранить `WdfDeviceCreate`, I/O queue и `WdfDeviceCreateSymbolicLink` в существующей фазе создания control device;
+2. убрать ранний вызов `WdfControlFinishInitializing(device)` из этой фазы;
+3. завершить создание injection handles, buffer pools и WFP transaction;
+4. успешно выполнить `windivert_reflect_init((WDFOBJECT)device)`;
+5. только после успешной инициализации всех зависимостей вызвать `WdfControlFinishInitializing(device)` как финальную публикацию control device;
+6. при любой ошибке до этого шага уйти в существующий cleanup без публикации устройства для пользовательского I/O.
+
+Почему этот вариант предпочтителен:
+
+- KMDF документирует, что система не отправляет I/O/WMI requests в control device до `WdfControlFinishInitializing`;
+- сохраняется существующий parent `device` для `WdfWorkItemCreate`, поэтому не требуется искусственно разделять lifetime reflect worker;
+- закрывается не только конкретное обращение к `reflect_event_queue`, а сам класс раннего пользовательского I/O до завершения `DriverEntry`;
+- не требуется молча отбрасывать REFLECT open/close events и создавать асимметричное состояние;
+- изменение локализовано в порядке публикации control device и должно быть отдельно проверено WDF/driver review.
+
+Defense-in-depth проверка `reflect_inited` в reflect paths может рассматриваться отдельно, но не должна заменять корректный initialization barrier и не должна молча скрывать open/close event semantics.
+
+### Что требуется доказать до применения такого fix
+
+До появления реального fork/patch обязательны:
+
+- независимый HIGH_ASSURANCE review порядка KMDF lifecycle;
+- проверка всех error/unload paths при control device, который ещё не прошёл `WdfControlFinishInitializing`;
+- compile/static analysis с WDK/KMDF без загрузки драйвера;
+- driver-verifier/HLK design review;
+- только после отдельного `LAB_APPROVED` — isolated first-load concurrency/lifecycle regression на disposable Windows VM;
+- отсутствие изменения публичной фильтрационной семантики WinDivert за пределами initialization barrier.
+
+Текущий статус этого design: **RECOMMENDED_FOR_REVIEW / NOT_APPLIED / NO_FORK_CREATED**.
 
 ### WD-LIFECYCLE-002 / upstream issue #406
 
@@ -90,6 +135,8 @@ Upstream выпускает новый exact tagged release, в котором:
 - Windows DPIBreak: `BLOCK`;
 - WinDivert runtime: `BLOCK`;
 - production driver signing: `NOT_READY`;
+- #408 source fix: `RECOMMENDED_FOR_REVIEW / NOT_APPLIED`;
+- WinDivert fork created: `false`;
 - driver execution: `false`;
 - production effect: `NONE`.
 
