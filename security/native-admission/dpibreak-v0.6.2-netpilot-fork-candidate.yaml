@@ -1,4 +1,4 @@
-schema_version: 3
+schema_version: 4
 component_set: dpibreak-v0.6.2-netpilot-fork-candidate
 admission_status: REVIEW
 release_gate: BLOCK
@@ -138,19 +138,53 @@ advisory_static_gate:
   candidate_executed_by_gate: false
   admission_effect: NONE
 
+hardened_linux_compile_gate:
+  workflow: .github/workflows/native-candidate-dpibreak-hardened-linux-compile.yml
+  status: PASS_FOR_EXACT_PATCHSET_0001_0003_COMPILE_ONLY
+  workflow_run_id: 40815748022
+  workflow_job_id: 123256260881
+  head_sha: 9dfa757ea01757b4e7507a29b63c8bfcf662d22f
+  artifact_id: 12872371597
+  artifact_name: dpibreak-r28-hardened-linux-compile-evidence
+  artifact_zip_sha256: aefb990f661f6c2b3d0e346d901d0619e0a048c49c1d2f202a9fb87f5132a7f0
+  hardened_source_diff_sha256: 20b6b8e3e90199efd7783b08f5a0dccf02fe433d75b3ae2beae60feb98b60593
+  rust_toolchain: 1.97.0
+  target: x86_64-unknown-linux-musl
+  binary_sha256: 5b227ef4115c36c81427d8ca86135c7b509137045e3909afc391ffe2b016d09a
+  binary_size_bytes: 869464
+  same_runner_reproducible: true
+  cargo_fetch_locked: true
+  cargo_build_locked: true
+  cargo_build_offline_after_fetch: true
+  candidate_binary_executed: false
+  binary_retained: false
+  nfqueue_enabled: false
+  firewall_changed: false
+  network_interception_enabled: false
+  compiler_warning_review:
+    warning_count: 2
+    findings:
+      - unused import is_kernel_filtered_clienthello after patch 0002
+      - unused function is_kernel_filtered_clienthello after patch 0002
+    classification: EXPECTED_DEAD_CODE_AFTER_REVALIDATION_PATCH_REVIEW_DEBT
+    security_blocker: false
+  admission_effect: NONE
+
 platforms:
   linux:
-    state: REVIEW
-    next_gate: compile exact active patchset 0001-0003 with locked dependencies, then review issue 24 GSO/MTU behavior before any lab promotion
-    lab_state: NOT_APPROVED
+    state: PRE_LAB_REVIEW
+    next_gate: design isolated regression evidence for issue 24 GSO/MTU behavior and issue 28 firewall ownership/rollback; do not execute before separate HIGH_ASSURANCE approval
+    lab_state: DRAFT_NOT_APPROVED
     residual_blockers:
       - issue 24 GSO/MTU correctness needs regression evidence beyond fail-safe userspace revalidation
       - issue 28 firewall ownership/rollback needs isolated lab design
       - issue 26 local/LAN HTTPS exclusions need typed policy
       - issue 31 VPN/WireGuard coexistence remains compatibility scope
+      - compile warnings from removed kernel-filter trust path should be cleaned only by reviewed source patch, not warning suppression
   windows:
     state: BLOCK
     next_gate: compile-only of exact active patchset may be prepared, but driver runtime remains prohibited
+    release_boundary_document: docs/WINDIVERT-WINDOWS-RELEASE-DECISION-R28.5.md
     residual_blockers:
       - WinDivert issue 408 kernel driver race remains open
       - exact Windows native component inventory/signature review required
@@ -191,3 +225,4 @@ notes:
   - Patch 0002 is fail-safe correctness hardening, not proof of complete GSO support.
   - Patch 0003 removes a privileged customization surface that NetPilot does not need.
   - Patches 0004 and 0005 are explicitly inactive review artifacts and must not be silently applied by build/runtime workflows.
+  - Hardened Linux compile PASS is compile-only evidence and does not authorize NFQUEUE/firewall/runtime execution.
