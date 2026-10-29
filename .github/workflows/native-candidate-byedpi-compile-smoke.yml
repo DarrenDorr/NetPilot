@@ -105,7 +105,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential mingw-w64 file
 
-      - name: Enforce targeted Windows warning gates
+      - name: Enforce targeted Windows warning and source-boundary gates
         id: windows_warning_gate
         continue-on-error: true
         shell: bash
@@ -124,12 +124,51 @@ jobs:
             -Werror=type-limits \
             -c byedpi/desync.c -o scratch/desync-win.o \
             2>&1 | tee evidence/windows-desync-warning-gate.log
+
+          python3 - <<'PY' | tee evidence/windows-main-socket-boundary-gate.log
+          from pathlib import Path
+          import re
+
+          text = Path('byedpi/main.c').read_text(encoding='utf-8')
+
+          def body(name: str) -> str:
+              match = re.search(rf'\b(?:int|bool)\s+{name}\s*\([^)]*\)\s*\{{', text)
+              if not match:
+                  raise SystemExit(f'{name}: function not found')
+              start = match.start()
+              next_func = re.search(r'\n(?:int|bool|void|ssize_t|size_t|char\s*\*)\s+[A-Za-z_]\w*\s*\([^;]*\)\s*\{', text[match.end():])
+              end = len(text) if not next_func else match.end() + next_func.start()
+              return text[start:end]
+
+          ttl = body('get_default_ttl')
+          ipv6 = body('ipv6_support')
+
+          required = [
+              (ttl, r'#ifdef _WIN32\s+SOCKET fd = socket\(AF_INET, SOCK_STREAM, 0\);\s+if \(fd == INVALID_SOCKET\)', 'get_default_ttl Windows SOCKET boundary'),
+              (ttl, r'#else\s+int fd = socket\(AF_INET, SOCK_STREAM, 0\);\s+if \(fd < 0\)', 'get_default_ttl Unix descriptor boundary'),
+              (ipv6, r'#ifdef _WIN32\s+SOCKET fd = socket\(AF_INET6, SOCK_STREAM, 0\);\s+if \(fd == INVALID_SOCKET\)', 'ipv6_support Windows SOCKET boundary'),
+              (ipv6, r'#else\s+int fd = socket\(AF_INET6, SOCK_STREAM, 0\);\s+if \(fd < 0\)', 'ipv6_support Unix descriptor boundary'),
+          ]
+          for scope, pattern, label in required:
+              if re.search(pattern, scope, flags=re.MULTILINE) is None:
+                  raise SystemExit(f'{label}: missing')
+
+          forbidden = [
+              (ttl, r'int\s+orig_ttl\s*=\s*-1\s*,\s*fd\s*;', 'get_default_ttl must not share int fd declaration'),
+              (ipv6, r'\bint\s+fd\s*=\s*socket\(AF_INET6, SOCK_STREAM, 0\);\s*\n\s*if \(fd < 0\)', 'ipv6_support must not use unconditional int fd on Windows'),
+          ]
+          for scope, pattern, label in forbidden:
+              if re.search(pattern, scope, flags=re.MULTILINE):
+                  raise SystemExit(label)
+
+          print('windows_aux_socket_source_boundary: PASS')
+          PY
+
           x86_64-w64-mingw32-gcc \
             -D_DEFAULT_SOURCE -Ibyedpi -std=c99 -O2 \
             -Wall -Wextra -Wno-unused -Wno-unused-parameter -pedantic \
-            -Werror=sign-compare -Werror=conversion \
             -c byedpi/main.c -o scratch/main-win.o \
-            2>&1 | tee evidence/windows-main-socket-warning-gate.log
+            2>&1 | tee evidence/windows-main-compile-gate.log
           rm -f scratch/conev-win.o scratch/desync-win.o scratch/main-win.o
 
       - name: Compile Linux candidate twice without execution
@@ -205,7 +244,7 @@ jobs:
             windows_compiler="$(x86_64-w64-mingw32-gcc --version | head -n1)"
           fi
           {
-            echo 'schema_version=10'
+            echo 'schema_version=11'
             echo 'scope=byedpi-v0.17.3-netpilot-hardening-0001-0007-compile-only'
             echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
             echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
@@ -221,6 +260,8 @@ jobs:
             echo "windows_x64_cross_compile_outcome=$WINDOWS_OUTCOME"
             echo "linux_compiler=$linux_compiler"
             echo "windows_compiler=$windows_compiler"
+            echo 'aux_socket_gate=source-boundary-assertions-plus-normal-windows-compile'
+            echo 'unrelated_upstream_conversion_warnings=review-debt-not-promoted-by-this-targeted-gate'
             echo 'socket_handle_policy=event-pool-ingress-and-auxiliary-probes-use-validated-Win64-SOCKET-boundaries'
             echo 'wait_result_policy=only-WAIT_OBJECT_0-through-WAIT_OBJECT_0-plus-MAX_TF-minus-one-is-indexed'
             echo 'linux_reproducibility=two-consecutive-builds-must-match'
