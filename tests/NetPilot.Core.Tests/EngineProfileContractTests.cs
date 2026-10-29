@@ -101,4 +101,49 @@ public sealed class EngineProfileContractTests
         Assert.DoesNotContain("Path", propertyNames);
         Assert.DoesNotContain("Url", propertyNames);
     }
+
+    [Fact]
+    public void EngineCapabilitySet_RejectsUnknownFlags()
+    {
+        var unknown = (EngineTrafficCapability)(1 << 20);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new EngineCapabilitySet(unknown));
+    }
+
+    [Fact]
+    public void DiscordProfile_RequiresTransparentTcpAndUdp()
+    {
+        var required = BuiltInEngineProfileCapabilityPolicy.GetRequiredCapabilities(
+            BuiltInEngineProfileCatalog.DiscordId);
+
+        Assert.Equal(
+            EngineTrafficCapability.TransparentTcp
+            | EngineTrafficCapability.TransparentUdp,
+            required);
+    }
+
+    [Fact]
+    public void YouTubeProfile_RequiresTransparentTcp()
+    {
+        var required = BuiltInEngineProfileCapabilityPolicy.GetRequiredCapabilities(
+            BuiltInEngineProfileCatalog.YouTubeId);
+
+        Assert.Equal(EngineTrafficCapability.TransparentTcp, required);
+    }
+
+    [Fact]
+    public void ExplicitProxyCapabilities_DoNotSatisfyTransparentProfile()
+    {
+        var capabilities = new EngineCapabilitySet(
+            EngineTrafficCapability.ExplicitProxyTcp
+            | EngineTrafficCapability.ExplicitProxyUdp);
+
+        Assert.False(BuiltInEngineProfileCapabilityPolicy.IsSupported(
+            BuiltInEngineProfileCatalog.YouTubeId,
+            capabilities));
+        Assert.False(BuiltInEngineProfileCapabilityPolicy.IsSupported(
+            BuiltInEngineProfileCatalog.DiscordId,
+            capabilities));
+    }
 }
