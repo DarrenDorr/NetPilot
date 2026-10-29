@@ -1,0 +1,85 @@
+schema_version: 1
+policy_id: netpilot-native-lab-execution-r28.4
+status: ACTIVE_POLICY
+production_effect: NONE
+
+principle:
+  lab_execution_is_not_admission: true
+  review_or_block_never_means_executable: true
+  explicit_candidate_lab_approval_required: true
+  production_activation_requires_separate_admit: true
+
+required_before_candidate_lab_execution:
+  - exact source/release identity is pinned
+  - exact NetPilot patchset identity is pinned
+  - source/patch provenance gate is green for the exact patchset
+  - compile gate is green for the target platform
+  - relevant static/sanitizer/parser/resource gates are green
+  - all known release-blocking findings for the requested lab boundary are either closed or explicitly exclude execution
+  - lab plan defines fixed executable and typed allowlisted arguments only
+  - arbitrary shell/raw CLI/user Lua/user paths/user URLs remain forbidden
+  - persistent auto-hostlist and experimental ipcache-hostname are disabled
+  - nonzero evidence-based temporary resource budgets are configured for the lab
+  - lab machine is disposable and isolated from production/user data
+  - clean snapshot/restore point exists before privileged network changes
+  - pre-test network/firewall/routing state is inventoried
+  - crash/timeout cleanup and rollback procedure is defined before start
+  - no browser session cookies, account tokens, private keys or user secrets are present in the lab image
+  - outbound destinations/protocols required by the test are explicitly inventoried
+  - packet capture is disabled unless separately reviewed and explicitly required
+  - text evidence excludes payloads, credentials, account identifiers and unnecessary IP/URL history
+  - HIGH_ASSURANCE human approval is recorded for the exact candidate, platform and lab plan
+
+execution_constraints:
+  service_installation_allowed: false
+  autostart_allowed: false
+  arbitrary_driver_install_allowed: false
+  candidate_runs_foreground_or_supervised: true
+  hard_timeout_required: true
+  process_tree_cleanup_required: true
+  network_state_rollback_required: true
+  post_test_residual_listener_check_required: true
+  post_test_residual_process_check_required: true
+  post_test_firewall_routing_diff_required: true
+  post_test_reboot_recovery_check_required_for_privileged_network_components: true
+  evidence_must_record_exact_binary_hashes: true
+  evidence_must_record_exact_config_profile_id: true
+  evidence_must_not_store_packet_payloads: true
+
+platforms:
+  linux:
+    current_state: PRE_LAB_REVIEW
+    privileged_boundary: NFQUEUE/firewall-routing
+    execution_allowed_by_this_policy_alone: false
+    additional_requirements:
+      - use a disposable VM or equivalent isolated lab host
+      - use dedicated temporary nftables/iptables objects with unique NetPilot-owned names
+      - snapshot exact rules before test and verify exact cleanup after test
+      - fail-safe traffic path must survive candidate crash/kill/timeout
+      - first run must use synthetic/local targets before public-service workload testing
+
+  windows:
+    current_state: BLOCK
+    privileged_boundary: WinDivert kernel driver and service lifecycle
+    execution_allowed_by_this_policy_alone: false
+    blockers:
+      - WD-RUNTIME-001 WinDivert issue 408 driver-load initialization race / possible BSOD
+      - WD-LIFECYCLE-002 shared-handle service lifecycle issue / ERROR_SERVICE_DISABLED 1058
+      - WD-DEFENDER-003 unresolved Defender report for exact WinDivert-2.2.2-A component set
+    rule: Do not install or load WinDivert while any listed blocker remains open for the selected component set.
+
+promotion_rule:
+  from_review_to_lab_approved:
+    requires:
+      - exact candidate-specific lab plan
+      - green pre-lab gates
+      - no unresolved blocker inside requested execution boundary
+      - explicit HIGH_ASSURANCE human approval
+  from_lab_approved_to_admit:
+    automatic: false
+    requires_separate_security_decision: true
+
+notes:
+  - This policy does not authorize native engine execution by itself.
+  - CI sanitizer/fuzz harness execution is not candidate-engine execution and remains governed by its isolated workflows.
+  - A lab PASS is scoped evidence only and never changes release_gate to PASS automatically.
