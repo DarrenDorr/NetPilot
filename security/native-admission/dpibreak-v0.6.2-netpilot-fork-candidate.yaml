@@ -1,0 +1,146 @@
+schema_version: 1
+component_set: dpibreak-v0.6.2-netpilot-fork-candidate
+admission_status: REVIEW
+release_gate: BLOCK
+reviewed_at: 2026-10-29
+
+candidate:
+  kind: minimal_hardened_source_fork_candidate
+  role: reserve-secondary-windows-linux-https-engine
+  may_execute: false
+  may_integrate: false
+  production_activation_allowed: false
+
+base:
+  repository: https://github.com/dilluti0n/dpibreak
+  license: GPL-3.0-or-later
+  release_tag: v0.6.2
+  release_commit: 334285b60aabd5a32a83a65211ac60bce968b211
+  release_tree: 7e95a17933fe9fda521865b1317c4f9f75d6c58c
+  cargo_lock_git_blob_sha1: e3adcd1b21711e7e754878b15625076c7bcaf7e9
+  annotated_tag_object: 7601532147fe92130964e49a644d3207e74b8a51
+  tag_signature_verified_by_github: true
+
+license_boundary:
+  fork_license: GPL-3.0-or-later
+  netpilot_core_license: MIT
+  separate_component_required: true
+  copy_fork_implementation_into_mit_core: false
+  source_and_notice_obligations_required_for_distribution: true
+
+patch_series:
+  - sequence: 1
+    path: security/native-admission/patches/dpibreak-r28/0001-remove-global-windivert-service-stop.patch
+    git_blob_sha1: 3b0cf8644b58ca924cfe616c2907b02e7b42497f
+    sha256: PENDING_FIRST_CANONICAL_SOURCE_GATE
+    purpose: remove app-controlled global WinDivert service stop/uninstall API from the NetPilot candidate path and leave only candidate-owned handle close
+    security_scope:
+      - mitigates WinDivert issue 406 shared-service lifecycle risk at the DPIBreak source boundary
+      - removes CloseAction::Uninstall from the in-tree wrapper surface
+      - removes SC_MANAGER_ALL_ACCESS/SERVICE_CONTROL_STOP code from the hardened candidate wrapper
+    does_not_fix:
+      - WinDivert issue 408 kernel driver initialization race
+      - TlsAlloc/TlsFree lifecycle
+      - all abnormal process termination paths
+    status: APPLY_CHECK_PENDING
+
+  - sequence: 2
+    path: security/native-admission/patches/dpibreak-r28/0002-always-revalidate-clienthello.patch
+    git_blob_sha1: 46f70538b5d5ea05573f22f83fd0e071c7bed489
+    sha256: PENDING_FIRST_CANONICAL_SOURCE_GATE
+    purpose: always revalidate TLS ClientHello in userspace instead of trusting kernel prefilter classification after NFQUEUE/GSO segmentation
+    security_scope:
+      - continuation/non-ClientHello packets fail safe to the normal unhandled/accept path
+      - reduces issue 24 misclassification risk without adding new interception capability
+    does_not_fix:
+      - full GSO delivery semantics
+      - MTU/EMSGSIZE behavior
+      - effectiveness when a ClientHello prefix itself is too short for recognition
+    status: APPLY_CHECK_PENDING
+
+  - sequence: 3
+    path: security/native-admission/patches/dpibreak-r28/0003-disable-custom-nft-executable.patch
+    git_blob_sha1: e1d4e90d2de7f51df83a3f8e3d09d03a675cab8f
+    sha256: PENDING_FIRST_CANONICAL_SOURCE_GATE
+    purpose: reject --nft-command in the hardened build so a root candidate cannot be pointed at a user-selected executable
+    security_scope:
+      - closes privileged executable-selection surface as defense in depth
+      - default nft executable remains fixed by source
+    does_not_fix:
+      - nftables/iptables lifecycle ownership and rollback
+      - queue-number policy
+      - all Linux firewall compatibility concerns
+    status: APPLY_CHECK_PENDING
+
+policy:
+  activation_requires_admit: true
+  source_patch_drift_requires_readmission: true
+  upstream_version_drift_requires_readmission: true
+  upstream_master_auto_merge_allowed: false
+  automatic_runtime_update_from_upstream_allowed: false
+  raw_command_line_allowed: false
+  user_supplied_nft_executable_allowed: false
+  user_supplied_windivert_filter_allowed: false
+  user_supplied_firewall_rule_allowed: false
+  user_supplied_path_allowed: false
+  daemon_mode_allowed_for_netpilot: false
+  upstream_service_mode_allowed_for_netpilot: false
+  typed_allowlisted_profile_required: true
+
+source_gate:
+  workflow: .github/workflows/native-candidate-dpibreak-windows-hardening-source.yml
+  current_patchset: 0001-0003
+  status: PENDING
+  candidate_built_by_gate: false
+  candidate_executed_by_gate: false
+
+platforms:
+  linux:
+    state: REVIEW
+    next_gate: apply exact patchset then controlled Linux compile-only with --locked dependencies
+    lab_state: NOT_APPROVED
+    residual_blockers:
+      - issue 24 GSO/MTU correctness needs regression evidence
+      - issue 28 firewall ownership/rollback needs isolated lab design
+      - issue 26 local/LAN HTTPS exclusions need typed policy
+      - issue 31 VPN/WireGuard coexistence remains compatibility scope
+  windows:
+    state: BLOCK
+    next_gate: source gate then compile-only only; no runtime
+    residual_blockers:
+      - WinDivert issue 408 kernel driver race remains open
+      - exact Windows native component inventory/signature review required
+      - TlsAlloc/TlsFree lifecycle not closed
+      - no runtime lab until a fixed/admitted WinDivert component set exists
+
+upstream_sync_strategy:
+  default: MANUAL_REVIEWED_DELTA_ONLY
+  rules:
+    - fetch exact upstream tag/commit, never mutable master as production base
+    - compare upstream delta against current exact base
+    - drop a NetPilot patch only when the upstream fix is independently verified equivalent or stronger
+    - regenerate patch Git blob/SHA-256 identities after any rebase
+    - rerun provenance/compile/static/advisory gates after every patch or upstream change
+    - never auto-merge upstream into the fork
+
+required_before_any_lab_execution:
+  - exact patchset source gate PASS
+  - exact patched Linux or Windows compile-only PASS for requested platform
+  - exact advisory/unsafe/FFI review PASS in its scoped meaning
+  - no unresolved blocker inside requested runtime boundary
+  - candidate-specific DRAFT_NOT_APPROVED plan promoted only by explicit HIGH_ASSURANCE human approval
+
+required_before_admit:
+  - all platform-specific lab evidence required by policy
+  - production resource and lifecycle policy fixed and typed
+  - exact binary/native component identities pinned
+  - update/provenance model fixed
+  - license/source distribution obligations documented
+  - separate HIGH_ASSURANCE security decision
+
+notes:
+  - This fork candidate is review-only and is not a production fork release.
+  - Creating patch files in NetPilot does not authorize building, executing or distributing a candidate binary.
+  - Patch 0001 addresses DPIBreak ownership behavior but cannot fix a WinDivert kernel-driver race.
+  - Patch 0002 is a fail-safe correctness hardening, not proof of complete GSO support.
+  - Patch 0003 removes a privileged customization surface that NetPilot does not need.
