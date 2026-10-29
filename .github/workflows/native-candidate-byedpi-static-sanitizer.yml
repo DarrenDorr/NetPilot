@@ -51,8 +51,11 @@ jobs:
           mkdir -p scratch evidence
           git -C netpilot show "HEAD:$patch1" > scratch/0001.patch
           git -C netpilot show "HEAD:$patch2" > scratch/0002.patch
-          test "$(sha256sum scratch/0001.patch | awk '{print $1}')" = "3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068"
-          test "$(sha256sum scratch/0002.patch | awk '{print $1}')" = "69a690868e5ed86cb06eb2600863144a2414734513150f116695f6b7634762d4"
+          observed_patch1_sha="$(sha256sum scratch/0001.patch | awk '{print $1}')"
+          observed_patch2_sha="$(sha256sum scratch/0002.patch | awk '{print $1}')"
+          printf 'patch_0001_sha256=%s\npatch_0002_sha256=%s\n' "$observed_patch1_sha" "$observed_patch2_sha"
+          test "$observed_patch1_sha" = "3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068"
+          test "$observed_patch2_sha" = "7b12a9bf63995c0aa0a96f7f03396a4c104ae30c2e66990d140f25634be2fa0f"
 
           git -C byedpi apply --verbose --check "$PWD/scratch/0001.patch"
           git -C byedpi apply --verbose "$PWD/scratch/0001.patch"
@@ -78,14 +81,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gcc \
-            -D_DEFAULT_SOURCE \
-            -Ibyedpi \
-            -std=c99 -O2 \
+          gcc -D_DEFAULT_SOURCE -Ibyedpi -std=c99 -O2 \
             -Wall -Wextra -Wno-unused -Wno-unused-parameter -pedantic \
             -Werror=array-bounds \
-            -c byedpi/mpool.c \
-            -o scratch/mpool.o \
+            -c byedpi/mpool.c -o scratch/mpool.o \
             2>&1 | tee evidence/mpool-compile.log
           test -f scratch/mpool.o
 
@@ -95,14 +94,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gcc \
-            -D_DEFAULT_SOURCE \
-            -std=c11 -O1 -g \
+          gcc -D_DEFAULT_SOURCE -std=c11 -O1 -g \
             -fsanitize=address,undefined \
-            -fno-sanitize-recover=all \
-            -fno-omit-frame-pointer \
-            -Wall -Wextra -Werror \
-            -Ibyedpi \
+            -fno-sanitize-recover=all -fno-omit-frame-pointer \
+            -Wall -Wextra -Werror -Ibyedpi \
             netpilot/security/native-admission/harnesses/byedpi-r28/kavl_iterator_harness.c \
             -o scratch/kavl_iterator_harness \
             2>&1 | tee evidence/harness-compile.log
@@ -117,8 +112,7 @@ jobs:
           set -euo pipefail
           ASAN_OPTIONS='detect_leaks=1:abort_on_error=1:strict_string_checks=1' \
           UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1' \
-          timeout 30s ./scratch/kavl_iterator_harness \
-            2>&1 | tee evidence/regression.log
+          timeout 30s ./scratch/kavl_iterator_harness 2>&1 | tee evidence/regression.log
           grep -Fxq 'kavl_iterator_harness: PASS' evidence/regression.log
 
       - name: Verify harness performs no network syscalls
@@ -132,7 +126,6 @@ jobs:
           UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1' \
           strace -f -qq -e trace=network -o evidence/network-syscalls.log \
             ./scratch/kavl_iterator_harness >/dev/null 2>&1
-
           if grep -Eq 'socket\(|socketpair\(|connect\(|accept\(|accept4\(|bind\(|listen\(|sendto\(|recvfrom\(|sendmsg\(|recvmsg\(' evidence/network-syscalls.log; then
             cat evidence/network-syscalls.log
             exit 1
@@ -150,14 +143,14 @@ jobs:
           set -euo pipefail
           harness_sha256="$(sha256sum netpilot/security/native-admission/harnesses/byedpi-r28/kavl_iterator_harness.c | awk '{print $1}')"
           {
-            echo 'schema_version=1'
+            echo 'schema_version=2'
             echo 'scope=byedpi-v0.17.3-kavl-iterator-sanitizer'
             echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
             echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
             echo 'patch_0001_git_blob_sha1=fa9ba3349792d66f40d925bc612310e8d18aae8a'
             echo 'patch_0001_sha256=3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068'
             echo 'patch_0002_git_blob_sha1=82921e2f9e594ca406948307a2ca0566c4283b0d'
-            echo 'patch_0002_sha256=69a690868e5ed86cb06eb2600863144a2414734513150f116695f6b7634762d4'
+            echo 'patch_0002_sha256=7b12a9bf63995c0aa0a96f7f03396a4c104ae30c2e66990d140f25634be2fa0f'
             echo 'harness_git_blob_sha1=62b6558bfb90284d97cc1d023454591f749c27e5'
             echo "harness_sha256=$harness_sha256"
             echo "compiler=$(gcc --version | head -n1)"
@@ -175,7 +168,6 @@ jobs:
             echo 'admission_effect=NONE'
             echo 'release_gate=BLOCK'
           } > evidence/byedpi-kavl-sanitizer.txt
-
           rm -f scratch/mpool.o scratch/kavl_iterator_harness scratch/0001.patch scratch/0002.patch
           sha256sum evidence/* | sort > evidence/SHA256SUMS-byedpi-kavl-sanitizer.txt
 
