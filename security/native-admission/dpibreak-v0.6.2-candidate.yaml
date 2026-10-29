@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 3
 component_set: dpibreak-v0.6.2-candidate
 admission_status: REVIEW
 release_gate: BLOCK
@@ -58,14 +58,77 @@ static_review:
   primary_engine_candidate: false
   rationale: Active upstream and strong release provenance make an early NetPilot fork unnecessary; functional scope is narrower than zapret2, open compatibility/lifecycle issues remain, and GPL increases fork/distribution obligations.
 
+provenance_evidence:
+  status: PASS_FOR_SOURCE_AND_LOCK_PROVENANCE_ONLY
+  workflow: .github/workflows/native-candidate-dpibreak-provenance.yml
+  workflow_run_id: 40809643722
+  workflow_job_id: 123236663919
+  head_sha: b2851089f519f055093df574346fc2b5a0c1eeca
+  artifact_id: 12869199809
+  artifact_name: dpibreak-r28-source-dependency-provenance
+  artifact_zip_sha256: 92b68f56ea91c3751cfe9175cbda9bad921d2c8a53d097c17419465fa9e5f44b
+  cargo_lock_git_blob_sha1: e3adcd1b21711e7e754878b15625076c7bcaf7e9
+  cargo_lock_sha256: 6695e27101ed15b57957971bf713a9bbe14365898a22f1ec26397281594919ed
+  cargo_toml_sha256: 8bbd466173d5efafe4cd463f58b4fbfea7a470ee2016b45c5d6abed31213e480
+  windivert_cargo_toml_sha256: ff05b1ab491e975b0a0a0428ea00efe983eb95fd9cc1f8353e98235679836350
+  package_count: 110
+  registry_package_count: 108
+  local_packages:
+    - dpibreak@0.6.2
+    - windivert@0.6.0
+  unexpected_dependency_sources: 0
+  registry_packages_without_checksum: 0
+  notable_locked_dependencies:
+    windivert_sys: 0.10.0
+    nfq_updated: 0.2.6
+    etherparse: [0.13.0, 0.18.2]
+    windows_services: 0.26.1
+    windows: [0.48.0, 0.62.2]
+    socket2: 0.6.5
+    daemonize: 0.5.0
+    libc: 0.2.186
+    anyhow: 1.0.103
+  candidate_binary_executed: false
+  driver_loaded: false
+  nfqueue_enabled: false
+  firewall_changed: false
+
+linux_compile_evidence:
+  status: PASS_FOR_COMPILE_ONLY
+  workflow: .github/workflows/native-candidate-dpibreak-linux-compile.yml
+  workflow_run_id: 40809820544
+  workflow_job_id: 123237225747
+  head_sha: b831cc74e800ed448f02fb4c5b6f54cbce77acde
+  artifact_id: 12869892327
+  artifact_name: dpibreak-r28-linux-compile-evidence
+  artifact_zip_sha256: 0459eb9ec298f8dcba9258615d3787d8d357682d7ffc23f4d1bd63fd2c779f34
+  rust_toolchain: 1.97.0
+  target: x86_64-unknown-linux-musl
+  cargo_build_locked: true
+  cargo_build_offline_after_fetch: true
+  build_1_sha256: 238c9be41859865374cf68a80288ebab6229963486956f09d577640ff844fc5e
+  build_2_sha256: 238c9be41859865374cf68a80288ebab6229963486956f09d577640ff844fc5e
+  binary_size_bytes: 878336
+  binary_format: ELF_64_bit_LSB_PIE_x86_64_static_pie
+  same_runner_reproducible: true
+  candidate_binary_executed: false
+  binary_retained: false
+  nfqueue_enabled: false
+  firewall_changed: false
+  network_interception_enabled: false
+  limitation: This is compile-only evidence. Dependency build scripts may execute during compilation, but the DPIBreak candidate binary was never executed.
+
 positive_evidence:
   - id: DPIBREAK-SUPPLY-001
     status: PASS_FOR_PROVENANCE_ONLY
-    finding: v0.6.2 has a GitHub-verified signed annotated tag, release asset digests, a separate checksum signature asset and buildinfo for the exact release commit/toolchain.
-  - id: DPIBREAK-CLEANUP-002
+    finding: v0.6.2 has a GitHub-verified signed annotated tag, exact release asset digests, separate checksum signature asset, exact Cargo.lock identity and automated source/dependency provenance PASS.
+  - id: DPIBREAK-COMPILE-002
+    status: PASS_FOR_LINUX_COMPILE_ONLY
+    finding: Exact v0.6.2 plus exact Cargo.lock compiled twice for x86_64-unknown-linux-musl with Rust 1.97.0 and produced identical SHA-256 without executing the candidate.
+  - id: DPIBREAK-CLEANUP-003
     status: PASS_FOR_UPSTREAM_FIX_PRESENCE_ONLY
     finding: v0.6.2 release notes state fixes for WinDivert termination/service cleanup, a dangling pointer in the in-tree windivert crate, Linux iptables startup cleanup, and Linux memory-ordering/packet-buffer-offset stabilization.
-  - id: DPIBREAK-RUST-003
+  - id: DPIBREAK-RUST-004
     status: POSITIVE_FACTOR_ONLY
     finding: Core is written in Rust, but FFI, WinDivert driver, NFQUEUE and firewall lifecycle boundaries still require separate admission.
 
@@ -108,10 +171,14 @@ review_findings:
     severity: INTEGRATION_CONSTRAINT
     title: DPIBreak is GPL-3.0-or-later while NetPilot Core is MIT.
     required_action: Keep DPIBreak as a separately governed component, preserve license/notices/source obligations for any distributed fork/component, and do not copy GPL implementation into MIT Core without separate legal review.
-  - id: DPIBREAK-BUILD-009
+  - id: DPIBREAK-WINDOWS-BUILD-009
     severity: SUPPLY_CHAIN_REVIEW
-    title: NetPilot has not yet reproduced the exact release with its own pinned build pipeline.
-    required_action: Controlled build must pin full action SHAs, exact Rust toolchain, Cargo.lock and every downloaded native dependency hash before use.
+    title: Linux controlled build is complete, but Windows compile/native component inventory is not yet admitted.
+    required_action: Controlled Windows compile-only must pin exact Rust/Cargo.lock/native WinDivert component inputs and record EXE/DLL/SYS hashes/signatures without loading the driver.
+  - id: DPIBREAK-ADVISORY-010
+    severity: REVIEW
+    title: Exact locked dependency advisory and unsafe/FFI review is still pending.
+    required_action: Review Cargo.lock advisories and manually inspect unsafe/FFI/native boundaries before any runtime lab.
 
 fork_rules:
   - Default decision is no fork: track exact upstream tagged release first.
@@ -123,29 +190,28 @@ fork_rules:
   - Any upstream sync requires diff/dependency review and a new admission delta.
 
 platform_position:
-  windows: secondary HTTPS/YouTube fallback candidate
-  linux: secondary HTTPS fallback candidate
+  windows: secondary HTTPS/YouTube fallback candidate, runtime blocked pending exact WinDivert component inventory
+  linux: secondary HTTPS fallback candidate, pre-lab review only
   android: not selected for current Android path
   discord_udp: insufficient as primary engine based on current documented scope
   quic_http3: not assumed supported while issue #32 remains open
 
 required_before_admit:
-  - Review exact Cargo.lock/dependency tree, cargo advisories and unsafe/FFI surfaces.
-  - Controlled Windows/Linux build using pinned immutable workflow actions/toolchain and --locked dependencies.
-  - Pin and verify the exact WinDivert archive/component hashes before build or use.
+  - Review Cargo.lock advisories and unsafe/FFI surfaces.
+  - Controlled Windows compile-only with exact WinDivert component inventory and no driver load.
   - Inventory Windows EXE/DLL/SYS, SHA-256, PE metadata and signatures.
-  - Verify WinDivert lifecycle: start, stop, abnormal exit, update/uninstall cleanup and reboot recovery.
+  - Verify WinDivert lifecycle: start, stop, abnormal exit, update/uninstall cleanup and reboot recovery in a separately approved lab.
   - Test Linux NFQUEUE GSO/MTU semantics from issue #24 and Windows packet segmentation behavior separately.
   - Define reversible nftables/iptables ownership and rollback before Linux lab runtime.
   - Test local/LAN HTTPS exclusions and VPN/WireGuard coexistence before any broad profile.
   - Treat QUIC/HTTP3 and Discord/UDP as unsupported until separately proven.
-  - Isolated HTTPS/YouTube runtime only after a candidate-specific DRAFT_NOT_APPROVED lab plan is reviewed and explicitly promoted.
+  - Isolated HTTPS/YouTube runtime only after candidate-specific lab plan is separately reviewed and promoted to LAB_APPROVED.
   - Bounded CPU/memory/burst tests.
   - Advisory review and explicit HIGH_ASSURANCE human approval before any candidate execution or ADMIT.
 
 notes:
   - Rust reduces some memory-safety risk but is not proof of safety across FFI/driver/firewall boundaries.
-  - The release commit itself is unsigned in GitHub commit verification; the provenance anchor is the GitHub-verified signed annotated tag plus independently pinned release assets.
-  - Signed tag/checksums improve provenance but do not replace security review.
+  - The release commit itself is unsigned in GitHub commit verification; the provenance anchor is the GitHub-verified signed annotated tag plus exact commit/tree/Cargo.lock and independently pinned release assets.
+  - Compile-only PASS does not authorize NFQUEUE, firewall changes, WinDivert, candidate execution or production integration.
   - REVIEW and BLOCK never mean PASS or ADMIT.
   - This manifest authorizes no DPIBreak binary, driver, NFQUEUE rule, nftables rule or iptables rule to execute from NetPilot.
