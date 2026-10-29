@@ -45,15 +45,18 @@ jobs:
           test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0001-loopback-only-listener.patch')" = "fa9ba3349792d66f40d925bc612310e8d18aae8a"
           test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0002-kavl-iterator-no-before-array-sentinel.patch')" = "6f51d66597847ee49e373922e4905c80b8ee2f47"
           test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0003-pid-file-fail-safe-write.patch')" = "d56d0f8659a49c48c923b6af85a523a952e77e0c"
+          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0004-kavl-empty-erase-guard.patch')" = "9b196b289efd9a2ea1118c5504f4a811aa0becd2"
 
           echo "3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068  $patch_dir/0001-loopback-only-listener.patch" | sha256sum -c -
           echo "6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7  $patch_dir/0002-kavl-iterator-no-before-array-sentinel.patch" | sha256sum -c -
           echo "5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738  $patch_dir/0003-pid-file-fail-safe-write.patch" | sha256sum -c -
+          echo "fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a  $patch_dir/0004-kavl-empty-erase-guard.patch" | sha256sum -c -
 
           for patch in \
             0001-loopback-only-listener.patch \
             0002-kavl-iterator-no-before-array-sentinel.patch \
-            0003-pid-file-fail-safe-write.patch
+            0003-pid-file-fail-safe-write.patch \
+            0004-kavl-empty-erase-guard.patch
           do
             git -C byedpi apply --verbose --check "$patch_dir/$patch"
             git -C byedpi apply --verbose "$patch_dir/$patch"
@@ -83,6 +86,7 @@ jobs:
           assert block.index('fcntl(params.pid_fd, F_SETLK, &fl)') < block.index('ftruncate(params.pid_fd, 0)')
           assert block.index('while (written < (size_t)pid_len)') < block.index('params.pid_file = fname;')
           assert 'write(params.pid_fd, pid_str, strlen(pid_str));' not in block
+          assert 'if (*root_ == 0) return 0;' in Path('byedpi/kavl.h').read_text()
           PY
 
       - name: Compile patched real main.c with ignored-result promoted to error
@@ -111,14 +115,16 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo 'schema_version=1'
-            echo 'scope=byedpi-v0.17.3-pid-file-static-hardening'
+            echo 'schema_version=2'
+            echo 'scope=byedpi-v0.17.3-pid-file-static-hardening-0001-0004'
             echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
             echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
             echo 'patch_0001_sha256=3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068'
             echo 'patch_0002_sha256=6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7'
             echo 'patch_0003_git_blob_sha1=d56d0f8659a49c48c923b6af85a523a952e77e0c'
             echo 'patch_0003_sha256=5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738'
+            echo 'patch_0004_git_blob_sha1=9b196b289efd9a2ea1118c5504f4a811aa0becd2'
+            echo 'patch_0004_sha256=fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a'
             echo "compiler=$(gcc --version | head -n1)"
             echo "main_compile_outcome=$COMPILE_OUTCOME"
             echo 'source_anchor_check=success'
