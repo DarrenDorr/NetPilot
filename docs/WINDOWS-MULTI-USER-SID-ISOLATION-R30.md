@@ -2,7 +2,7 @@
 
 Дата: 29.10.2026.
 
-Статус: **IMPLEMENTATION REVIEW / NO NATIVE ENGINE ADMIT / RELEASE GATE BLOCK**.
+Статус: **IMPLEMENTED IN FEATURE BRANCH / HOSTED CI EVIDENCE PENDING / NO NATIVE ENGINE ADMIT / RELEASE GATE BLOCK**.
 
 ## Цель
 
@@ -61,7 +61,26 @@ R30 не превращает pipe в `Authenticated Users` и не приним
 - повторное обращение того же SID возвращает тот же профиль;
 - разные SID получают разные profile roots.
 
-На R30 в profile root пока не переносится чувствительный credential material. Любые будущие пользовательские настройки должны обращаться к нему только через service-side SID routing и отдельный review ACL/at-rest policy.
+## Service-owned filesystem ACL
+
+Пользовательский профиль не является каталогом, который Windows-пользователь должен читать напрямую.
+
+`WindowsUserProfileDirectorySecurity` выполняется только внутри LocalSystem-службы и применяет protected DACL:
+
+- `NT AUTHORITY\SYSTEM` — Full Control;
+- `BUILTIN\Administrators` — Full Control;
+- наследуемые правила удаляются;
+- другие ACL-записи fail-closed не допускаются.
+
+Обычный пользователь работает со своим состоянием только через authenticated IPC. Это не позволяет Account B читать профиль Account A напрямую и одновременно не требует давать обычным пользователям write-доступ под `Program Files`.
+
+Live IPC lab после успешного `Ping=Ok` дополнительно пытается открыть собственный SID profile напрямую. PASS возможен только при:
+
+`PROFILE_DIRECT_ACCESS=DENIED`
+
+Если профиль отсутствует, не защищён ACL или стандартный пользователь способен перечислить его содержимое, lab client завершится ошибкой.
+
+На R30 в profile root пока не помещается credential material. Любое будущее сохранение токенов/секретов потребует отдельного at-rest review; SID isolation сама по себе не заменяет secret protection.
 
 ## Machine-level provisioning
 
@@ -94,19 +113,32 @@ R29 первоначально ожидал:
 
 R30 заменяет это на:
 
-`Account A -> Ping=Ok + Users/<SID-A>`
+`Account A -> Ping=Ok -> service-owned Users/<SID-A>`
 
-`Account B -> Ping=Ok + Users/<SID-B>`
+`Account B -> Ping=Ok -> service-owned Users/<SID-B>`
 
 Дополнительно lab обязан подтвердить:
 
 - SID-A != SID-B;
 - оба пользователя standard-user;
+- оба получают `PROFILE_DIRECT_ACCESS=DENIED`;
 - owner SID после обращения Account B не изменился;
-- profile roots различаются;
+- deterministic profile roots различаются по SID;
 - uninstall удаляет service, owner enrollment state и per-SID profile state.
 
 Таким образом второй пользователь теперь проверяет multi-user isolation, а не запрет доступа.
+
+## Uninstall
+
+Установщик создаёт системный `Users` root, а runtime-профили создаёт только LocalSystem-служба.
+
+При удалении:
+
+- служба сначала безопасно останавливается и удаляется;
+- `Config` удаляется;
+- `Engines` удаляется;
+- весь `Users` tree удаляется повышенным uninstaller;
+- live lab проверяет отсутствие `Program Files\NetPilot\Users` после uninstall.
 
 ## Что R30 не разрешает
 
@@ -122,13 +154,21 @@ R30 не:
 
 До отдельного native admission production runtime остаётся fail-closed.
 
+## Validation status
+
+Код R30 интегрирован в `feature/engine-bootstrap-r15`.
+
+Автоматический GitHub Actions run в текущей сессии не считается выполненным: изменения и временные validation PR были созданы через GitHub App connector, а GitHub не создал для них workflow runs. Два временных validation PR закрыты без merge.
+
+Поэтому до фактического hosted/self-hosted evidence нельзя заявлять CI PASS для текущего R30 HEAD.
+
 ## Следующие проверки
 
 Перед признанием R30 готовым нужны:
 
-1. CI + CodeQL + Windows unit/security tests;
+1. CI + CodeQL + Windows unit/security tests на текущем HEAD;
 2. реальный self-hosted Windows UAC lab с двумя standard-user SID;
 3. подтверждение owner SID immutability;
-4. подтверждение двух разных per-SID profile roots;
+4. подтверждение двух разных service-owned per-SID profile roots и direct-access denial;
 5. uninstall cleanup;
 6. отдельный test global engine lease после появления разрешённого isolated native lab runtime.
