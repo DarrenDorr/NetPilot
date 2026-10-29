@@ -1,6 +1,15 @@
 diff --git a/src/opt.rs b/src/opt.rs
 --- a/src/opt.rs
 +++ b/src/opt.rs
+@@ -139,7 +139,7 @@ impl Opt {
+         #[cfg(target_os = "linux")]
+         let mut queue_num: u16 = DEFAULT_QUEUE_NUM;
+         #[cfg(target_os = "linux")]
+-        let mut nft_command = String::from(DEFAULT_NFT_COMMAND);
++        let nft_command = String::from(DEFAULT_NFT_COMMAND);
+ 
+         let mut args = std::env::args().skip(1); // program name
+ 
 @@ -173,7 +173,9 @@ impl Opt {
                  "--queue-num" => { queue_num = take_value(&mut args, argv)?; }
  
