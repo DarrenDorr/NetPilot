@@ -1,0 +1,123 @@
+diff --git a/src/platform/windows.rs b/src/platform/windows.rs
+--- a/src/platform/windows.rs
++++ b/src/platform/windows.rs
+@@ -44,7 +44,7 @@ fn cleanup_all() {
+     for h in handles {
+         match Arc::try_unwrap(h) {
+             Ok(mut wd) => {
+-                _ = wd.close(windivert::CloseAction::Nothing);
++                _ = wd.close();
+             },
+             Err(_still_shared) => {
+                 crate::warn!("windivert: handle still referenced, skipping close");
+@@ -91,7 +91,7 @@ fn close_send_handle() {
+ fn close_send_handle() {
+     if let Some(m) = SEND_HANDLE.get() && let Ok(mut wd) = m.lock() {
+-        if let Err(e) = wd.close(windivert::CloseAction::Nothing) {
++        if let Err(e) = wd.close() {
+             crate::warn!("windivert: close send handle: {e}");
+         }
+     }
+@@ -221,9 +221,6 @@ pub fn run() -> Result<()> {
+     }
+     cleanup_all();
+     close_send_handle();
+-    if let Err(e) = windivert::WinDivert::uninstall() {
+-        crate::warn!("windivert: uninstall failed: {e}");
+-    }
+ 
+     Ok(())
+ }
+diff --git a/crates/windivert/src/divert/mod.rs b/crates/windivert/src/divert/mod.rs
+--- a/crates/windivert/src/divert/mod.rs
++++ b/crates/windivert/src/divert/mod.rs
+@@ -3,7 +3,6 @@ use std::{
+     ffi::{c_void, CString},
+     marker::PhantomData,
+-    mem::MaybeUninit,
+ };
+ 
+ use crate::layer;
+@@ -11,17 +10,10 @@ use sys::{WinDivertParam, WinDivertShutdownMode};
+ use windivert_sys as sys;
+ 
+ use windows::{
+-    core::{Error as WinError, Result as WinResult, PCSTR},
++    core::{Error as WinError, Result as WinResult},
+     Win32::{
+         Foundation::{GetLastError, HANDLE},
+-        System::{
+-            Services::{
+-                CloseServiceHandle, ControlService, OpenSCManagerA, OpenServiceA,
+-                SC_MANAGER_ALL_ACCESS, SERVICE_CONTROL_STOP, SERVICE_STATUS,
+-            },
+-            Threading::{CreateEventA, TlsAlloc, TlsGetValue, TlsSetValue},
+-        },
++        System::Threading::{CreateEventA, TlsAlloc, TlsGetValue, TlsSetValue},
+     },
+ };
+@@ -78,7 +70,7 @@ impl<L: layer::WinDivertLayerTrait> WinDivert<L> {
+     }
+ 
+     /// Handle close function.
+-    pub fn close(&mut self, action: CloseAction) -> WinResult<()> {
++    pub fn close(&mut self) -> WinResult<()> {
+         let res = unsafe { sys::WinDivertClose(self.handle) };
+         if !res.as_bool() {
+             return Err(WinError::from(unsafe { GetLastError() }));
+@@ -86,10 +78,7 @@ impl<L: layer::WinDivertLayerTrait> WinDivert<L> {
+-        match action {
+-            CloseAction::Uninstall => WinDivert::uninstall(),
+-            CloseAction::Nothing => Ok(()),
+-        }
++        Ok(())
+     }
+ 
+     /// Shutdown function.
+@@ -150,50 +139,6 @@ impl WinDivert<layer::ReflectLayer> {
+ }
+ 
+ impl WinDivert<()> {
+     /// Maximum number of packets that can be captured/sent in a single batched operation
+     pub const MAX_BATCH: u8 = windivert_sys::WINDIVERT_BATCH_MAX as u8;
+-
+-    /// Method that tries to uninstall WinDivert driver.
+-    pub fn uninstall() -> WinResult<()> {
+-        let mut status = MaybeUninit::<SERVICE_STATUS>::uninit();
+-        unsafe {
+-            let manager = OpenSCManagerA(None, None, SC_MANAGER_ALL_ACCESS)?;
+-            let service = OpenServiceA(
+-                manager,
+-                PCSTR::from_raw(c"WinDivert".as_ptr() as *const u8),
+-                SC_MANAGER_ALL_ACCESS,
+-            )?;
+-            let res = ControlService(service, SERVICE_CONTROL_STOP, status.as_mut_ptr());
+-            if !res.as_bool() {
+-                return Err(WinError::from(GetLastError()));
+-            }
+-            let res = CloseServiceHandle(service);
+-            if !res.as_bool() {
+-                return Err(WinError::from(GetLastError()));
+-            }
+-            let res = CloseServiceHandle(manager);
+-            if !res.as_bool() {
+-                return Err(WinError::from(GetLastError()));
+-            }
+-        }
+-        Ok(())
+-    }
+ }
+-
+-/// Action parameter for  [`WinDivert::close()`](`fn@WinDivert::close`)
+-pub enum CloseAction {
+-    /// Close the handle and try to uninstall the driver.
+-    Uninstall,
+-    /// Close the handle without uninstalling the driver.
+-    Nothing,
+-}
+-
+-impl Default for CloseAction {
+-    fn default() -> Self {
+-        Self::Nothing
+-    }
+-}
