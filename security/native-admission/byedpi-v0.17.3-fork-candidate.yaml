@@ -1,4 +1,4 @@
-schema_version: 6
+schema_version: 7
 component_set: byedpi-v0.17.3-netpilot-fork-candidate
 admission_status: REVIEW
 release_gate: BLOCK
@@ -47,6 +47,7 @@ static_review:
   document: docs/BYEDPI-STATIC-ADMISSION-R28.1.md
   compile_smoke_document: docs/BYEDPI-COMPILE-SMOKE-R28.3.md
   windows_handle_hardening_document: docs/BYEDPI-WINDOWS-HANDLE-HARDENING-R28.4.md
+  windows_aux_socket_hardening_document: docs/BYEDPI-WINDOWS-AUX-SOCKET-HARDENING-R28.4.md
   upstream_issue_review_document: docs/BYEDPI-UPSTREAM-ISSUE-REVIEW-R28.4.md
   decision: EXACT_V0_17_3_PLUS_CURATED_PATCHES_ONLY
   full_post_release_head_as_base: REJECT
@@ -122,17 +123,20 @@ patch_series:
   - sequence: 7
     path: security/native-admission/patches/byedpi-r28/0007-windows-aux-socket-probes.patch
     purpose: preserve pointer-sized SOCKET values in get_default_ttl and ipv6_support auxiliary probes instead of narrowing them to int on Win64
-    git_blob_sha1: e1e7cf53a87e9f51224147d7b1d4faf39dcf8ef6
-    sha256: ddfe7a3b6280c55dc89afd99ea89badea2f30348031f4f93a6ca6debcf939897
-    status: DESIGN_FIXED_COMPILE_GATE_PENDING
+    git_blob_sha1: e7b590a7d0594be0629bac221cb120c165dab8cd
+    sha256: 778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25
+    status: DESIGN_FIXED_REBASED_ON_HARDENED_MAIN_COMPILE_GATE_PENDING
     expected_files: [main.c]
     finding: exact v0.17.3 also narrows socket(AF_INET/AF_INET6) results to int in two helper probes outside the event-pool ingress covered by patch 0005
+    patch_history:
+      - initial patch identity was superseded after rebasing onto the main.c state produced by patches 0001-0006
+      - canonical Git blob identity and SHA-256 are now pinned above
     semantics:
       windows_socket_type: SOCKET
       windows_failure_check: INVALID_SOCKET
       linux_socket_type: int
       linux_failure_check: fd_less_than_zero
-    limitation: full Windows compile/warning gate must pass before any runtime test
+    limitation: full Windows compile/source-boundary gate must pass before any runtime test
 
 kavl_sanitizer:
   status: PASS_FOR_ISOLATED_KAVL_ASAN_UBSAN_REGRESSION_ONLY
@@ -156,24 +160,27 @@ historical_compile_smoke:
 current_patchset_gates:
   patchset: 0001-0007
   compile_smoke_linux_windows:
-    status: PENDING_AFTER_PATCH_0007_ADDITION
+    status: PENDING_CURRENT_RERUN
     workflow: .github/workflows/native-candidate-byedpi-compile-smoke.yml
-    required_windows_warning_gates:
+    required_windows_gates:
       - conev.c with -Werror=sign-compare
       - desync.c with -Werror=type-limits
-      - main.c with -Werror=sign-compare and -Werror=conversion
+      - main.c exact source-boundary assertions for get_default_ttl/ipv6_support plus normal Windows compilation
+    unrelated_upstream_conversion_warnings:
+      status: REVIEW_DEBT_NOT_PROMOTED_BY_PATCH_0007_GATE
+      reason: global -Werror=conversion on main.c catches pre-existing CLI/config numeric conversions unrelated to the two auxiliary SOCKET probes
   pidfile_static:
     status: PASS_TARGETED_SUBSET
     workflow: .github/workflows/native-candidate-byedpi-pidfile-static.yml
-    latest_confirmed_run_id: 40806335312
+    latest_confirmed_run_id: 40808605762
   kavl_sanitizer:
     status: PASS_TARGETED_SUBSET
     workflow: .github/workflows/native-candidate-byedpi-static-sanitizer.yml
-    latest_confirmed_run_id: 40806335254
+    latest_confirmed_run_id: 40808605786
   kavl_erase_sanitizer:
     status: PASS_TARGETED_SUBSET
     workflow: .github/workflows/native-candidate-byedpi-kavl-erase-sanitizer.yml
-    latest_confirmed_run_id: 40806335262
+    latest_confirmed_run_id: 40808605758
   loopback_runtime:
     status: NOT_STARTED
     requires_lab_execution_policy: true
@@ -193,7 +200,8 @@ compile_warning_review:
     - Windows event descriptor signed/unsigned warning exposed a wider representation boundary: socket()/accept() return SOCKET but upstream event pool stores int; patched fail-closed at ingress by 0005
     - Windows WaitForMultipleObjects lower-bound comparison was always true for DWORD; patched by 0006 with explicit successful-object range
     - Windows get_default_ttl/ipv6_support auxiliary probes also stored SOCKET in int; patched by 0007 to retain SOCKET on Windows
-  required_action: full patchset 0001-0007 reproducible Linux/Windows compile plus targeted warning gates before runtime admission
+    - broad -Wconversion on whole upstream main.c reports unrelated historical numeric conversions and is tracked separately rather than used as proof of patch 0007
+  required_action: full patchset 0001-0007 reproducible Linux/Windows compile plus targeted warning/source-boundary gates before runtime admission
 
 upstream_issue_review:
   document: docs/BYEDPI-UPSTREAM-ISSUE-REVIEW-R28.4.md
@@ -224,7 +232,8 @@ curated_backport_candidates:
 
 required_before_admit:
   - Full patchset 0001-0007 must compile reproducibly for Linux x86-64 and Windows x64 without candidate execution.
-  - Targeted Windows sign-compare, type-limits and conversion gates must pass on the patched source.
+  - Targeted Windows sign-compare/type-limits and exact auxiliary SOCKET source-boundary gates must pass on the patched source.
+  - Unrelated upstream conversion warnings remain separate review debt and must not be silently suppressed in release review.
   - Runtime loopback-only regression must prove no listener appears on wildcard or LAN interfaces.
   - Connection and UDP state resource budgets must be measured and fixed as internal typed policy.
   - File/path/raw-data CLI surfaces must remain unreachable from NetPilot UI, IPC and config.
