@@ -23,6 +23,10 @@ public sealed class PrivilegedIpcWorker(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // LocalSystem закрывает service-owned user storage сразу при старте службы,
+        // ещё до enrollment/первого пользовательского IPC. Так даже пустой Users root
+        // никогда не остаётся с наследуемым Program Files read ACL во время runtime.
+        userProfileStore.EnsureRoot();
         authorizedUserStore.EnsureEnrollmentNonce();
         logger.LogInformation("Служба IPC NetPilot запущена.");
 
