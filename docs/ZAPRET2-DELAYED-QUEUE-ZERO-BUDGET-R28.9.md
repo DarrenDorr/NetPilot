@@ -2,7 +2,7 @@
 
 Дата: 29.10.2026.
 
-Статус: **PROPOSED PATCH / DEDICATED GATE PASS / WHOLE-ENGINE COMPILE PENDING / NOT ADMITTED / RELEASE GATE BLOCK**.
+Статус: **PROPOSED PATCH / DEDICATED GATE PASS / LINUX+WINDOWS WHOLE-ENGINE COMPILE PASS / FULL PATCHSET REPIN PENDING / NOT ADMITTED / RELEASE GATE BLOCK**.
 
 ## Что обнаружено
 
@@ -43,17 +43,13 @@ if (!q->max_bytes || new_queued_bytes > q->max_bytes) return NULL;
 - положительный `max_bytes` → enqueue допускается только внутри установленного byte budget;
 - packet-count cap сохраняется независимо;
 - overflow guard сохраняется;
-- никаких новых CLI/config/network/runtime поверхностей patch не добавляет.
+- новых CLI/config/network/runtime поверхностей patch не добавляет.
 
-## Dedicated gate — PASS
+## Dedicated zero-budget gate — PASS
 
-Workflow:
+Workflow: `.github/workflows/native-candidate-delayed-queue-zero-budget.yml`.
 
-`.github/workflows/native-candidate-delayed-queue-zero-budget.yml`
-
-Harness:
-
-`security/native-admission/harnesses/zapret2-r28/delayed_queue_zero_budget_harness.c`
+Harness: `security/native-admission/harnesses/zapret2-r28/delayed_queue_zero_budget_harness.c`.
 
 Успешный run:
 
@@ -76,38 +72,84 @@ Harness:
 - WinDivert/driver/NFQUEUE/firewall не использовались;
 - instrumented harness binary удалён после evidence.
 
-Первый run `40821515752` остановился до применения patch/компиляции из-за преждевременно закреплённого SHA-256 текста `0006`, рассчитанного до записи окончательного Git blob. Git blob identity совпала. Workflow был исправлен без изменения семантики patch, а успешный run выше вычислил и зафиксировал exact SHA-256 checkout-содержимого.
+Первый run `40821515752` остановился до применения patch/компиляции из-за packaging/identity ошибки ожидаемого SHA-256. Git blob identity совпала. Workflow был исправлен без изменения семантики patch; успешный run выше является фактическим semantic evidence.
 
-## Следующий promotion gate
+## Linux whole-engine compile-only — PASS
 
-Dedicated harness PASS недостаточен для promotion в current patchset.
+Workflow: `.github/workflows/native-candidate-compile-smoke.yml`.
 
-Следующий этап:
+Успешный run:
 
-1. Linux whole-engine compile-only на exact `0001–0006`, без исполнения `nfqws2`;
-2. Windows whole-engine compile-only на exact `0001–0006`, без исполнения `winws2`;
-3. после обоих PASS — повторное перепинивание остальных static/sanitizer/fuzz/resource/provenance gates на `0001–0006`;
-4. только после полного green patchset — обновление candidate manifest с promoted `0006`.
+- run: `40822097108`;
+- artifact: `12875286031`;
+- artifact digest SHA-256: `ec309d25dec706cb894f9ab444bd61855d85fe7647b857873558e105607a5bc3`;
+- candidate: `zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0006-proposed`;
+- `nfqws2` SHA-256: `afda31bb33f82a45233a991815af12fe5ee5d4c07da63f98a8851eac023a9397`;
+- `nfqws2` size: `242824` bytes;
+- `candidate_binary_executed=false`.
 
-## Что этот patch НЕ решает
+Exact `0001–0006` были проверены и применены; `nfqws2` успешно собран, проинвентаризирован и удалён. Исполнение candidate не выполнялось.
 
-Patch `0006` пока **не выбирает** положительный lab/production byte budget и не добавляет runtime wiring для такого значения.
+## Windows whole-engine compile-only — PASS
 
-После promotion остаются отдельные задачи:
+Workflow: `.github/workflows/native-candidate-windows-compile-smoke.yml`.
 
-- спроектировать trusted внутреннюю передачу положительного byte budget в новые conntrack tracks;
+Успешный run:
+
+- run: `40822373123`;
+- job: `123277527334`;
+- artifact: `12874874163`;
+- artifact digest SHA-256: `e1d0a38c86f12e67ea32cb2d13dba78003227b482631e73a98be8ad9aa2443cf`;
+- candidate: `zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0006-proposed`;
+- `winws2` SHA-256: `6769357c48c4d203ac1a739f1d2d8a4714f96acb7f3bc30656366154a761ee30`;
+- `winws2` size: `650240` bytes;
+- Authenticode: `NotSigned`;
+- `cygwin1.dll` SHA-256: `ed9d5379061e5de79c3375cc62246c2142ea1c97d94f4d16bfbea6fb1b7fc889`;
+- `winws2_executed=false`;
+- `windivert_present=false`;
+- `windivert_driver_installed=false`.
+
+Exact `0001–0006` были проверены и применены; pinned Cygwin/LuaJIT build и `winws2` compile завершились успешно. Candidate binary после inventory удалён и не исполнялся.
+
+## Promotion всё ещё НЕ завершён
+
+Два whole-engine compile PASS недостаточны для изменения current patchset в candidate manifest.
+
+До promotion требуется перепинить и повторно получить PASS для всех существующих zapret2 gates, которые применяют или идентифицируют patchset, включая как минимум:
+
+- source provenance;
+- static/analyzer + sanitizer compile;
+- packet-queue sanitizer regression;
+- conntrack budget regression;
+- synthetic resource stress;
+- protocol parser sanitizer;
+- protocol parser fuzz;
+- остальные policy/evidence gates, если они фиксируют exact patchset identity.
+
+Пока хотя бы один authoritative gate всё ещё проверяет `0001–0005`, manifest не должен утверждать `0001–0006` как current patchset.
+
+## Что patch 0006 НЕ решает
+
+Patch `0006` не выбирает положительный lab/production byte budget и не добавляет runtime wiring для такого значения.
+
+Даже после будущего promotion `0006` zero-budget semantics будут означать fail-closed отключение delayed packet state до явной доверенной настройки положительного budget.
+
+Отдельно остаётся необходимо:
+
+- спроектировать typed/trusted внутреннюю передачу положительного byte budget в новые conntrack tracks;
 - выбрать временный lab budget только по утверждённой evidence-based методике;
-- отдельно измерить реальные workload peaks до production значения;
+- измерить реальные workload peaks до production значения;
 - получить HIGH_ASSURANCE human approval до любого executable lab stage.
 
 ## Admission effect
 
 На текущем этапе:
 
-- promoted current patchset остаётся `0001–0005`;
-- `0006` остаётся proposed, хотя dedicated gate уже PASS;
+- promoted current patchset в candidate manifest остаётся `0001–0005`;
+- `0006` остаётся proposed, несмотря на dedicated + Linux + Windows compile PASS;
 - `admission_status: REVIEW`;
 - `release_gate: BLOCK`;
 - `may_execute: false`;
 - `may_integrate: false`;
+- Windows runtime остаётся BLOCK по WinDivert boundary;
 - Linux lab execution остаётся запрещённым.
