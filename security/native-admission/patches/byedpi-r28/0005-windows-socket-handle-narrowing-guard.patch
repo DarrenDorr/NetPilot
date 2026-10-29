@@ -1,0 +1,68 @@
+diff --git a/proxy.c b/proxy.c
+--- a/proxy.c
++++ b/proxy.c
+@@ -4,6 +4,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <signal.h>
+ #include <assert.h>
++#include <limits.h>
+ 
+ #include "params.h"
+ #include "conev.h"
+@@ -42,6 +43,19 @@
+ 
+ int server_fd;
+ 
++#ifdef _WIN32
++static int netpilot_socket_to_int(SOCKET sock)
++{
++    if (sock == INVALID_SOCKET)
++        return -1;
++    if (sock > (SOCKET)INT_MAX) {
++        closesocket(sock);
++        WSASetLastError(WSAEMFILE);
++        return -1;
++    }
++    return (int)sock;
++}
++#endif
++
+ static void on_cancel(int sig) {
+     shutdown(server_fd, SHUT_RDWR);
+ }
+@@ -88,8 +102,12 @@
+ {
+     #ifdef __linux__
+     int fd = socket(domain, type | SOCK_NONBLOCK, 0);
++    #elif defined(_WIN32)
++    SOCKET sock = socket(domain, type, 0);
++    int fd = netpilot_socket_to_int(sock);
+     #else
+     int fd = socket(domain, type, 0);
+     #endif
+@@ -592,8 +610,12 @@
+         socklen_t len = sizeof(client);
+         #ifdef __linux__
+         int c = accept4(val->fd, &client.sa, &len, SOCK_NONBLOCK);
++        #elif defined(_WIN32)
++        SOCKET sock = accept((SOCKET)val->fd, &client.sa, &len);
++        int c = netpilot_socket_to_int(sock);
+         #else
+         int c = accept(val->fd, &client.sa, &len);
+         #endif
+diff --git a/conev.c b/conev.c
+--- a/conev.c
++++ b/conev.c
+@@ -87,7 +87,11 @@
+         return;
+     }
+     #ifdef NOEPOLL
++    #ifdef _WIN32
++    assert((SOCKET)val->fd == pool->pevents[val->index].fd);
++    #else
+     assert(val->fd == pool->pevents[val->index].fd);
++    #endif
+     #else
+     epoll_ctl(pool->efd, EPOLL_CTL_DEL, val->fd, 0);
+     #endif
