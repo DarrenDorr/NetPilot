@@ -2,7 +2,7 @@
 
 Дата: 29.10.2026.
 
-Статус: **PROPOSED PATCH / DEDICATED GATE PENDING / NOT ADMITTED / RELEASE GATE BLOCK**.
+Статус: **PROPOSED PATCH / DEDICATED GATE PASS / WHOLE-ENGINE COMPILE PENDING / NOT ADMITTED / RELEASE GATE BLOCK**.
 
 ## Что обнаружено
 
@@ -16,9 +16,9 @@ if (q->max_bytes && new_queued_bytes > q->max_bytes) return NULL;
 
 Synthetic harnesses ранее явно вызывали `rawpacket_queue_set_max_bytes(...)`, поэтому они доказали корректность accounting и saturation при **заданном положительном budget**, но не доказали bounded-byte semantics фактического runtime до явной настройки budget.
 
-Exact upstream `ConntrackInitTrack()` создаёт delayed queue через `rawpacket_queue_init(&t->delayed, RAW_PACKET_QUEUE_DELAYED_MAX)`; отдельная runtime-настройка byte budget в текущем patchset `0001–0005` не подключена.
+Exact upstream `ConntrackInitTrack()` создаёт delayed queue через `rawpacket_queue_init(&t->delayed, RAW_PACKET_QUEUE_DELAYED_MAX)`; отдельная runtime-настройка byte budget в текущем promoted patchset `0001–0005` не подключена.
 
-Это не означает, что candidate запускался с unlimited queue: production/native runtime по-прежнему запрещён. Но до исправления нельзя считать delayed-byte bound готовым для будущего runtime lab.
+Production/native runtime по-прежнему запрещён, поэтому обнаруженный gap не означает, что пользовательский runtime уже работал с unlimited queue. Но до исправления нельзя считать delayed-byte bound готовым для будущего runtime lab.
 
 ## Proposed patch 0006
 
@@ -26,10 +26,10 @@ Exact upstream `ConntrackInitTrack()` создаёт delayed queue через `r
 
 `security/native-admission/patches/zapret2-r28/0006-fail-closed-zero-delayed-queue-budget.patch`
 
-Immutable pre-gate identity:
+Immutable identity:
 
 - Git blob: `2a5165f5b562635dace89ae5069bdb791b69668c`;
-- SHA-256: **не promoted заранее** — dedicated gate вычисляет SHA-256 именно checkout-содержимого этого проверенного blob и фиксирует его в evidence; после PASS значение можно перенести в candidate manifest.
+- SHA-256: `f5f3c01c73db3584513adc345da838bef6035c95a59762c469a386c7ad201d97`.
 
 Изменение минимальное:
 
@@ -45,13 +45,7 @@ if (!q->max_bytes || new_queued_bytes > q->max_bytes) return NULL;
 - overflow guard сохраняется;
 - никаких новых CLI/config/network/runtime поверхностей patch не добавляет.
 
-## Почему это fail-closed
-
-До выбора доказанного положительного lab/production byte budget отсутствие настройки не должно означать «безлимитно».
-
-Нулевое значение намеренно отключает создание delayed packet state. Это может уменьшить эффективность конкретных desync/reassembly сценариев, но не расширяет расход памяти и не превращает unconfigured state в unlimited resource grant.
-
-## Dedicated gate
+## Dedicated gate — PASS
 
 Workflow:
 
@@ -61,45 +55,57 @@ Harness:
 
 `security/native-admission/harnesses/zapret2-r28/delayed_queue_zero_budget_harness.c`
 
-Gate обязан:
+Успешный run:
 
-1. проверить exact upstream source/UAF-fix lineage;
-2. проверить immutable Git blob identities proposed patch `0006` и harness;
-3. проверить уже promoted SHA-256 patches `0001–0005`;
-4. применить patches `0001–0006` через `git apply --check`;
-5. собрать только isolated packet-queue harness с ASan/UBSan и `-Werror`;
-6. доказать, что zero/unconfigured byte budget отклоняет enqueue без изменения accounting;
-7. доказать, что положительный budget по-прежнему принимает данные внутри лимита и отклоняет превышение;
-8. выполнить отдельный `strace -e trace=network` и потребовать отсутствие network syscalls;
-9. не запускать `nfqws2/winws2`, не загружать WinDivert/NFQUEUE и не менять firewall;
-10. удалить instrumented harness binary после формирования text-only evidence.
+- run: `40821736780`;
+- job: `123275527526`;
+- artifact: `12874324817`;
+- artifact digest SHA-256: `7940463b0dca2601e8bacc0a00a3f40c4ae2abad8939817406e9c8746df818a3`;
+- harness SHA-256: `9aec197b0cdc168e3a1f85823be4b27032271046c807427bceb08a3d17d0e16c`;
+- instrumented harness binary SHA-256: `8bc390536d629a001ef828401a1c11dba6ed37f8adcbf0292fbd2d9bb935307e`.
 
-## Первый run и почему он не считается semantic evidence
+Доказано в scope dedicated gate:
 
-Первый dedicated run остановился **до применения patch и до компиляции** из-за преждевременно зафиксированного ожидаемого SHA-256 текста `0006`, рассчитанного до записи Git blob с другой финальной newline-семантикой.
+- exact upstream/UAF-fix lineage проверен;
+- patches `0001–0006` применяются через `git apply --check`;
+- zero/unconfigured budget отклоняет delayed enqueue без изменения accounting;
+- положительный budget принимает данные только внутри установленного лимита;
+- ASan/UBSan regression: PASS;
+- network syscalls: отсутствуют;
+- candidate engine не запускался;
+- WinDivert/driver/NFQUEUE/firewall не использовались;
+- instrumented harness binary удалён после evidence.
 
-Git blob identity при этом совпала. Workflow исправлен так, чтобы pre-gate immutable identity задавалась Git blob SHA, а exact SHA-256 этого же checkout-содержимого записывался в evidence и promoted только после успешного gate. Семантика patch `0006` не изменялась.
+Первый run `40821515752` остановился до применения patch/компиляции из-за преждевременно закреплённого SHA-256 текста `0006`, рассчитанного до записи окончательного Git blob. Git blob identity совпала. Workflow был исправлен без изменения семантики patch, а успешный run выше вычислил и зафиксировал exact SHA-256 checkout-содержимого.
 
-Провал первого run не является PASS или FAIL семантики zero-budget; это packaging/identity-gate failure.
+## Следующий promotion gate
+
+Dedicated harness PASS недостаточен для promotion в current patchset.
+
+Следующий этап:
+
+1. Linux whole-engine compile-only на exact `0001–0006`, без исполнения `nfqws2`;
+2. Windows whole-engine compile-only на exact `0001–0006`, без исполнения `winws2`;
+3. после обоих PASS — повторное перепинивание остальных static/sanitizer/fuzz/resource/provenance gates на `0001–0006`;
+4. только после полного green patchset — обновление candidate manifest с promoted `0006`.
 
 ## Что этот patch НЕ решает
 
 Patch `0006` пока **не выбирает** положительный lab/production byte budget и не добавляет runtime wiring для такого значения.
 
-После PASS dedicated gate остаются отдельные задачи:
+После promotion остаются отдельные задачи:
 
 - спроектировать trusted внутреннюю передачу положительного byte budget в новые conntrack tracks;
 - выбрать временный lab budget только по утверждённой evidence-based методике;
 - отдельно измерить реальные workload peaks до production значения;
-- повторить compile/static/sanitizer/fuzz/resource gates уже на promoted patchset `0001–0006`;
 - получить HIGH_ASSURANCE human approval до любого executable lab stage.
 
 ## Admission effect
 
-Пока dedicated gate не завершён успешно:
+На текущем этапе:
 
-- current patchset остаётся `0001–0005`;
-- `0006` считается только proposed;
+- promoted current patchset остаётся `0001–0005`;
+- `0006` остаётся proposed, хотя dedicated gate уже PASS;
 - `admission_status: REVIEW`;
 - `release_gate: BLOCK`;
 - `may_execute: false`;

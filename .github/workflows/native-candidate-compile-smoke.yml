@@ -43,7 +43,7 @@ jobs:
           test "$(git rev-parse HEAD^)" = "221d7dff24bfec0cd5ac0a5070b8acef2008af3d"
           test "$(git rev-parse 'HEAD^{tree}')" = "5c2a77786cc7089145abe2ca99bcc53a8ed7de15"
 
-      - name: Apply reviewed NetPilot patch series
+      - name: Apply reviewed NetPilot patch series including proposed 0006
         shell: bash
         working-directory: zapret2
         run: |
@@ -54,13 +54,15 @@ jobs:
           echo "33fb3c7887e5e2cc0ad225d74318a9f2d5192179cf6b7671da75f75bd7335c68  $patch_dir/0003-bounded-delayed-queue-bytes.patch" | sha256sum -c -
           echo "f32e0c27393bcdfa30aa7e8c58749bb9e70e2a870350f5c3cfa429597a887777  $patch_dir/0004-explicit-daemon-stdio-redirection.patch" | sha256sum -c -
           echo "67cbbfa656c47b7342a8c56ab178716e7890de0f05efc25eed2cc20b299c4ed1  $patch_dir/0005-fail-closed-zero-conntrack-budget.patch" | sha256sum -c -
+          echo "f5f3c01c73db3584513adc345da838bef6035c95a59762c469a386c7ad201d97  $patch_dir/0006-fail-closed-zero-delayed-queue-budget.patch" | sha256sum -c -
 
           for patch in \
             0001-explicit-conntrack-feed-result.patch \
             0002-bounded-conntrack-resource-result.patch \
             0003-bounded-delayed-queue-bytes.patch \
             0004-explicit-daemon-stdio-redirection.patch \
-            0005-fail-closed-zero-conntrack-budget.patch
+            0005-fail-closed-zero-conntrack-budget.patch \
+            0006-fail-closed-zero-delayed-queue-budget.patch
           do
             git apply --check "$patch_dir/$patch"
             git apply "$patch_dir/$patch"
@@ -70,6 +72,7 @@ jobs:
           grep -Fq '!max_entries || HASH_COUNT(*pp) >= max_entries' nfq2/conntrack.c
           grep -Fq 'size_t queued_bytes;' nfq2/packet_queue.h
           grep -Fq 'len > SIZE_MAX - q->queued_bytes' nfq2/packet_queue.c
+          grep -Fq 'if (!q->max_bytes || new_queued_bytes > q->max_bytes) return NULL;' nfq2/packet_queue.c
           grep -Fq 'dup2(nullfd, STDOUT_FILENO)' nfq2/sec.c
 
       - name: Install Ubuntu compile-only dependencies
@@ -95,7 +98,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ../evidence
-          export CFLAGS="-DZAPRET_GH_VER=netpilot-r28-compile-smoke -DZAPRET_GH_HASH=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d"
+          export CFLAGS="-DZAPRET_GH_VER=netpilot-r28.9-compile-smoke -DZAPRET_GH_HASH=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d"
           make -C nfq2 clean 2>&1 | tee ../evidence/clean.log
           make -C nfq2 CC=gcc LUA_JIT=1 nfqws2 2>&1 | tee ../evidence/build.log
           test -f nfq2/nfqws2
@@ -118,9 +121,9 @@ jobs:
           fi
 
           {
-            echo "schema_version=5"
+            echo "schema_version=6"
             echo "scope=compile-smoke-only"
-            echo "candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0005"
+            echo "candidate=zapret2-v1.0.6-plus-uaf-fix-plus-netpilot-patches-0001-0006-proposed"
             echo "compile_outcome=$COMPILE_OUTCOME"
             echo "source_commit=$(git rev-parse HEAD)"
             echo "source_tree=$(git rev-parse 'HEAD^{tree}')"
@@ -135,6 +138,7 @@ jobs:
             echo "patch_0003_sha256=$(sha256sum ../netpilot/security/native-admission/patches/zapret2-r28/0003-bounded-delayed-queue-bytes.patch | awk '{print $1}')"
             echo "patch_0004_sha256=$(sha256sum ../netpilot/security/native-admission/patches/zapret2-r28/0004-explicit-daemon-stdio-redirection.patch | awk '{print $1}')"
             echo "patch_0005_sha256=$(sha256sum ../netpilot/security/native-admission/patches/zapret2-r28/0005-fail-closed-zero-conntrack-budget.patch | awk '{print $1}')"
+            echo "patch_0006_sha256=$(sha256sum ../netpilot/security/native-admission/patches/zapret2-r28/0006-fail-closed-zero-delayed-queue-budget.patch | awk '{print $1}')"
             echo "candidate_binary_executed=false"
           } > ../evidence/zapret2-linux-compile-smoke.txt
 
