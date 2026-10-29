@@ -1,4 +1,4 @@
-schema_version: 7
+schema_version: 8
 component_set: byedpi-v0.17.3-netpilot-fork-candidate
 admission_status: REVIEW
 release_gate: BLOCK
@@ -46,13 +46,14 @@ policy:
 static_review:
   document: docs/BYEDPI-STATIC-ADMISSION-R28.1.md
   compile_smoke_document: docs/BYEDPI-COMPILE-SMOKE-R28.3.md
+  full_patchset_compile_document: docs/BYEDPI-FULL-PATCHSET-COMPILE-R28.4.md
   windows_handle_hardening_document: docs/BYEDPI-WINDOWS-HANDLE-HARDENING-R28.4.md
   windows_aux_socket_hardening_document: docs/BYEDPI-WINDOWS-AUX-SOCKET-HARDENING-R28.4.md
   upstream_issue_review_document: docs/BYEDPI-UPSTREAM-ISSUE-REVIEW-R28.4.md
   decision: EXACT_V0_17_3_PLUS_CURATED_PATCHES_ONLY
   full_post_release_head_as_base: REJECT
   reason: post-release delta adds new proxy/cache/plugin/raw-mode surfaces beyond first NetPilot need
-  next_gate: R28.4_FULL_PATCHSET_0001_0007_COMPILE_THEN_ISOLATED_LOOPBACK_RUNTIME_LAB
+  next_gate: R28.4_PRELAB_REVIEW_FOR_LOOPBACK_ONLY_BOUNDARY_WITHOUT_EXECUTION
 
 patch_series:
   - sequence: 1
@@ -60,7 +61,7 @@ patch_series:
     purpose: make loopback the default listener and reject non-loopback --ip values as defense in depth
     git_blob_sha1: fa9ba3349792d66f40d925bc612310e8d18aae8a
     sha256: 3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068
-    status: PASS_FOR_APPLICABILITY_AND_HISTORICAL_COMPILE_ONLY
+    status: PASS_FOR_FULL_PATCHSET_COMPILE_ONLY
     expected_files: [main.c]
     limitation: runtime loopback enforcement is not yet tested
 
@@ -69,16 +70,16 @@ patch_series:
     purpose: remove one-before-array iterator sentinel UB and represent empty iterator with null top
     git_blob_sha1: 6f51d66597847ee49e373922e4905c80b8ee2f47
     sha256: 6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7
-    status: PASS_WITH_KAVL_SANITIZER_AFTER_PATCH_0004
+    status: PASS_WITH_KAVL_SANITIZER_AND_FULL_PATCHSET_COMPILE
     expected_files: [kavl.h]
-    limitation: does not by itself fix empty-tree erase UB
+    limitation: runtime candidate remains blocked
 
   - sequence: 3
     path: security/native-admission/patches/byedpi-r28/0003-pid-file-fail-safe-write.patch
     purpose: make PID-file locking/truncation/write handling fail safe and cleanup descriptor state deterministically
     git_blob_sha1: d56d0f8659a49c48c923b6af85a523a952e77e0c
     sha256: 5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738
-    status: TARGETED_STATIC_PASS_FULL_PATCHSET_RERUN_PENDING
+    status: PASS_TARGETED_STATIC_AND_FULL_PATCHSET_COMPILE_ONLY
     expected_files: [main.c]
     limitation: runtime PID-file lifecycle is not admitted
 
@@ -87,7 +88,7 @@ patch_series:
     purpose: return safely when KAVL erase/erase-first is called on an empty tree instead of indexing path[-1]
     git_blob_sha1: 9b196b289efd9a2ea1118c5504f4a811aa0becd2
     sha256: fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a
-    status: PASS_FOR_ISOLATED_ASAN_UBSAN_KAVL_REGRESSION_ONLY
+    status: PASS_FOR_ISOLATED_ASAN_UBSAN_KAVL_REGRESSION_AND_FULL_PATCHSET_COMPILE
     expected_files: [kavl.h]
     finding: upstream empty-tree erase path produced UBSan index -1 out of bounds after final erase loop check
     limitation: candidate runtime remains blocked
@@ -97,7 +98,7 @@ patch_series:
     purpose: validate pointer-sized Windows SOCKET values before narrowing them into the upstream int-based event-pool representation
     git_blob_sha1: d5cde98057a0ded600468b1f1c69d2e55c3b4d6e
     sha256: 7c8f4eee9ff2624346cb886027df66378773d0af04f5f84f54c30815104b4356
-    status: DESIGN_FIXED_UNIFIED_DIFF_REPAIRED_COMPILE_GATE_PENDING
+    status: PASS_FOR_FULL_PATCHSET_COMPILE_AND_TARGETED_WARNING_GATE
     expected_files: [proxy.c, conev.c]
     finding: upstream v0.17.3 stores socket()/accept() results in int while Win64 SOCKET is pointer-sized unsigned
     patch_format_note: previous hunk metadata had invalid unified-diff line counts and was rejected fail-closed before compilation; logic was unchanged while hunk metadata was repaired
@@ -105,44 +106,44 @@ patch_series:
       invalid_socket: reject
       socket_above_INT_MAX: close_and_reject
       representable_socket: narrow_only_after_explicit_check
-    limitation: full Windows compile/warning gate must pass before any runtime test
+    limitation: runtime handle lifecycle is not yet tested
 
   - sequence: 6
     path: security/native-admission/patches/byedpi-r28/0006-windows-wait-result-range.patch
     purpose: classify WaitForMultipleObjects result without a redundant unsigned lower-bound test and only index successful object results
     git_blob_sha1: 0815be26534c291848a8b16bdedb07a6ab1e485f
     sha256: 136b9fdf34b68a55f0f1a6ebf16e8b61c9b88e6d15eeb923594bdd7bf0fa2a3e
-    status: DESIGN_FIXED_COMPILE_GATE_PENDING
+    status: PASS_FOR_FULL_PATCHSET_COMPILE_AND_TARGETED_WARNING_GATE
     expected_files: [desync.c]
     finding: upstream comparison ret >= WAIT_OBJECT_0 is always true for DWORD because WAIT_OBJECT_0 is zero
     semantics:
       indexed_results: WAIT_OBJECT_0_through_WAIT_OBJECT_0_plus_MAX_TF_minus_one
       timeout_failed_abandoned_results: not_indexed
-    limitation: full Windows compile/warning gate must pass before any runtime test
+    limitation: runtime wait/cleanup behavior is not yet tested
 
   - sequence: 7
     path: security/native-admission/patches/byedpi-r28/0007-windows-aux-socket-probes.patch
     purpose: preserve pointer-sized SOCKET values in get_default_ttl and ipv6_support auxiliary probes instead of narrowing them to int on Win64
     git_blob_sha1: e7b590a7d0594be0629bac221cb120c165dab8cd
     sha256: 778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25
-    status: DESIGN_FIXED_REBASED_ON_HARDENED_MAIN_COMPILE_GATE_PENDING
+    status: PASS_FOR_FULL_PATCHSET_COMPILE_AND_TARGETED_SOURCE_BOUNDARY_GATE
     expected_files: [main.c]
     finding: exact v0.17.3 also narrows socket(AF_INET/AF_INET6) results to int in two helper probes outside the event-pool ingress covered by patch 0005
     patch_history:
       - initial patch identity was superseded after rebasing onto the main.c state produced by patches 0001-0006
-      - canonical Git blob identity and SHA-256 are now pinned above
+      - canonical Git blob identity and SHA-256 are pinned above
+      - first source validator falsely matched the legitimate Unix #else int fd branch; validator was corrected without weakening Windows branch requirements
     semantics:
       windows_socket_type: SOCKET
       windows_failure_check: INVALID_SOCKET
       linux_socket_type: int
       linux_failure_check: fd_less_than_zero
-    limitation: full Windows compile/source-boundary gate must pass before any runtime test
+    limitation: runtime auxiliary socket lifecycle is not yet tested
 
 kavl_sanitizer:
   status: PASS_FOR_ISOLATED_KAVL_ASAN_UBSAN_REGRESSION_ONLY
   workflow: .github/workflows/native-candidate-byedpi-static-sanitizer.yml
-  workflow_run_id: 40806335254
-  head_sha: b78e4953e8281b8685145a1161afb0583cee93dd
+  latest_confirmed_run_id: 40809161441
   sanitizers: [ASan, UBSan]
   scope: targeted_patches_0001_0002_0004_only
   no_network_syscalls: true
@@ -150,37 +151,62 @@ kavl_sanitizer:
   listener_opened: false
 
 historical_compile_smoke:
-  status: PASS_FOR_PATCH_0001_COMPILE_ONLY
+  status: PASS_FOR_PATCH_0001_COMPILE_ONLY_SUPERSEDED
   workflow_run_id: 40730956091
   workflow_job_id: 122966803718
   artifact_id: 12834388188
   artifact_zip_sha256: eef60dbe551ee908e0f9e4de0a18519d63a032e0948e07e46eebf0a9725771d4
-  note: superseded for candidate identity; full 0001-0007 compile rerun is required
+  note: superseded by full patchset 0001-0007 evidence below
+
+full_patchset_compile_evidence:
+  status: PASS_FOR_FULL_PATCHSET_0001_0007_COMPILE_ONLY
+  document: docs/BYEDPI-FULL-PATCHSET-COMPILE-R28.4.md
+  evidence_file: security/native-admission/evidence/byedpi-r28/compile-smoke-0001-0007.txt
+  workflow_run_id: 40809161345
+  workflow_job_id: 123235119893
+  head_sha: 27a64c64868fc7d4d09b0f165f48df9431485f23
+  artifact_id: 12869671269
+  artifact_name: byedpi-r28-compile-smoke-evidence
+  artifact_zip_sha256: f5ab931aff6867048a73ca81b4e50c4a090c4e366665c3f7ba1738ad637bddc7
+  windows_warning_and_source_boundary_gate: PASS
+  linux_compile: PASS
+  windows_x64_cross_compile: PASS
+  linux_binary_sha256: a54f71634020ef43421fa6b4c22800409226d29450ad143df949940c2290f33a
+  linux_second_build_sha256: a54f71634020ef43421fa6b4c22800409226d29450ad143df949940c2290f33a
+  linux_reproducible_in_run: true
+  windows_binary_sha256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+  windows_second_build_sha256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+  windows_reproducible_in_run: true
+  candidate_binary_executed: false
+  listener_opened: false
+  routing_changed: false
+  admission_effect: NONE
 
 current_patchset_gates:
   patchset: 0001-0007
   compile_smoke_linux_windows:
-    status: PENDING_CURRENT_RERUN
+    status: PASS_FOR_COMPILE_ONLY
     workflow: .github/workflows/native-candidate-byedpi-compile-smoke.yml
     required_windows_gates:
-      - conev.c with -Werror=sign-compare
-      - desync.c with -Werror=type-limits
-      - main.c exact source-boundary assertions for get_default_ttl/ipv6_support plus normal Windows compilation
+      conev_sign_compare: PASS
+      desync_type_limits: PASS
+      auxiliary_socket_source_boundary: PASS
+      main_windows_compile: PASS
     unrelated_upstream_conversion_warnings:
       status: REVIEW_DEBT_NOT_PROMOTED_BY_PATCH_0007_GATE
       reason: global -Werror=conversion on main.c catches pre-existing CLI/config numeric conversions unrelated to the two auxiliary SOCKET probes
   pidfile_static:
     status: PASS_TARGETED_SUBSET
     workflow: .github/workflows/native-candidate-byedpi-pidfile-static.yml
-    latest_confirmed_run_id: 40808605762
+    latest_confirmed_run_id: 40809161349
   kavl_sanitizer:
     status: PASS_TARGETED_SUBSET
     workflow: .github/workflows/native-candidate-byedpi-static-sanitizer.yml
-    latest_confirmed_run_id: 40808605786
+    latest_confirmed_run_id: 40809161441
   kavl_erase_sanitizer:
     status: PASS_TARGETED_SUBSET
     workflow: .github/workflows/native-candidate-byedpi-kavl-erase-sanitizer.yml
-    latest_confirmed_run_id: 40808605758
+    latest_confirmed_run_id: 40809161409
   loopback_runtime:
     status: NOT_STARTED
     requires_lab_execution_policy: true
@@ -192,16 +218,16 @@ current_patchset_gates:
     status: NOT_STARTED
 
 compile_warning_review:
-  status: DESIGN_FIXES_ADDED_EVIDENCE_PENDING
+  status: TARGETED_FIXES_COMPILE_PASS_REMAINING_UPSTREAM_DEBT_REVIEW_REQUIRED
   findings:
-    - ignored write() result in init_pid_file on Linux: patched by 0003
+    - ignored write() result in init_pid_file on Linux: patched by 0003; targeted static PASS
     - KAVL one-before-array iterator sentinel: patched by 0002
     - KAVL empty-tree erase index -1 UB: patched by 0004 and isolated sanitizer PASS
-    - Windows event descriptor signed/unsigned warning exposed a wider representation boundary: socket()/accept() return SOCKET but upstream event pool stores int; patched fail-closed at ingress by 0005
-    - Windows WaitForMultipleObjects lower-bound comparison was always true for DWORD; patched by 0006 with explicit successful-object range
-    - Windows get_default_ttl/ipv6_support auxiliary probes also stored SOCKET in int; patched by 0007 to retain SOCKET on Windows
-    - broad -Wconversion on whole upstream main.c reports unrelated historical numeric conversions and is tracked separately rather than used as proof of patch 0007
-  required_action: full patchset 0001-0007 reproducible Linux/Windows compile plus targeted warning/source-boundary gates before runtime admission
+    - Windows event descriptor signed/unsigned warning exposed a wider representation boundary: socket()/accept() return SOCKET but upstream event pool stores int; patched fail-closed at ingress by 0005 and targeted compile gate PASS
+    - Windows WaitForMultipleObjects lower-bound comparison was always true for DWORD; patched by 0006 with explicit successful-object range and targeted compile gate PASS
+    - Windows get_default_ttl/ipv6_support auxiliary probes also stored SOCKET in int; patched by 0007 with exact source-boundary gate PASS
+    - broad -Wconversion on whole upstream main.c reports unrelated historical numeric conversions and remains separate review debt
+  required_action: review remaining unrelated upstream warnings separately and complete pre-lab lifecycle/resource boundary design before any runtime approval
 
 upstream_issue_review:
   document: docs/BYEDPI-UPSTREAM-ISSUE-REVIEW-R28.4.md
@@ -231,16 +257,15 @@ curated_backport_candidates:
     status: REVIEW_OR_REIMPLEMENT_NOT_APPLIED
 
 required_before_admit:
-  - Full patchset 0001-0007 must compile reproducibly for Linux x86-64 and Windows x64 without candidate execution.
-  - Targeted Windows sign-compare/type-limits and exact auxiliary SOCKET source-boundary gates must pass on the patched source.
-  - Unrelated upstream conversion warnings remain separate review debt and must not be silently suppressed in release review.
-  - Runtime loopback-only regression must prove no listener appears on wildcard or LAN interfaces.
+  - Compile-only PASS does not authorize execution; runtime loopback-only regression must prove no listener appears on wildcard or LAN interfaces.
+  - Supervised start/stop/crash/timeout and residual listener/process cleanup require separate scoped lab evidence.
   - Connection and UDP state resource budgets must be measured and fixed as internal typed policy.
+  - Unrelated upstream conversion warnings remain separate review debt and must not be silently suppressed in release review.
   - File/path/raw-data CLI surfaces must remain unreachable from NetPilot UI, IPC and config.
   - Android VpnService and TUN-to-SOCKS components require separate provenance, lifecycle and DNS/UDP review.
   - Windows system-wide transparent routing requires a separately admitted routing component.
   - Selected reliability backports must be reviewed independently with regression tests.
-  - Exact runtime build toolchains/component identities and output hashes must be recorded before runtime admission.
+  - Exact runtime build hashes must be pinned in a candidate-specific lab approval before any candidate execution.
   - Advisory review and HIGH_ASSURANCE human review are required before ADMIT.
 
 notes:
