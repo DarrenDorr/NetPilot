@@ -51,7 +51,7 @@ jobs:
           test "$(git -C zapret2 rev-parse HEAD^)" = "221d7dff24bfec0cd5ac0a5070b8acef2008af3d"
           test "$(git -C zapret2 rev-parse 'HEAD^{tree}')" = "5c2a77786cc7089145abe2ca99bcc53a8ed7de15"
           test "$(git -C luajit rev-parse HEAD)" = "dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc"
-          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/harnesses/zapret2-r28/resource_stress_harness.c')" = "b27dddc7dbc992c750095e71bbc009a4d0382a42"
+          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/harnesses/zapret2-r28/resource_stress_harness.c')" = "9cb70ace93bbda943495117123a2b5dcfbd30cd7"
 
           patch_dir="$PWD/netpilot/security/native-admission/patches/zapret2-r28"
           echo "af811313b37efc14f157bdc1744e9a74ea3c009b03fc1d518d9ab327a35facff  $patch_dir/0001-explicit-conntrack-feed-result.patch" | sha256sum -c -
@@ -183,7 +183,7 @@ jobs:
             echo 'source_commit=4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d'
             echo 'source_tree=5c2a77786cc7089145abe2ca99bcc53a8ed7de15'
             echo 'luajit_headers_commit=dcc9c9ee67e1a5d3d636bd7745e95ddb4a1c70bc'
-            echo 'harness_git_blob_sha1=b27dddc7dbc992c750095e71bbc009a4d0382a42'
+            echo 'harness_git_blob_sha1=9cb70ace93bbda943495117123a2b5dcfbd30cd7'
             echo "harness_sha256=$harness_sha256"
             echo "instrumented_harness_binary_sha256=$binary_sha256"
             echo "compile_outcome=$COMPILE_OUTCOME"
