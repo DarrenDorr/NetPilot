@@ -6,6 +6,8 @@ on:
     paths:
       - ".github/workflows/native-candidate-dpibreak-advisory-static.yml"
       - "security/native-admission/dpibreak-v0.6.2-candidate.yaml"
+      - "security/native-admission/dpibreak-v0.6.2-netpilot-fork-candidate.yaml"
+      - "security/native-admission/evidence/dpibreak-r28/advisory-static.txt"
       - "docs/DPIBREAK-*.md"
 
 permissions:
@@ -70,6 +72,50 @@ jobs:
           cd "$RUNNER_TEMP/netpilot-rustsec-neutral"
           "$audit_bin" audit --file "$lockfile" --json > "$GITHUB_WORKSPACE/evidence/cargo-audit.json"
 
+      - name: Parse RustSec result and fail closed on known vulnerabilities
+        id: rustsec_summary
+        continue-on-error: true
+        if: steps.rustsec.outcome == 'success'
+        shell: python
+        run: |
+          from pathlib import Path
+          import json
+
+          path = Path("evidence/cargo-audit.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+          vulns = data.get("vulnerabilities", {})
+          vulnerability_count = int(vulns.get("count", 0))
+          warnings = data.get("warnings", {})
+          unmaintained = warnings.get("unmaintained", []) or []
+          ids = []
+          packages = []
+          for item in unmaintained:
+              advisory = item.get("advisory", {})
+              package = item.get("package", {})
+              if advisory.get("id"):
+                  ids.append(advisory["id"])
+              if package.get("name") and package.get("version"):
+                  packages.append(f"{package['name']}@{package['version']}")
+
+          database = data.get("database", {})
+          lockfile = data.get("lockfile", {})
+          lines = [
+              "schema_version=1",
+              "scope=exact-dpibreak-v0.6.2-rustsec-summary",
+              f"database_advisory_count={database.get('advisory-count', 'unknown')}",
+              f"database_last_commit={database.get('last-commit', 'unknown')}",
+              f"database_last_updated={database.get('last-updated', 'unknown')}",
+              f"dependency_count={lockfile.get('dependency-count', 'unknown')}",
+              f"vulnerabilities_found={str(bool(vulns.get('found', False))).lower()}",
+              f"vulnerability_count={vulnerability_count}",
+              f"unmaintained_warning_count={len(unmaintained)}",
+              "unmaintained_advisory_ids=" + ",".join(ids),
+              "unmaintained_packages=" + ",".join(packages),
+          ]
+          Path("evidence/rustsec-summary.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          if vulnerability_count != 0:
+              raise SystemExit(f"RustSec found {vulnerability_count} known vulnerabilities")
+
       - name: Inventory unsafe and native-boundary source without execution
         id: inventory
         continue-on-error: true
@@ -83,8 +129,6 @@ jobs:
           evidence = Path("evidence")
           evidence.mkdir(exist_ok=True)
 
-          # Both the main crate and the in-tree WinDivert wrapper are part of
-          # the exact v0.6.2 security boundary. Do not silently omit the wrapper.
           scopes = [root / "src", root / "crates" / "windivert" / "src"]
           patterns = {
               "unsafe_block_or_fn": re.compile(r"\bunsafe\b"),
@@ -156,25 +200,22 @@ jobs:
           set -euo pipefail
           mkdir -p evidence
 
-          # Linux: upstream exposes an executable selector while the process
-          # requires root. NetPilot must never surface this through UI/config/IPC.
           grep -Fq '"--nft-command" => { nft_command = take_value' dpibreak/src/opt.rs
           grep -Fq 'Command::new(program)' dpibreak/src/platform/linux/rules.rs
           grep -Fq 'exec_process(&[opt::nft_command(), "-f", "-"], Some(rule))' dpibreak/src/platform/linux/rules.rs
 
-          # Windows: exact v0.6.2 stops the global WinDivert service on exit.
-          # WinDivert issue #406 explains why an app-owned unconditional stop is
-          # unsafe in the presence of handles owned by other processes.
           grep -Fq 'windivert::WinDivert::uninstall()' dpibreak/src/platform/windows.rs
           grep -Fq 'SC_MANAGER_ALL_ACCESS' dpibreak/crates/windivert/src/divert/mod.rs
           grep -Fq 'SERVICE_CONTROL_STOP' dpibreak/crates/windivert/src/divert/mod.rs
           grep -Fq 'TlsAlloc()' dpibreak/crates/windivert/src/divert/mod.rs
 
-          tls_free_count="$(grep -R -F -c 'TlsFree' dpibreak/crates/windivert/src || true)"
-          drop_count="$(grep -R -E -c 'impl([^\n]*)Drop([^\n]*)WinDivert|impl Drop for WinDivert' dpibreak/crates/windivert/src || true)"
+          tls_free_count="$(grep -R -F -h 'TlsFree' dpibreak/crates/windivert/src 2>/dev/null | wc -l | tr -d ' ')"
+          drop_count="$(grep -R -E -h 'impl.*Drop.*WinDivert|impl Drop for WinDivert' dpibreak/crates/windivert/src 2>/dev/null | wc -l | tr -d ' ')"
+          test "$tls_free_count" -ge 0
+          test "$drop_count" -ge 0
 
           {
-            echo 'schema_version=1'
+            echo 'schema_version=2'
             echo 'scope=dpibreak-v0.6.2-known-privileged-surfaces'
             echo 'linux_user_selectable_nft_executable_present=true'
             echo 'linux_nft_exec_uses_command_new=true'
@@ -194,13 +235,14 @@ jobs:
         env:
           INSTALL_AUDIT_OUTCOME: ${{ steps.install_audit.outcome }}
           RUSTSEC_OUTCOME: ${{ steps.rustsec.outcome }}
+          RUSTSEC_SUMMARY_OUTCOME: ${{ steps.rustsec_summary.outcome }}
           INVENTORY_OUTCOME: ${{ steps.inventory.outcome }}
           BOUNDARY_OUTCOME: ${{ steps.boundary.outcome }}
         run: |
           set -euo pipefail
           mkdir -p evidence
           {
-            echo 'schema_version=2'
+            echo 'schema_version=3'
             echo 'scope=dpibreak-v0.6.2-advisory-static-intake'
             echo 'source_commit=334285b60aabd5a32a83a65211ac60bce968b211'
             echo 'source_tree=7e95a17933fe9fda521865b1317c4f9f75d6c58c'
@@ -208,6 +250,7 @@ jobs:
             echo 'cargo_audit_version=0.22.2'
             echo "cargo_audit_install_outcome=$INSTALL_AUDIT_OUTCOME"
             echo "rustsec_audit_outcome=$RUSTSEC_OUTCOME"
+            echo "rustsec_summary_outcome=$RUSTSEC_SUMMARY_OUTCOME"
             echo "unsafe_ffi_inventory_outcome=$INVENTORY_OUTCOME"
             echo "privileged_boundary_inventory_outcome=$BOUNDARY_OUTCOME"
             echo 'audit_mode=exact-lockfile-from-neutral-directory'
@@ -237,11 +280,13 @@ jobs:
         env:
           INSTALL_AUDIT_OUTCOME: ${{ steps.install_audit.outcome }}
           RUSTSEC_OUTCOME: ${{ steps.rustsec.outcome }}
+          RUSTSEC_SUMMARY_OUTCOME: ${{ steps.rustsec_summary.outcome }}
           INVENTORY_OUTCOME: ${{ steps.inventory.outcome }}
           BOUNDARY_OUTCOME: ${{ steps.boundary.outcome }}
         run: |
           set -euo pipefail
           test "$INSTALL_AUDIT_OUTCOME" = 'success'
           test "$RUSTSEC_OUTCOME" = 'success'
+          test "$RUSTSEC_SUMMARY_OUTCOME" = 'success'
           test "$INVENTORY_OUTCOME" = 'success'
           test "$BOUNDARY_OUTCOME" = 'success'
