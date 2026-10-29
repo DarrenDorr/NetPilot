@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../NetPilot.Engine.Zapret/NetPilot.Engine.Zapret.csproj" />
+    <ProjectReference Include="../NetPilot.Platform.Windows/NetPilot.Platform.Windows.csproj" />
     <ProjectReference Include="../NetPilot.Updater/NetPilot.Updater.csproj" />
   </ItemGroup>
 </Project>
