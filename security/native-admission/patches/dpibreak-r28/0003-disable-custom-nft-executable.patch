@@ -1,0 +1,14 @@
+diff --git a/src/opt.rs b/src/opt.rs
+--- a/src/opt.rs
++++ b/src/opt.rs
+@@ -173,7 +173,9 @@ impl Opt {
+                 "--queue-num" => { queue_num = take_value(&mut args, argv)?; }
+ 
+                 #[cfg(target_os = "linux")]
+-                "--nft-command" => { nft_command = take_value(&mut args, argv)?; }
++                "--nft-command" => {
++                    return Err(anyhow!("--nft-command is disabled in the NetPilot hardened build"));
++                }
+ 
+                 _ => { return Err(anyhow!("unknown argument: {}", arg)); }
+             }
