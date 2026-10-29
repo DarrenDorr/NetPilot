@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using NetPilot.Engine.Zapret.Windows;
 using NetPilot.Platform.Windows;
 
 namespace NetPilot.Platform.Windows.Tests;
@@ -32,19 +33,22 @@ public sealed class WindowsServiceOwnedEngineProcessControllerTests
     }
 
     [Fact]
-    public void System_launcher_accepts_only_compiled_verified_plan()
+    public void Audited_system_launcher_has_verified_plan_overload_without_raw_strings()
     {
-        var launch = typeof(SystemWindowsVerifiedEngineProcessLauncher)
-            .GetMethod(
-                nameof(SystemWindowsVerifiedEngineProcessLauncher.Launch),
-                BindingFlags.Instance | BindingFlags.Public)
-            ?? throw new InvalidOperationException("Launch method not found.");
+        var launch = typeof(SystemZapretProcessLauncher)
+            .GetMethods(BindingFlags.Instance | BindingFlags.Public)
+            .Single(method =>
+                string.Equals(method.Name, nameof(SystemZapretProcessLauncher.Launch), StringComparison.Ordinal)
+                && method.GetParameters().Length == 1
+                && method.GetParameters()[0].ParameterType == typeof(WindowsCompiledEngineArgumentPlan));
 
         var parameter = Assert.Single(launch.GetParameters());
         Assert.Equal(typeof(WindowsCompiledEngineArgumentPlan), parameter.ParameterType);
         Assert.DoesNotContain(
             launch.GetParameters(),
             static candidate => candidate.ParameterType == typeof(string));
+        Assert.True(typeof(IWindowsVerifiedEngineProcessLauncher)
+            .IsAssignableFrom(typeof(SystemZapretProcessLauncher)));
     }
 
     [Fact]
