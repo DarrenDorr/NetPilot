@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 3
 plan_id: byedpi-loopback-r28.4
 candidate: byedpi-v0.17.3-netpilot-fork-candidate
 platforms:
@@ -34,8 +34,8 @@ candidate_identity:
     - 0005-windows-socket-handle-narrowing-guard.patch
     - 0006-windows-wait-result-range.patch
     - 0007-windows-aux-socket-probes.patch
-  patch_0007_git_blob_sha1: e1e7cf53a87e9f51224147d7b1d4faf39dcf8ef6
-  patch_0007_sha256: ddfe7a3b6280c55dc89afd99ea89badea2f30348031f4f93a6ca6debcf939897
+  patch_0007_git_blob_sha1: e7b590a7d0594be0629bac221cb120c165dab8cd
+  patch_0007_sha256: 778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25
   linux_runtime_binary_sha256: null
   windows_runtime_binary_sha256: null
   rule: exact runtime binary hashes must be pinned from controlled builds before approval
@@ -197,4 +197,4 @@ notes:
   - It does not authorize starting ciadpi/ciadpi.exe.
   - It does not authorize exposing a SOCKS listener outside loopback.
   - It does not authorize system-wide routing, Android VPN/TUN, or production integration.
-  - Any approval referencing patchset 0001-0006 is stale and invalid for the current candidate identity.
+  - Any approval referencing an older patch 0007 identity is stale and invalid for the current candidate identity.
