@@ -1,8 +1,8 @@
 namespace NetPilot.Engine.Abstractions;
 
 /// <summary>
-/// Типизированный источник одного будущего argv token. Намеренно отсутствует
-/// generic string-value source: raw CLI/Lua/script/path/URL/env не представимы.
+/// Типизированный источник будущих argv tokens. Намеренно отсутствует generic
+/// string-value source: raw CLI/Lua/script/path/URL/env не представимы.
 /// </summary>
 public enum EngineArgumentTokenKind
 {
@@ -10,12 +10,17 @@ public enum EngineArgumentTokenKind
     FixedPositiveUInt,
     ConntrackMaxEntries,
     DelayedQueueMaxBytes,
-    VerifiedComponentPath
+    VerifiedComponentPath,
+    ShortFlag,
+    ShortFixedPositiveUInt,
+    ShortFixedNonNegativeUInt,
+    ShortLoopbackIpv4
 }
 
 /// <summary>
-/// Один typed argv token template. OptionName является только каноническим
-/// `--lower-ascii-token`; string value не принимается.
+/// Один trusted argv token template. Длинные options остаются каноническими
+/// `--lower-ascii-token`. Короткие options разрешены только специальными typed
+/// kinds и имеют форму ровно `-X`/`-x`. Generic string value отсутствует.
 /// </summary>
 public sealed class EngineArgumentTokenTemplate
 {
@@ -30,13 +35,15 @@ public sealed class EngineArgumentTokenTemplate
             throw new ArgumentOutOfRangeException(nameof(kind));
         }
 
-        OptionName = ValidateOptionName(optionName);
+        OptionName = ValidateOptionName(kind, optionName);
 
         switch (kind)
         {
             case EngineArgumentTokenKind.Flag:
             case EngineArgumentTokenKind.ConntrackMaxEntries:
             case EngineArgumentTokenKind.DelayedQueueMaxBytes:
+            case EngineArgumentTokenKind.ShortFlag:
+            case EngineArgumentTokenKind.ShortLoopbackIpv4:
                 if (fixedPositiveUInt != 0 || componentId is not null)
                 {
                     throw new ArgumentException(
@@ -45,10 +52,19 @@ public sealed class EngineArgumentTokenTemplate
                 break;
 
             case EngineArgumentTokenKind.FixedPositiveUInt:
+            case EngineArgumentTokenKind.ShortFixedPositiveUInt:
                 if (fixedPositiveUInt == 0 || componentId is not null)
                 {
                     throw new ArgumentException(
-                        "FixedPositiveUInt требует только положительное целое значение.");
+                        "Positive integer typed argument требует только положительное целое значение.");
+                }
+                break;
+
+            case EngineArgumentTokenKind.ShortFixedNonNegativeUInt:
+                if (componentId is not null)
+                {
+                    throw new ArgumentException(
+                        "ShortFixedNonNegativeUInt принимает только неотрицательное целое значение.");
                 }
                 break;
 
@@ -77,8 +93,25 @@ public sealed class EngineArgumentTokenTemplate
 
     public string? ComponentId { get; }
 
-    private static string ValidateOptionName(string value)
+    private static string ValidateOptionName(
+        EngineArgumentTokenKind kind,
+        string value)
     {
+        if (IsShortOptionKind(kind))
+        {
+            if (value is null
+                || value.Length != 2
+                || value[0] != '-'
+                || !IsAsciiLetter(value[1]))
+            {
+                throw new ArgumentException(
+                    "Short option name должен иметь exact форму `-X` или `-x`.",
+                    nameof(value));
+            }
+
+            return value;
+        }
+
         if (string.IsNullOrEmpty(value)
             || value.Length is < 4 or > 64
             || !value.StartsWith("--", StringComparison.Ordinal))
@@ -119,8 +152,17 @@ public sealed class EngineArgumentTokenTemplate
         return value;
     }
 
+    private static bool IsShortOptionKind(EngineArgumentTokenKind kind) =>
+        kind is EngineArgumentTokenKind.ShortFlag
+            or EngineArgumentTokenKind.ShortFixedPositiveUInt
+            or EngineArgumentTokenKind.ShortFixedNonNegativeUInt
+            or EngineArgumentTokenKind.ShortLoopbackIpv4;
+
     private static bool IsAsciiLowerOrDigit(char value) =>
         value is >= 'a' and <= 'z' or >= '0' and <= '9';
+
+    private static bool IsAsciiLetter(char value) =>
+        value is >= 'a' and <= 'z' or >= 'A' and <= 'Z';
 }
 
 /// <summary>
@@ -182,8 +224,9 @@ public sealed class EngineArgumentPlanDeclaration
 }
 
 /// <summary>
-/// Production catalog typed argument plans. R28.18 намеренно пуст: конкретные argv
-/// появятся только для exact NetPilot-owned fork artifact после отдельного review.
+/// Production catalog typed argument plans. Он намеренно остаётся пустым: R33
+/// добавляет только безопасную выразимость short argv, но не даёт ADMIT ни одному
+/// native engine до отдельного runtime/admission решения.
 /// </summary>
 public static class BuiltInEngineArgumentPlanCatalog
 {

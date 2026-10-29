@@ -12,9 +12,9 @@ public sealed class WindowsEngineProcessStartInfoException(
 }
 
 /// <summary>
-/// Создаёт только non-starting ProcessStartInfo из уже проверенной цепочки
-/// R28.16–R28.18. Никакой overload с executable/path/arguments strings нет.
-/// Process.Start намеренно отсутствует.
+/// Создаёт только non-starting ProcessStartInfo из уже проверенной цепочки.
+/// Никакой overload с executable/path/arguments strings нет. Process.Start
+/// намеренно отсутствует.
 /// </summary>
 public static class WindowsVerifiedEngineProcessStartInfoFactory
 {
@@ -172,14 +172,40 @@ public static class WindowsVerifiedEngineProcessStartInfoFactory
     {
         if (string.IsNullOrEmpty(argument)
             || argument.Length > 16 * 1024
-            || !argument.StartsWith("--", StringComparison.Ordinal)
             || argument.Any(static character => character is '\0' or '\r' or '\n'))
         {
-            throw new WindowsEngineProcessStartInfoException(
-                "CompiledArgumentInvalid",
-                "Compiled typed argument имеет недопустимый формат.");
+            throw InvalidCompiledArgument();
+        }
+
+        // WindowsCompiledEngineArgumentPlan has no public constructor and can only
+        // be emitted by WindowsTypedEngineArgumentPlanCompiler. This second gate
+        // nevertheless accepts only the structural shapes that compiler can emit:
+        // long option, exact one-letter short option, unsigned decimal, or the
+        // fixed loopback literal. Arbitrary host/path/URL/raw text is rejected.
+        var valid = argument.StartsWith("--", StringComparison.Ordinal)
+            || IsShortOption(argument)
+            || IsUnsignedDecimal(argument)
+            || string.Equals(argument, "127.0.0.1", StringComparison.Ordinal);
+
+        if (!valid)
+        {
+            throw InvalidCompiledArgument();
         }
     }
+
+    private static bool IsShortOption(string value) =>
+        value.Length == 2
+        && value[0] == '-'
+        && value[1] is >= 'a' and <= 'z' or >= 'A' and <= 'Z';
+
+    private static bool IsUnsignedDecimal(string value) =>
+        value.Length <= 20
+        && value.All(static character => character is >= '0' and <= '9');
+
+    private static WindowsEngineProcessStartInfoException InvalidCompiledArgument() =>
+        new(
+            "CompiledArgumentInvalid",
+            "Compiled typed argument имеет недопустимый формат.");
 
     private static string NormalizeDirectory(string path) =>
         Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
