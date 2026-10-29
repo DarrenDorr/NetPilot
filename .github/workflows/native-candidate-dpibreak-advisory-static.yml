@@ -83,23 +83,27 @@ jobs:
           evidence = Path("evidence")
           evidence.mkdir(exist_ok=True)
 
-          scopes = [root / "src", root / "windivert"]
+          # Both the main crate and the in-tree WinDivert wrapper are part of
+          # the exact v0.6.2 security boundary. Do not silently omit the wrapper.
+          scopes = [root / "src", root / "crates" / "windivert" / "src"]
           patterns = {
               "unsafe_block_or_fn": re.compile(r"\bunsafe\b"),
               "extern_boundary": re.compile(r"\bextern\b|extern\s+\"(?:C|system)\""),
               "raw_pointer": re.compile(r"\*const\s+|\*mut\s+"),
               "transmute": re.compile(r"\btransmute(?:_copy)?\b"),
-              "from_raw": re.compile(r"\bfrom_raw(?:_parts|_parts_mut)?\b"),
+              "from_raw": re.compile(r"\bfrom_raw(?:_parts|_parts_mut|_fd)?\b"),
               "as_ptr": re.compile(r"\bas_(?:mut_)?ptr\b"),
           }
 
           findings = []
           counts = {key: 0 for key in patterns}
           files_scanned = 0
+          scanned_roots = []
 
           for scope in scopes:
               if not scope.exists():
-                  continue
+                  raise SystemExit(f"required static-review scope missing: {scope}")
+              scanned_roots.append(scope.as_posix())
               for path in sorted(scope.rglob("*.rs")):
                   files_scanned += 1
                   text = path.read_text(encoding="utf-8", errors="replace")
@@ -117,9 +121,10 @@ jobs:
                       })
 
           summary = {
-              "schema_version": 1,
+              "schema_version": 2,
               "scope": "dpibreak-v0.6.2-static-unsafe-ffi-inventory",
               "source_commit": "334285b60aabd5a32a83a65211ac60bce968b211",
+              "scanned_roots": scanned_roots,
               "files_scanned": files_scanned,
               "counts": counts,
               "candidate_binary_executed": False,
@@ -129,8 +134,9 @@ jobs:
           (evidence / "unsafe-ffi-findings.json").write_text(json.dumps(findings, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
           lines = [
-              "schema_version=1",
+              "schema_version=2",
               "scope=dpibreak-v0.6.2-static-unsafe-ffi-inventory",
+              "scanned_roots=" + ",".join(scanned_roots),
               f"files_scanned={files_scanned}",
           ]
           for key in sorted(counts):
@@ -142,6 +148,46 @@ jobs:
           ]
           (evidence / "unsafe-ffi-inventory.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+      - name: Pin known privileged integration surfaces for manual review
+        id: boundary
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+
+          # Linux: upstream exposes an executable selector while the process
+          # requires root. NetPilot must never surface this through UI/config/IPC.
+          grep -Fq '"--nft-command" => { nft_command = take_value' dpibreak/src/opt.rs
+          grep -Fq 'Command::new(program)' dpibreak/src/platform/linux/rules.rs
+          grep -Fq 'exec_process(&[opt::nft_command(), "-f", "-"], Some(rule))' dpibreak/src/platform/linux/rules.rs
+
+          # Windows: exact v0.6.2 stops the global WinDivert service on exit.
+          # WinDivert issue #406 explains why an app-owned unconditional stop is
+          # unsafe in the presence of handles owned by other processes.
+          grep -Fq 'windivert::WinDivert::uninstall()' dpibreak/src/platform/windows.rs
+          grep -Fq 'SC_MANAGER_ALL_ACCESS' dpibreak/crates/windivert/src/divert/mod.rs
+          grep -Fq 'SERVICE_CONTROL_STOP' dpibreak/crates/windivert/src/divert/mod.rs
+          grep -Fq 'TlsAlloc()' dpibreak/crates/windivert/src/divert/mod.rs
+
+          tls_free_count="$(grep -R -F -c 'TlsFree' dpibreak/crates/windivert/src || true)"
+          drop_count="$(grep -R -E -c 'impl([^\n]*)Drop([^\n]*)WinDivert|impl Drop for WinDivert' dpibreak/crates/windivert/src || true)"
+
+          {
+            echo 'schema_version=1'
+            echo 'scope=dpibreak-v0.6.2-known-privileged-surfaces'
+            echo 'linux_user_selectable_nft_executable_present=true'
+            echo 'linux_nft_exec_uses_command_new=true'
+            echo 'windows_unconditional_windivert_uninstall_present=true'
+            echo 'windows_scm_all_access_present=true'
+            echo 'windows_service_control_stop_present=true'
+            echo 'windivert_tls_alloc_present=true'
+            echo "windivert_tls_free_occurrence_total=$tls_free_count"
+            echo "windivert_drop_impl_occurrence_total=$drop_count"
+            echo 'classification=KNOWN_BLOCKERS_OR_REVIEW_SURFACES_PRESENT'
+            echo 'candidate_binary_executed=false'
+          } > evidence/privileged-boundary.txt
+
       - name: Produce text-only gate evidence
         if: always()
         shell: bash
@@ -149,11 +195,12 @@ jobs:
           INSTALL_AUDIT_OUTCOME: ${{ steps.install_audit.outcome }}
           RUSTSEC_OUTCOME: ${{ steps.rustsec.outcome }}
           INVENTORY_OUTCOME: ${{ steps.inventory.outcome }}
+          BOUNDARY_OUTCOME: ${{ steps.boundary.outcome }}
         run: |
           set -euo pipefail
           mkdir -p evidence
           {
-            echo 'schema_version=1'
+            echo 'schema_version=2'
             echo 'scope=dpibreak-v0.6.2-advisory-static-intake'
             echo 'source_commit=334285b60aabd5a32a83a65211ac60bce968b211'
             echo 'source_tree=7e95a17933fe9fda521865b1317c4f9f75d6c58c'
@@ -162,7 +209,10 @@ jobs:
             echo "cargo_audit_install_outcome=$INSTALL_AUDIT_OUTCOME"
             echo "rustsec_audit_outcome=$RUSTSEC_OUTCOME"
             echo "unsafe_ffi_inventory_outcome=$INVENTORY_OUTCOME"
+            echo "privileged_boundary_inventory_outcome=$BOUNDARY_OUTCOME"
             echo 'audit_mode=exact-lockfile-from-neutral-directory'
+            echo 'unsafe_inventory_includes_in_tree_windivert=true'
+            echo 'known_privileged_surfaces_are_not_admitted=true'
             echo 'candidate_binary_executed=false'
             echo 'nfqueue_enabled=false'
             echo 'firewall_changed=false'
@@ -181,15 +231,17 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Enforce advisory/static gate
+      - name: Enforce advisory/static intake gate
         if: always()
         shell: bash
         env:
           INSTALL_AUDIT_OUTCOME: ${{ steps.install_audit.outcome }}
           RUSTSEC_OUTCOME: ${{ steps.rustsec.outcome }}
           INVENTORY_OUTCOME: ${{ steps.inventory.outcome }}
+          BOUNDARY_OUTCOME: ${{ steps.boundary.outcome }}
         run: |
           set -euo pipefail
           test "$INSTALL_AUDIT_OUTCOME" = 'success'
           test "$RUSTSEC_OUTCOME" = 'success'
           test "$INVENTORY_OUTCOME" = 'success'
+          test "$BOUNDARY_OUTCOME" = 'success'
