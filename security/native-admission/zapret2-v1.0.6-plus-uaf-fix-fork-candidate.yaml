@@ -59,6 +59,7 @@ static_review:
   resource_stress_document: docs/ZAPRET2-RESOURCE-STRESS-R28.3.md
   delayed_queue_zero_budget_document: docs/ZAPRET2-DELAYED-QUEUE-ZERO-BUDGET-R28.9.md
   resource_budget_wiring_document: docs/ZAPRET2-RESOURCE-BUDGET-WIRING-R28.10.md
+  adapter_budget_consumption_document: docs/ZAPRET2-ADAPTER-BUDGET-CONSUMPTION-R28.11.md
   windivert_boundary_document: docs/ZAPRET2-WINDIVERT-BOUNDARY-R28.3.md
   provenance_workflow: .github/workflows/native-candidate-provenance.yml
   linux_compile_smoke_workflow: .github/workflows/native-candidate-compile-smoke.yml
@@ -72,7 +73,7 @@ static_review:
   delayed_queue_zero_budget_workflow: .github/workflows/native-candidate-delayed-queue-zero-budget.yml
   fork_strategy: OWNED_MINIMAL_HARDENED_FORK_CANDIDATE
   full_upstream_master_as_base: REJECT
-  next_gate: R28.11_ADAPTER_RESOURCE_BUDGET_CONSUMPTION_BOUNDARY_DESIGN
+  next_gate: R28.12_NON_EXECUTABLE_TYPED_LAUNCH_PLAN_METADATA_BOUNDARY_DESIGN
 
 patch_series:
   - sequence: 1
@@ -187,6 +188,15 @@ verified_delta:
     trusted_budget_catalog_entries: 0
     runtime_effect: NONE
     limitation: No numeric lab or production budget is selected, no adapter consumes the declaration yet, and this does not authorize runtime execution.
+
+  - id: Z2-PREREQUISITE-007
+    status: PASS_FOR_TYPED_DESIGN_ONLY
+    finding: Future stateful adapters now have a composite trusted prerequisite boundary that requires aligned capability and resource-budget declarations for the same backend/platform while keeping runtime admission separate.
+    head_sha: 0f5873646e30b16cc8dfe2d0fb4a97ca44901d63
+    ci_run_id: 40831150283
+    prerequisite_catalog_entries: 0
+    runtime_effect: NONE
+    limitation: Resource-budget catalog is still empty, no executable launch plan exists, and this does not authorize runtime execution.
 
 historical_evidence:
   note: Historical 0001-0004 and 0001-0005 evidence remains preserved in the R28.1-R28.3 documents and GitHub Actions history. The authoritative current patchset evidence is recorded below.
@@ -311,7 +321,7 @@ platform_status:
     compile_and_isolated_logic_gates: PASS
     runtime_admission: REVIEW
     execution_allowed: false
-    blocker: positive evidence-based resource budgets, adapter consumption boundary, and isolated NFQUEUE runtime/lifecycle evidence remain
+    blocker: positive evidence-based resource budgets, non-executable launch-plan metadata boundary, and isolated NFQUEUE runtime/lifecycle evidence remain
   windows:
     compile_and_isolated_logic_gates: PASS
     runtime_admission: BLOCK
@@ -325,7 +335,7 @@ residual_review_blockers:
 
   - id: Z2-DELAYED-QUEUE-002
     title: Production max_bytes for delayed queue is not selected or consumed by an admitted adapter.
-    required_action: Keep the trusted budget catalog empty until controlled workload evidence exists; then route the reviewed declaration through a typed adapter boundary without exposing raw config/CLI numbers.
+    required_action: Keep the trusted budget catalog empty until controlled workload evidence exists; then route the reviewed declaration through the typed prerequisite boundary without exposing raw config/CLI numbers.
 
   - id: Z2-HOSTNAME-003
     title: Packet-derived hostname must not become trusted persistent auto-hostlist/log content.
@@ -380,7 +390,7 @@ fork_rules:
   - Windows driver load remains prohibited while WinDivert runtime blockers are open.
 
 required_before_admit:
-  - Complete the typed adapter consumption boundary for trusted resource-budget declarations without adding execution rights.
+  - Complete the non-executable typed launch-plan metadata boundary with trusted runtime prerequisites as mandatory input and without adding execution rights.
   - Choose production resource budgets from controlled real workload evidence and promote only reviewed positive declarations.
   - Define and approve a lab-execution gate before any native engine process/network interception test.
   - Close WinDivert runtime/lifecycle/signing blockers or select a Windows backend that does not depend on the blocked component set.
@@ -394,6 +404,7 @@ notes:
   - Official zapret2 v1.0.6 remains permanently BLOCK in its separate manifest.
   - Patch 0006 is promoted into the current review patchset because all authoritative 0001-0006 gates passed on head 1b0153f88423828a49cd4bda6502f2ff4d3a79e7.
   - R28.10 typed resource-budget contracts passed the full 26-workflow regression on head ea8a3174e78c085b1bce8c30de5c4ae072e462c9; trusted budget catalog remains empty.
+  - R28.11 composite runtime prerequisite boundary passed the full 26-workflow regression on head 0f5873646e30b16cc8dfe2d0fb4a97ca44901d63; prerequisite catalog remains empty because trusted budget catalog has zero entries.
   - Promotion of a patch or typed metadata contract is not engine admission and does not authorize execution or integration.
   - Historical PASS does not transfer automatically to a changed source or patchset.
   - Provenance/compile/sanitizer/fuzz/stress PASS values are scoped evidence, not ADMIT.
