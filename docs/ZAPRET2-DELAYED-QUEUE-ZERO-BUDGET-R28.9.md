@@ -26,13 +26,10 @@ Exact upstream `ConntrackInitTrack()` создаёт delayed queue через `r
 
 `security/native-admission/patches/zapret2-r28/0006-fail-closed-zero-delayed-queue-budget.patch`
 
-SHA-256:
+Immutable pre-gate identity:
 
-`a507b5619beccd27c1dd06576c203d2badb8857655192649c8ae455299701ccb`
-
-Git blob:
-
-`2a5165f5b562635dace89ae5069bdb791b69668c`
+- Git blob: `2a5165f5b562635dace89ae5069bdb791b69668c`;
+- SHA-256: **не promoted заранее** — dedicated gate вычисляет SHA-256 именно checkout-содержимого этого проверенного blob и фиксирует его в evidence; после PASS значение можно перенести в candidate manifest.
 
 Изменение минимальное:
 
@@ -67,14 +64,23 @@ Harness:
 Gate обязан:
 
 1. проверить exact upstream source/UAF-fix lineage;
-2. проверить immutable identities patches `0001–0006` и harness;
-3. применить patches `0001–0006` через `git apply --check`;
-4. собрать только isolated packet-queue harness с ASan/UBSan и `-Werror`;
-5. доказать, что zero/unconfigured byte budget отклоняет enqueue без изменения accounting;
-6. доказать, что положительный budget по-прежнему принимает данные внутри лимита и отклоняет превышение;
-7. выполнить отдельный `strace -e trace=network` и потребовать отсутствие network syscalls;
-8. не запускать `nfqws2/winws2`, не загружать WinDivert/NFQUEUE и не менять firewall;
-9. удалить instrumented harness binary после формирования text-only evidence.
+2. проверить immutable Git blob identities proposed patch `0006` и harness;
+3. проверить уже promoted SHA-256 patches `0001–0005`;
+4. применить patches `0001–0006` через `git apply --check`;
+5. собрать только isolated packet-queue harness с ASan/UBSan и `-Werror`;
+6. доказать, что zero/unconfigured byte budget отклоняет enqueue без изменения accounting;
+7. доказать, что положительный budget по-прежнему принимает данные внутри лимита и отклоняет превышение;
+8. выполнить отдельный `strace -e trace=network` и потребовать отсутствие network syscalls;
+9. не запускать `nfqws2/winws2`, не загружать WinDivert/NFQUEUE и не менять firewall;
+10. удалить instrumented harness binary после формирования text-only evidence.
+
+## Первый run и почему он не считается semantic evidence
+
+Первый dedicated run остановился **до применения patch и до компиляции** из-за преждевременно зафиксированного ожидаемого SHA-256 текста `0006`, рассчитанного до записи Git blob с другой финальной newline-семантикой.
+
+Git blob identity при этом совпала. Workflow исправлен так, чтобы pre-gate immutable identity задавалась Git blob SHA, а exact SHA-256 этого же checkout-содержимого записывался в evidence и promoted только после успешного gate. Семантика patch `0006` не изменялась.
+
+Провал первого run не является PASS или FAIL семантики zero-budget; это packaging/identity-gate failure.
 
 ## Что этот patch НЕ решает
 
