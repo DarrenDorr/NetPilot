@@ -45,28 +45,36 @@ jobs:
 
           patch1='security/native-admission/patches/byedpi-r28/0001-loopback-only-listener.patch'
           patch2='security/native-admission/patches/byedpi-r28/0002-kavl-iterator-no-before-array-sentinel.patch'
+          patch4='security/native-admission/patches/byedpi-r28/0004-kavl-empty-erase-guard.patch'
           test "$(git -C netpilot rev-parse "HEAD:$patch1")" = "fa9ba3349792d66f40d925bc612310e8d18aae8a"
           test "$(git -C netpilot rev-parse "HEAD:$patch2")" = "6f51d66597847ee49e373922e4905c80b8ee2f47"
+          test "$(git -C netpilot rev-parse "HEAD:$patch4")" = "9b196b289efd9a2ea1118c5504f4a811aa0becd2"
 
           mkdir -p scratch evidence
           git -C netpilot show "HEAD:$patch1" > scratch/0001.patch
           git -C netpilot show "HEAD:$patch2" > scratch/0002.patch
+          git -C netpilot show "HEAD:$patch4" > scratch/0004.patch
           observed_patch1_sha="$(sha256sum scratch/0001.patch | awk '{print $1}')"
           observed_patch2_sha="$(sha256sum scratch/0002.patch | awk '{print $1}')"
-          printf 'patch_0001_sha256=%s\npatch_0002_sha256=%s\n' "$observed_patch1_sha" "$observed_patch2_sha"
+          observed_patch4_sha="$(sha256sum scratch/0004.patch | awk '{print $1}')"
+          printf 'patch_0001_sha256=%s\npatch_0002_sha256=%s\npatch_0004_sha256=%s\n' "$observed_patch1_sha" "$observed_patch2_sha" "$observed_patch4_sha"
           test "$observed_patch1_sha" = "3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068"
           test "$observed_patch2_sha" = "6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7"
+          test "$observed_patch4_sha" = "fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a"
 
           git -C byedpi apply --verbose --check "$PWD/scratch/0001.patch"
           git -C byedpi apply --verbose "$PWD/scratch/0001.patch"
           git -C byedpi apply --verbose --check "$PWD/scratch/0002.patch"
           git -C byedpi apply --verbose "$PWD/scratch/0002.patch"
+          git -C byedpi apply --verbose --check "$PWD/scratch/0004.patch"
+          git -C byedpi apply --verbose "$PWD/scratch/0004.patch"
 
           if grep -Fq 'itr->stack - 1' byedpi/kavl.h; then
             echo 'legacy one-before-array iterator sentinel remains after hardening patch' >&2
             exit 1
           fi
           grep -Fq '#define kavl_at(itr) ((itr)->top? *(itr)->top : 0)' byedpi/kavl.h
+          grep -Fq 'if (*root_ == 0) return 0;' byedpi/kavl.h
 
       - name: Install isolated sanitizer dependencies
         shell: bash
@@ -143,7 +151,7 @@ jobs:
           set -euo pipefail
           harness_sha256="$(sha256sum netpilot/security/native-admission/harnesses/byedpi-r28/kavl_iterator_harness.c | awk '{print $1}')"
           {
-            echo 'schema_version=3'
+            echo 'schema_version=4'
             echo 'scope=byedpi-v0.17.3-kavl-iterator-sanitizer'
             echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
             echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
@@ -151,13 +159,15 @@ jobs:
             echo 'patch_0001_sha256=3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068'
             echo 'patch_0002_git_blob_sha1=6f51d66597847ee49e373922e4905c80b8ee2f47'
             echo 'patch_0002_sha256=6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7'
+            echo 'patch_0004_git_blob_sha1=9b196b289efd9a2ea1118c5504f4a811aa0becd2'
+            echo 'patch_0004_sha256=fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a'
             echo 'harness_git_blob_sha1=62b6558bfb90284d97cc1d023454591f749c27e5'
             echo "harness_sha256=$harness_sha256"
             echo "compiler=$(gcc --version | head -n1)"
             echo 'sanitizers=ASan,UBSan'
             echo 'node_count_per_cycle=1024'
             echo 'cycles=40'
-            echo 'tests=empty-first,empty-next,empty-find,in-order,exact-find,lower-bound-find,above-max,repeat-destroy'
+            echo 'tests=empty-first,empty-next,empty-find,in-order,exact-find,lower-bound-find,above-max,repeat-destroy,empty-erase-via-final-loop-check'
             echo "mpool_array_bounds_compile_outcome=$MPOOL_COMPILE_OUTCOME"
             echo "harness_compile_outcome=$HARNESS_COMPILE_OUTCOME"
             echo "regression_outcome=$REGRESSION_OUTCOME"
@@ -168,7 +178,7 @@ jobs:
             echo 'admission_effect=NONE'
             echo 'release_gate=BLOCK'
           } > evidence/byedpi-kavl-sanitizer.txt
-          rm -f scratch/mpool.o scratch/kavl_iterator_harness scratch/0001.patch scratch/0002.patch
+          rm -f scratch/mpool.o scratch/kavl_iterator_harness scratch/0001.patch scratch/0002.patch scratch/0004.patch
           sha256sum evidence/* | sort > evidence/SHA256SUMS-byedpi-kavl-sanitizer.txt
 
       - name: Upload text evidence only
