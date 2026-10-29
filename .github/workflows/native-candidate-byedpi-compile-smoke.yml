@@ -46,17 +46,23 @@ jobs:
           test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0002-kavl-iterator-no-before-array-sentinel.patch')" = "6f51d66597847ee49e373922e4905c80b8ee2f47"
           test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0003-pid-file-fail-safe-write.patch')" = "d56d0f8659a49c48c923b6af85a523a952e77e0c"
           test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0004-kavl-empty-erase-guard.patch')" = "9b196b289efd9a2ea1118c5504f4a811aa0becd2"
+          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0005-windows-socket-handle-narrowing-guard.patch')" = "fb8a7f57dc577e9ee8664adb41d264a64dc81a0d"
+          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0006-windows-wait-result-range.patch')" = "0815be26534c291848a8b16bdedb07a6ab1e485f"
 
           echo "3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068  $patch_dir/0001-loopback-only-listener.patch" | sha256sum -c -
           echo "6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7  $patch_dir/0002-kavl-iterator-no-before-array-sentinel.patch" | sha256sum -c -
           echo "5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738  $patch_dir/0003-pid-file-fail-safe-write.patch" | sha256sum -c -
           echo "fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a  $patch_dir/0004-kavl-empty-erase-guard.patch" | sha256sum -c -
+          echo "edb9642146c3864007406b17b10253b3ca9f763d84454fa946ce162811160729  $patch_dir/0005-windows-socket-handle-narrowing-guard.patch" | sha256sum -c -
+          echo "1a80382fe64c3d1a568217cc775cb2cee5c3457664aad2868c0d28c3de806bde  $patch_dir/0006-windows-wait-result-range.patch" | sha256sum -c -
 
           for patch in \
             0001-loopback-only-listener.patch \
             0002-kavl-iterator-no-before-array-sentinel.patch \
             0003-pid-file-fail-safe-write.patch \
-            0004-kavl-empty-erase-guard.patch
+            0004-kavl-empty-erase-guard.patch \
+            0005-windows-socket-handle-narrowing-guard.patch \
+            0006-windows-wait-result-range.patch
           do
             git -C byedpi apply --verbose --check "$patch_dir/$patch"
             git -C byedpi apply --verbose "$patch_dir/$patch"
@@ -68,6 +74,9 @@ jobs:
           grep -Fq '#define kavl_at(itr) ((itr)->top? *(itr)->top : 0)' byedpi/kavl.h
           grep -Fq 'if (*root_ == 0) return 0;' byedpi/kavl.h
           grep -Fq 'while (written < (size_t)pid_len)' byedpi/main.c
+          grep -Fq 'static int netpilot_socket_to_int(SOCKET sock)' byedpi/proxy.c
+          grep -Fq 'if (sock > (SOCKET)INT_MAX)' byedpi/proxy.c
+          grep -Fq 'if (ret < WAIT_OBJECT_0 + MAX_TF)' byedpi/desync.c
 
       - name: Install compile-only toolchains
         shell: bash
@@ -75,6 +84,27 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential mingw-w64 file
+
+      - name: Enforce targeted Windows warning gates
+        id: windows_warning_gate
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence scratch
+          x86_64-w64-mingw32-gcc \
+            -D_DEFAULT_SOURCE -Ibyedpi -std=c99 -O2 \
+            -Wall -Wextra -Wno-unused -Wno-unused-parameter -pedantic \
+            -Werror=sign-compare \
+            -c byedpi/conev.c -o scratch/conev-win.o \
+            2>&1 | tee evidence/windows-conev-warning-gate.log
+          x86_64-w64-mingw32-gcc \
+            -D_DEFAULT_SOURCE -Ibyedpi -std=c99 -O2 \
+            -Wall -Wextra -Wno-unused -Wno-unused-parameter -pedantic \
+            -Werror=type-limits \
+            -c byedpi/desync.c -o scratch/desync-win.o \
+            2>&1 | tee evidence/windows-desync-warning-gate.log
+          rm -f scratch/conev-win.o scratch/desync-win.o
 
       - name: Compile Linux candidate twice without execution
         id: linux_compile
@@ -134,6 +164,7 @@ jobs:
         if: always()
         shell: bash
         env:
+          WARNING_GATE_OUTCOME: ${{ steps.windows_warning_gate.outcome }}
           LINUX_OUTCOME: ${{ steps.linux_compile.outcome }}
           WINDOWS_OUTCOME: ${{ steps.windows_compile.outcome }}
         run: |
@@ -148,18 +179,23 @@ jobs:
             windows_compiler="$(x86_64-w64-mingw32-gcc --version | head -n1)"
           fi
           {
-            echo 'schema_version=7'
-            echo 'scope=byedpi-v0.17.3-netpilot-hardening-0001-0004-compile-only'
+            echo 'schema_version=8'
+            echo 'scope=byedpi-v0.17.3-netpilot-hardening-0001-0006-compile-only'
             echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
             echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
             echo 'patch_0001_sha256=3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068'
             echo 'patch_0002_sha256=6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7'
             echo 'patch_0003_sha256=5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738'
             echo 'patch_0004_sha256=fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a'
+            echo 'patch_0005_sha256=edb9642146c3864007406b17b10253b3ca9f763d84454fa946ce162811160729'
+            echo 'patch_0006_sha256=1a80382fe64c3d1a568217cc775cb2cee5c3457664aad2868c0d28c3de806bde'
+            echo "windows_warning_gate_outcome=$WARNING_GATE_OUTCOME"
             echo "linux_compile_outcome=$LINUX_OUTCOME"
             echo "windows_x64_cross_compile_outcome=$WINDOWS_OUTCOME"
             echo "linux_compiler=$linux_compiler"
             echo "windows_compiler=$windows_compiler"
+            echo 'socket_handle_policy=reject-and-close-windows-socket-above-INT_MAX-before-narrowing'
+            echo 'wait_result_policy=only-WAIT_OBJECT_0-through-WAIT_OBJECT_0-plus-MAX_TF-minus-one-is-indexed'
             echo 'linux_reproducibility=two-consecutive-builds-must-match'
             echo 'windows_reproducibility=two-consecutive-builds-must-match'
             echo 'windows_linker_determinism_flag=--no-insert-timestamp'
@@ -184,9 +220,11 @@ jobs:
         if: always()
         shell: bash
         env:
+          WARNING_GATE_OUTCOME: ${{ steps.windows_warning_gate.outcome }}
           LINUX_OUTCOME: ${{ steps.linux_compile.outcome }}
           WINDOWS_OUTCOME: ${{ steps.windows_compile.outcome }}
         run: |
           set -euo pipefail
+          test "$WARNING_GATE_OUTCOME" = 'success'
           test "$LINUX_OUTCOME" = 'success'
           test "$WINDOWS_OUTCOME" = 'success'
