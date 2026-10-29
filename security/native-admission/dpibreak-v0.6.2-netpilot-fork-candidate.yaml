@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 component_set: dpibreak-v0.6.2-netpilot-fork-candidate
 admission_status: REVIEW
 release_gate: BLOCK
@@ -28,7 +28,7 @@ license_boundary:
   copy_fork_implementation_into_mit_core: false
   source_and_notice_obligations_required_for_distribution: true
 
-patch_series:
+active_patch_series:
   - sequence: 1
     path: security/native-admission/patches/dpibreak-r28/0001-remove-global-windivert-service-stop.patch
     git_blob_sha1: 3b0cf8644b58ca924cfe616c2907b02e7b42497f
@@ -40,7 +40,7 @@ patch_series:
       - removes SC_MANAGER_ALL_ACCESS/SERVICE_CONTROL_STOP code from the hardened candidate wrapper
     does_not_fix:
       - WinDivert issue 408 kernel driver initialization race
-      - TlsAlloc/TlsFree lifecycle
+      - unused TLS/event cache lifecycle
       - all abnormal process termination paths
     status: APPLY_CHECK_PENDING
 
@@ -60,17 +60,33 @@ patch_series:
 
   - sequence: 3
     path: security/native-admission/patches/dpibreak-r28/0003-disable-custom-nft-executable.patch
-    git_blob_sha1: e1d4e90d2de7f51df83a3f8e3d09d03a675cab8f
+    git_blob_sha1: d27efdb337fabe15745832d00acbb6a039f7cb7c
     sha256: PENDING_FIRST_CANONICAL_SOURCE_GATE
     purpose: reject --nft-command in the hardened build so a root candidate cannot be pointed at a user-selected executable
     security_scope:
       - closes privileged executable-selection surface as defense in depth
       - default nft executable remains fixed by source
+      - removes unused mutability introduced by disabling the runtime override
     does_not_fix:
       - nftables/iptables lifecycle ownership and rollback
       - queue-number policy
       - all Linux firewall compatibility concerns
     status: APPLY_CHECK_PENDING
+
+prepared_inactive_patches:
+  - sequence: 4
+    path: security/native-admission/patches/dpibreak-r28/0004-remove-unused-windivert-tls-event-cache.patch
+    git_blob_sha1: 19ecb3b22202a6d5f25ec3ab5c45d0f8f3773647
+    status: REVIEW_ONLY_NOT_IN_ACTIVE_PATCHSET
+    purpose: remove the unused per-handle TLS/event cache instead of trying to add cleanup around an unreachable helper path
+    activation_rule: do not add until active patchset 0001-0003 passes exact source gate and 0004 independently applies/compiles
+  - sequence: 5
+    path: security/native-admission/patches/dpibreak-r28/0005-idempotent-windivert-handle-drop.patch
+    git_blob_sha1: 656563a27f44e8aa0e25702865bfa8e1802745e1
+    status: REVIEW_ONLY_NOT_IN_ACTIVE_PATCHSET
+    purpose: make close idempotent and add Drop so candidate-owned WinDivert handles close on early-return paths without global service stop
+    depends_on: patch 0004 source shape
+    activation_rule: do not add until 0004 passes independent source/compile review
 
 policy:
   activation_requires_admit: true
@@ -97,10 +113,10 @@ source_gate:
 platforms:
   linux:
     state: REVIEW
-    next_gate: apply exact patchset then controlled Linux compile-only with --locked dependencies
+    next_gate: apply exact active patchset then controlled Linux compile-only with --locked dependencies
     lab_state: NOT_APPROVED
     residual_blockers:
-      - issue 24 GSO/MTU correctness needs regression evidence
+      - issue 24 GSO/MTU correctness needs regression evidence beyond fail-safe userspace revalidation
       - issue 28 firewall ownership/rollback needs isolated lab design
       - issue 26 local/LAN HTTPS exclusions need typed policy
       - issue 31 VPN/WireGuard coexistence remains compatibility scope
@@ -110,7 +126,7 @@ platforms:
     residual_blockers:
       - WinDivert issue 408 kernel driver race remains open
       - exact Windows native component inventory/signature review required
-      - TlsAlloc/TlsFree lifecycle not closed
+      - active patchset does not yet remove unused TLS/event cache or add idempotent Drop
       - no runtime lab until a fixed/admitted WinDivert component set exists
 
 upstream_sync_strategy:
@@ -124,7 +140,7 @@ upstream_sync_strategy:
     - never auto-merge upstream into the fork
 
 required_before_any_lab_execution:
-  - exact patchset source gate PASS
+  - exact active patchset source gate PASS
   - exact patched Linux or Windows compile-only PASS for requested platform
   - exact advisory/unsafe/FFI review PASS in its scoped meaning
   - no unresolved blocker inside requested runtime boundary
@@ -142,5 +158,6 @@ notes:
   - This fork candidate is review-only and is not a production fork release.
   - Creating patch files in NetPilot does not authorize building, executing or distributing a candidate binary.
   - Patch 0001 addresses DPIBreak ownership behavior but cannot fix a WinDivert kernel-driver race.
-  - Patch 0002 is a fail-safe correctness hardening, not proof of complete GSO support.
+  - Patch 0002 is fail-safe correctness hardening, not proof of complete GSO support.
   - Patch 0003 removes a privileged customization surface that NetPilot does not need.
+  - Patches 0004 and 0005 are explicitly inactive review artifacts and must not be silently applied by build/runtime workflows.
