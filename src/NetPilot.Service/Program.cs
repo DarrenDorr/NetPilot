@@ -19,9 +19,11 @@ builder.Services.AddWindowsService(options =>
 // только тот процесс, которым уже владеет, но новый процесс создать не способен.
 builder.Services.AddSingleton(OperationPolicy.CreateNoAdmittedEnginePolicy());
 
-builder.Services.AddSingleton(serviceProvider =>
-    new WindowsAuthorizedUserStore(
-        WindowsZapretEngineLocation.GetDefaultInstallationRoot()));
+var installationRoot = WindowsZapretEngineLocation.GetDefaultInstallationRoot();
+builder.Services.AddSingleton(_ =>
+    new WindowsAuthorizedUserStore(installationRoot));
+builder.Services.AddSingleton(_ =>
+    new WindowsUserProfileStore(installationRoot));
 builder.Services.AddSingleton<UserResourceOwnership>();
 builder.Services.AddSingleton<WindowsNamedPipeServerFactory>();
 builder.Services.AddSingleton<WindowsNamedPipePeerAuthenticator>();
