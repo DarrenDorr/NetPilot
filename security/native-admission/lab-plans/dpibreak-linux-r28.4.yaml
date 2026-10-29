@@ -1,0 +1,194 @@
+schema_version: 1
+plan_id: dpibreak-linux-r28.4
+candidate: dpibreak-v0.6.2-candidate
+platform: linux-x86_64
+status: DRAFT_NOT_APPROVED
+execution_allowed: false
+production_effect: NONE
+
+approval:
+  required: true
+  kind: HIGH_ASSURANCE_HUMAN
+  approval_id: null
+  approved_candidate_hashes: []
+  approved_at: null
+
+purpose:
+  - validate exact DPIBreak Linux candidate lifecycle only after compile/provenance gates are green
+  - validate reversible NetPilot-owned NFQUEUE and firewall state
+  - validate fail-safe behavior around GSO/MTU and segmented ClientHello scenarios
+  - validate local/LAN exclusion behavior before any broad profile
+  - collect text-only evidence without packet payload capture
+
+preconditions:
+  source_dependency_provenance_gate_must_be_green: true
+  linux_compile_only_gate_must_be_green: true
+  exact_runtime_binary_hash_required: true
+  exact_cargo_lock_identity_required: true
+  cargo_advisory_review_required: true
+  unsafe_ffi_review_required: true
+  issue_24_gso_mtu_test_design_required: true
+  issue_26_local_lan_exclusion_design_required: true
+  issue_28_firewall_lifecycle_design_required: true
+  unresolved_execution_boundary_blockers_allowed: false
+  disposable_vm_required: true
+  clean_snapshot_required: true
+  user_data_allowed: false
+  browser_sessions_allowed: false
+  credentials_allowed: false
+  packet_capture_allowed: false
+
+candidate_identity:
+  upstream_repository: https://github.com/dilluti0n/dpibreak
+  release_tag: v0.6.2
+  annotated_tag_object: 7601532147fe92130964e49a644d3207e74b8a51
+  release_commit: 334285b60aabd5a32a83a65211ac60bce968b211
+  release_tree: 7e95a17933fe9fda521865b1317c4f9f75d6c58c
+  cargo_lock_git_blob_sha1: e3adcd1b21711e7e754878b15625076c7bcaf7e9
+  runtime_binary_sha256: null
+  rule: runtime binary SHA-256 must be pinned from accepted controlled build evidence before any approval
+
+execution_boundary:
+  engine_mode: foreground_supervised_only
+  service_installation_allowed: false
+  autostart_allowed: false
+  arbitrary_shell_allowed: false
+  arbitrary_cli_allowed: false
+  user_paths_allowed: false
+  user_firewall_rules_allowed: false
+  profile_source: typed_allowlisted_netpilot_profile_only
+  hard_timeout_seconds: 120
+  process_tree_cleanup_required: true
+
+network_boundary:
+  first_stage_targets: synthetic_local_only
+  public_service_targets_allowed_initially: false
+  quic_http3_assumed_supported: false
+  discord_udp_assumed_supported: false
+  wireguard_forwarded_clients_in_scope_initially: false
+  local_lan_https_exclusion_required: true
+  nftables_or_iptables_objects_must_be_netpilot_owned: true
+  unique_rule_prefix_required: true
+  rule_prefix: NETPILOT_LAB_DPIBREAK_R284_
+  pre_test_rules_snapshot_required: true
+  pre_test_routes_snapshot_required: true
+  pre_test_listeners_snapshot_required: true
+  fail_safe_traffic_path_required: true
+  rollback_on_normal_stop_required: true
+  rollback_on_crash_required: true
+  rollback_on_timeout_required: true
+  post_test_rules_diff_must_be_empty_for_netpilot_objects: true
+  post_test_routes_diff_must_show_no_netpilot_residue: true
+  post_test_listener_diff_must_show_no_candidate_listener: true
+
+segmentation_matrix:
+  execution_allowed: false
+  cases:
+    - gso_default_behavior
+    - gso_delivery_enabled
+    - packet_larger_than_mtu
+    - segmented_clienthello
+    - continuation_segment
+    - emsgsize_failure_path
+  required_result:
+    - no memory-safety failure
+    - no silent traffic stall
+    - no unbounded retry
+    - fail-safe cleanup
+
+stages:
+  - id: DPI-LNX-0
+    name: identity-environment-and-firewall-baseline
+    executable_run_allowed: false
+    required_evidence:
+      - exact candidate binary SHA-256
+      - exact source commit/tree/Cargo.lock identities
+      - disposable VM and snapshot confirmation
+      - baseline process/listener/firewall/route inventory
+
+  - id: DPI-LNX-1
+    name: supervised-local-lifecycle
+    executable_run_allowed: false
+    unlock_requires: HIGH_ASSURANCE_HUMAN_APPROVAL
+    targets: synthetic_local_only
+    checks:
+      - foreground start
+      - controlled stop
+      - hard timeout
+      - forced process termination
+      - process-tree cleanup
+      - NFQUEUE/firewall rollback
+      - no residual listener
+      - no residual NetPilot-owned rules
+
+  - id: DPI-LNX-2
+    name: gso-mtu-and-local-service-compatibility
+    executable_run_allowed: false
+    unlock_requires:
+      - DPI-LNX-1 PASS
+      - separate HIGH_ASSURANCE_HUMAN_APPROVAL
+    checks:
+      - issue 24 GSO/MTU matrix
+      - fragmented/segmented ClientHello handling
+      - local HTTPS exclusion behavior from issue 26
+      - no loopback/LAN breakage outside typed test scope
+
+  - id: DPI-LNX-3
+    name: bounded-resource-and-coexistence
+    executable_run_allowed: false
+    unlock_requires:
+      - DPI-LNX-1 PASS
+      - DPI-LNX-2 PASS
+      - separate HIGH_ASSURANCE_HUMAN_APPROVAL
+    checks:
+      - bounded CPU/memory under synthetic burst
+      - VPN coexistence without assuming forwarded WireGuard support
+      - cleanup after crash and timeout
+
+  - id: DPI-LNX-4
+    name: public-https-compatibility
+    executable_run_allowed: false
+    unlock_requires:
+      - all prior lab stages PASS
+      - separate scope review
+      - separate HIGH_ASSURANCE_HUMAN_APPROVAL
+    note: QUIC/HTTP3 and Discord UDP remain out of scope until separately proven.
+
+evidence_schema:
+  required_fields:
+    - plan_id
+    - candidate_binary_sha256
+    - source_commit
+    - cargo_lock_identity
+    - profile_id
+    - started_at_utc
+    - stopped_at_utc
+    - stop_reason
+    - process_exit_code
+    - cleanup_result
+    - residual_process_count
+    - residual_listener_count
+    - residual_netpilot_rule_count
+    - routing_rollback_result
+    - gso_case
+    - mtu_case
+  forbidden_fields:
+    - packet_payload
+    - credential
+    - cookie
+    - token
+    - private_key
+    - full_browsing_history
+    - unnecessary_remote_ip_history
+
+promotion:
+  lab_pass_implies_admit: false
+  lab_pass_changes_release_gate: false
+  production_activation_allowed: false
+  separate_admission_decision_required: true
+
+notes:
+  - This is a non-executing draft only.
+  - It does not authorize running DPIBreak, creating NFQUEUE queues, or changing nftables/iptables.
+  - Every executable stage remains false until a separately reviewed HIGH_ASSURANCE approval.
+  - Windows DPIBreak requires a separate WinDivert-specific plan and is not covered by this Linux draft.
