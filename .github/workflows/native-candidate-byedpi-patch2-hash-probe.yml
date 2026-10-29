@@ -1,0 +1,44 @@
+name: Native Candidate ByeDPI Patch2 Hash Probe
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/native-candidate-byedpi-patch2-hash-probe.yml"
+      - "security/native-admission/patches/byedpi-r28/0002-kavl-iterator-no-before-array-sentinel.patch"
+
+permissions:
+  contents: read
+
+jobs:
+  hash-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout NetPilot without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Derive SHA-256 from pinned Git blob only
+        shell: bash
+        run: |
+          set -euo pipefail
+          path='security/native-admission/patches/byedpi-r28/0002-kavl-iterator-no-before-array-sentinel.patch'
+          expected_blob='82921e2f9e594ca406948307a2ca0566c4283b0d'
+          observed_blob="$(git rev-parse "HEAD:$path")"
+          test "$observed_blob" = "$expected_blob"
+          mkdir -p evidence
+          git show "HEAD:$path" > evidence/patch2.canonical
+          observed_sha256="$(sha256sum evidence/patch2.canonical | awk '{print $1}')"
+          printf 'git_blob_sha1=%s\nsha256=%s\n' "$observed_blob" "$observed_sha256" > evidence/patch2-hash.txt
+          cat evidence/patch2-hash.txt
+          rm -f evidence/patch2.canonical
+
+      - name: Upload text evidence only
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: byedpi-r28-patch2-hash-probe
+          path: evidence/patch2-hash.txt
+          if-no-files-found: error
+          retention-days: 1
