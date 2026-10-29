@@ -1,0 +1,36 @@
+diff --git a/main.c b/main.c
+--- a/main.c
++++ b/main.c
+@@ -450,9 +450,15 @@
+ {
+-    int orig_ttl = -1, fd;
++    int orig_ttl = -1;
+     socklen_t tsize = sizeof(orig_ttl);
+ 
+-    if ((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
++    #ifdef _WIN32
++    SOCKET fd = socket(AF_INET, SOCK_STREAM, 0);
++    if (fd == INVALID_SOCKET) {
++    #else
++    int fd = socket(AF_INET, SOCK_STREAM, 0);
++    if (fd < 0) {
++    #endif
+         uniperror("socket");
+         return -1;
+     }
+     if (getsockopt(fd, IPPROTO_IP, IP_TTL,
+@@ -467,9 +473,14 @@
+ bool ipv6_support(void)
+ {
++    #ifdef _WIN32
++    SOCKET fd = socket(AF_INET6, SOCK_STREAM, 0);
++    if (fd == INVALID_SOCKET) {
++    #else
+     int fd = socket(AF_INET6, SOCK_STREAM, 0);
+     if (fd < 0) {
++    #endif
+         return 0;
+     }
+     close(fd);
+     return 1;
+ }
