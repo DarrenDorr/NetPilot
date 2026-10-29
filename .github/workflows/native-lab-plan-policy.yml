@@ -80,12 +80,22 @@ jobs:
           require(byedpi, r"^\s*- 0007-windows-aux-socket-probes\.patch\s*$", "ByeDPI lab plan is stale: patch 0007 is missing")
           require(byedpi, r"^\s*patch_0007_git_blob_sha1:\s*e7b590a7d0594be0629bac221cb120c165dab8cd\s*$", "ByeDPI lab plan patch 0007 Git identity mismatch")
           require(byedpi, r"^\s*patch_0007_sha256:\s*778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25\s*$", "ByeDPI lab plan patch 0007 SHA-256 mismatch")
+          require(byedpi, r"^\s*linux_x86_64_sha256:\s*a54f71634020ef43421fa6b4c22800409226d29450ad143df949940c2290f33a\s*$", "ByeDPI controlled Linux build reference mismatch")
+          require(byedpi, r"^\s*windows_x64_sha256:\s*866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd\s*$", "ByeDPI controlled Windows build reference mismatch")
+          require(byedpi, r"^\s*binaries_retained:\s*false\s*$", "ByeDPI draft must record that compile-only binaries were not retained")
+          require(byedpi, r"^\s*linux_runtime_binary_sha256:\s*null\s*$", "ByeDPI draft must not pre-authorize a Linux runtime binary")
+          require(byedpi, r"^\s*windows_runtime_binary_sha256:\s*null\s*$", "ByeDPI draft must not pre-authorize a Windows runtime binary")
+          require(byedpi, r"^\s*approved_candidate_hashes:\s*\[\]\s*$", "ByeDPI draft approval hash list must remain empty")
+
           require(matrix, r"^\s*- 0007-windows-aux-socket-probes\.patch\s*$", "Pre-lab matrix is stale: ByeDPI patch 0007 is missing")
           require(matrix, r"^\s*patch_0007_git_blob_sha1:\s*e7b590a7d0594be0629bac221cb120c165dab8cd\s*$", "Pre-lab matrix patch 0007 Git identity mismatch")
           require(matrix, r"^\s*patch_0007_sha256:\s*778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25\s*$", "Pre-lab matrix patch 0007 SHA-256 mismatch")
+          require(matrix, r"^\s*full_patchset_0001_0007_compile:\s*PASS_FOR_COMPILE_ONLY\s*$", "Pre-lab matrix must pin ByeDPI full patchset compile-only PASS")
+          require(matrix, r"^\s*linux_binary_sha256:\s*a54f71634020ef43421fa6b4c22800409226d29450ad143df949940c2290f33a\s*$", "Pre-lab matrix Linux build hash mismatch")
+          require(matrix, r"^\s*windows_binary_sha256:\s*866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd\s*$", "Pre-lab matrix Windows build hash mismatch")
 
           Path("lab-plan-policy-evidence.txt").write_text(
-              "schema_version=3\n"
+              "schema_version=4\n"
               "scope=native-lab-plan-draft-policy\n"
               "result=PASS\n"
               "production_activation_allowed=false\n"
@@ -93,6 +103,9 @@ jobs:
               "byedpi_current_patchset=0001-0007\n"
               "byedpi_patch_0007_git_blob_sha1=e7b590a7d0594be0629bac221cb120c165dab8cd\n"
               "byedpi_patch_0007_sha256=778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25\n"
+              "byedpi_compile_reference_linux_sha256=a54f71634020ef43421fa6b4c22800409226d29450ad143df949940c2290f33a\n"
+              "byedpi_compile_reference_windows_sha256=866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd\n"
+              "byedpi_runtime_hashes_preauthorized=false\n"
               "checked_plans=" + ",".join(checked) + "\n",
               encoding="utf-8",
           )
