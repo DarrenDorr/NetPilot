@@ -45,7 +45,7 @@ jobs:
           test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0002-kavl-iterator-no-before-array-sentinel.patch')" = "6f51d66597847ee49e373922e4905c80b8ee2f47"
           test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0003-pid-file-fail-safe-write.patch')" = "d56d0f8659a49c48c923b6af85a523a952e77e0c"
           test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0004-kavl-empty-erase-guard.patch')" = "9b196b289efd9a2ea1118c5504f4a811aa0becd2"
-          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0005-windows-socket-handle-narrowing-guard.patch')" = "fb8a7f57dc577e9ee8664adb41d264a64dc81a0d"
+          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0005-windows-socket-handle-narrowing-guard.patch')" = "d5cde98057a0ded600468b1f1c69d2e55c3b4d6e"
           test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0006-windows-wait-result-range.patch')" = "0815be26534c291848a8b16bdedb07a6ab1e485f"
 
           canonical_patch_dir="$PWD/canonical-byedpi-patches"
@@ -65,7 +65,7 @@ jobs:
           echo "6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7  $canonical_patch_dir/0002-kavl-iterator-no-before-array-sentinel.patch" | sha256sum -c -
           echo "5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738  $canonical_patch_dir/0003-pid-file-fail-safe-write.patch" | sha256sum -c -
           echo "fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a  $canonical_patch_dir/0004-kavl-empty-erase-guard.patch" | sha256sum -c -
-          echo "3b8034c4cecdcd7b1551fbdf7b99f0fbdf82b00c0a7613046a06aa8b5182d050  $canonical_patch_dir/0005-windows-socket-handle-narrowing-guard.patch" | sha256sum -c -
+          echo "7c8f4eee9ff2624346cb886027df66378773d0af04f5f84f54c30815104b4356  $canonical_patch_dir/0005-windows-socket-handle-narrowing-guard.patch" | sha256sum -c -
           echo "136b9fdf34b68a55f0f1a6ebf16e8b61c9b88e6d15eeb923594bdd7bf0fa2a3e  $canonical_patch_dir/0006-windows-wait-result-range.patch" | sha256sum -c -
 
           for patch in \
@@ -193,7 +193,7 @@ jobs:
             windows_compiler="$(x86_64-w64-mingw32-gcc --version | head -n1)"
           fi
           {
-            echo 'schema_version=8'
+            echo 'schema_version=9'
             echo 'scope=byedpi-v0.17.3-netpilot-hardening-0001-0006-compile-only'
             echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
             echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
@@ -201,7 +201,7 @@ jobs:
             echo 'patch_0002_sha256=6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7'
             echo 'patch_0003_sha256=5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738'
             echo 'patch_0004_sha256=fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a'
-            echo 'patch_0005_sha256=3b8034c4cecdcd7b1551fbdf7b99f0fbdf82b00c0a7613046a06aa8b5182d050'
+            echo 'patch_0005_sha256=7c8f4eee9ff2624346cb886027df66378773d0af04f5f84f54c30815104b4356'
             echo 'patch_0006_sha256=136b9fdf34b68a55f0f1a6ebf16e8b61c9b88e6d15eeb923594bdd7bf0fa2a3e'
             echo "windows_warning_gate_outcome=$WARNING_GATE_OUTCOME"
             echo "linux_compile_outcome=$LINUX_OUTCOME"
