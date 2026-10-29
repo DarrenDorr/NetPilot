@@ -6,7 +6,7 @@ namespace NetPilot.Core.Tests;
 public sealed class EngineProfileStrategyRuntimeAdapterTests
 {
     [Fact]
-    public async Task ListStrategiesAsync_MapsOnlyCanonicalProfileIds()
+    public async Task ListStrategiesAsync_MapsOnlyCanonicalProfileIds_WhenRuntimeIsAdmitted()
     {
         var runtime = new FakeProfileRuntime
         {
@@ -16,7 +16,8 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
                 new EngineProfileDescriptor(EngineProfileId.Parse("youtube"), "YouTube")
             ]
         };
-        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime);
+        var admission = new FixedAdmissionPolicy(true);
+        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime, admission);
 
         var strategies = await adapter.ListStrategiesAsync();
 
@@ -32,10 +33,34 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
                 Assert.Equal("youtube", second.Id);
                 Assert.Equal("YouTube", second.DisplayName);
             });
+        Assert.Equal(1, admission.CallCount);
+        Assert.Same(runtime, admission.LastRuntime);
+        Assert.Same(runtime.CapabilityDeclaration, admission.LastDeclaration);
     }
 
     [Fact]
-    public async Task ListStrategiesAsync_FiltersProxyOnlyBackendFromFullProfiles()
+    public async Task ListStrategiesAsync_TrustedCapabilitiesDoNotImplyAdmission()
+    {
+        var runtime = new FakeProfileRuntime
+        {
+            Profiles =
+            [
+                new EngineProfileDescriptor(EngineProfileId.Parse("youtube"), "YouTube")
+            ]
+        };
+        var adapter = new EngineProfileStrategyRuntimeAdapter(
+            runtime,
+            DenyAllEngineRuntimeAdmissionPolicy.Instance);
+
+        var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
+            () => adapter.ListStrategiesAsync());
+
+        Assert.Equal("EngineRuntimeNotAdmitted", exception.Code);
+        Assert.Null(runtime.LastActivatedProfileId);
+    }
+
+    [Fact]
+    public async Task ListStrategiesAsync_FiltersProxyOnlyBackendFromFullProfiles_WhenAdmittedForTest()
     {
         var runtime = new FakeProfileRuntime
         {
@@ -48,7 +73,9 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
                 new EngineProfileDescriptor(EngineProfileId.Parse("youtube"), "YouTube")
             ]
         };
-        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime);
+        var adapter = new EngineProfileStrategyRuntimeAdapter(
+            runtime,
+            new FixedAdmissionPolicy(true));
 
         var strategies = await adapter.ListStrategiesAsync();
 
@@ -62,12 +89,14 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
         [
             new EngineProfileDescriptor(EngineProfileId.Parse("youtube"), "YouTube")
         ]);
-        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime);
+        var admission = new FixedAdmissionPolicy(true);
+        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime, admission);
 
         var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
             () => adapter.ListStrategiesAsync());
 
         Assert.Equal("MissingTrustedEngineCapabilityDeclaration", exception.Code);
+        Assert.Equal(0, admission.CallCount);
     }
 
     [Fact]
@@ -77,16 +106,18 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
         [
             new EngineProfileDescriptor(EngineProfileId.Parse("discord"), "Discord")
         ]);
-        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime);
+        var admission = new FixedAdmissionPolicy(true);
+        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime, admission);
 
         var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
             () => adapter.ListStrategiesAsync());
 
         Assert.Equal("MissingTrustedEngineCapabilityDeclaration", exception.Code);
+        Assert.Equal(0, admission.CallCount);
     }
 
     [Fact]
-    public async Task ListStrategiesAsync_RejectsBackendIdentityMismatch()
+    public async Task ListStrategiesAsync_RejectsBackendIdentityMismatchBeforeAdmission()
     {
         var runtime = new FakeProfileRuntime
         {
@@ -99,12 +130,14 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
                 new EngineProfileDescriptor(EngineProfileId.Parse("youtube"), "YouTube")
             ]
         };
-        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime);
+        var admission = new FixedAdmissionPolicy(true);
+        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime, admission);
 
         var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
             () => adapter.ListStrategiesAsync());
 
         Assert.Equal("EngineCapabilityIdentityMismatch", exception.Code);
+        Assert.Equal(0, admission.CallCount);
     }
 
     [Theory]
@@ -114,29 +147,83 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
     [InlineData("luaexec:code")]
     [InlineData("x=1")]
     [InlineData("a;b")]
-    public async Task ActivateAsync_RejectsCommandLikeInputBeforeRuntime(string value)
+    public async Task ActivateAsync_RejectsCommandLikeInputBeforeCatalogOrAdmission(string value)
     {
         var runtime = new FakeProfileRuntime();
-        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime);
+        var admission = new FixedAdmissionPolicy(true);
+        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime, admission);
 
         var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
             () => adapter.ActivateAsync(value));
 
         Assert.Equal("InvalidProfileId", exception.Code);
         Assert.Null(runtime.LastActivatedProfileId);
+        Assert.Equal(0, admission.CallCount);
     }
 
     [Fact]
-    public async Task ActivateAsync_PassesTypedProfileIdToRuntime()
+    public async Task ActivateAsync_PassesTypedPublishedProfileIdToRuntime_WhenAdmitted()
     {
-        var runtime = new FakeProfileRuntime();
-        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime);
+        var runtime = new FakeProfileRuntime
+        {
+            Profiles =
+            [
+                new EngineProfileDescriptor(
+                    EngineProfileId.Parse("discord-youtube"),
+                    "Discord + YouTube")
+            ]
+        };
+        var adapter = new EngineProfileStrategyRuntimeAdapter(
+            runtime,
+            new FixedAdmissionPolicy(true));
 
         await adapter.ActivateAsync("discord-youtube");
 
         Assert.Equal(
             EngineProfileId.Parse("discord-youtube"),
             runtime.LastActivatedProfileId);
+    }
+
+    [Fact]
+    public async Task ActivateAsync_RejectsUnpublishedProfileBeforeRuntime()
+    {
+        var runtime = new FakeProfileRuntime
+        {
+            Profiles =
+            [
+                new EngineProfileDescriptor(EngineProfileId.Parse("youtube"), "YouTube")
+            ]
+        };
+        var admission = new FixedAdmissionPolicy(true);
+        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime, admission);
+
+        var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
+            () => adapter.ActivateAsync("discord"));
+
+        Assert.Equal("UnknownProfile", exception.Code);
+        Assert.Null(runtime.LastActivatedProfileId);
+        Assert.Equal(0, admission.CallCount);
+    }
+
+    [Fact]
+    public async Task ActivateAsync_RejectsPublishedProfileWhenRuntimeIsNotAdmitted()
+    {
+        var runtime = new FakeProfileRuntime
+        {
+            Profiles =
+            [
+                new EngineProfileDescriptor(EngineProfileId.Parse("youtube"), "YouTube")
+            ]
+        };
+        var adapter = new EngineProfileStrategyRuntimeAdapter(
+            runtime,
+            DenyAllEngineRuntimeAdmissionPolicy.Instance);
+
+        var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
+            () => adapter.ActivateAsync("youtube"));
+
+        Assert.Equal("EngineRuntimeNotAdmitted", exception.Code);
+        Assert.Null(runtime.LastActivatedProfileId);
     }
 
     [Fact]
@@ -152,7 +239,9 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
                 new EngineProfileDescriptor(EngineProfileId.Parse("discord"), "Discord")
             ]
         };
-        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime);
+        var adapter = new EngineProfileStrategyRuntimeAdapter(
+            runtime,
+            new FixedAdmissionPolicy(true));
 
         var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
             () => adapter.ActivateAsync("discord"));
@@ -162,15 +251,21 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
     }
 
     [Fact]
-    public async Task ActivateAsync_TranslatesEngineRuntimeFailure()
+    public async Task ActivateAsync_TranslatesEngineRuntimeFailureAfterAllOuterGatesPass()
     {
         var runtime = new FakeProfileRuntime
         {
+            Profiles =
+            [
+                new EngineProfileDescriptor(EngineProfileId.Parse("discord"), "Discord")
+            ],
             ActivationException = new EngineProfileRuntimeException(
                 "UnknownProfile",
                 "Профиль отсутствует в локальном allowlist.")
         };
-        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime);
+        var adapter = new EngineProfileStrategyRuntimeAdapter(
+            runtime,
+            new FixedAdmissionPolicy(true));
 
         var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
             () => adapter.ActivateAsync("discord"));
@@ -180,19 +275,69 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
     }
 
     [Fact]
-    public async Task GetStateAsync_MapsActiveTypedProfile()
+    public async Task GetStateAsync_MapsActivePublishedProfile_WhenAdmitted()
     {
         var runtime = new FakeProfileRuntime
         {
+            Profiles =
+            [
+                new EngineProfileDescriptor(EngineProfileId.Parse("discord"), "Discord")
+            ],
             State = EngineProfileRuntimeState.Active(
                 EngineProfileId.Parse("discord"))
         };
-        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime);
+        var adapter = new EngineProfileStrategyRuntimeAdapter(
+            runtime,
+            new FixedAdmissionPolicy(true));
 
         var state = await adapter.GetStateAsync();
 
         Assert.True(state.IsRunning);
         Assert.Equal("discord", state.StrategyId);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_RejectsActiveProfileNotPublished()
+    {
+        var runtime = new FakeProfileRuntime
+        {
+            Profiles =
+            [
+                new EngineProfileDescriptor(EngineProfileId.Parse("youtube"), "YouTube")
+            ],
+            State = EngineProfileRuntimeState.Active(
+                EngineProfileId.Parse("discord"))
+        };
+        var admission = new FixedAdmissionPolicy(true);
+        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime, admission);
+
+        var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
+            () => adapter.GetStateAsync());
+
+        Assert.Equal("ActiveProfileNotPublished", exception.Code);
+        Assert.Equal(0, admission.CallCount);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_RejectsActiveRuntimeWithoutAdmission()
+    {
+        var runtime = new FakeProfileRuntime
+        {
+            Profiles =
+            [
+                new EngineProfileDescriptor(EngineProfileId.Parse("youtube"), "YouTube")
+            ],
+            State = EngineProfileRuntimeState.Active(
+                EngineProfileId.Parse("youtube"))
+        };
+        var adapter = new EngineProfileStrategyRuntimeAdapter(
+            runtime,
+            DenyAllEngineRuntimeAdmissionPolicy.Instance);
+
+        var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
+            () => adapter.GetStateAsync());
+
+        Assert.Equal("EngineRuntimeNotAdmitted", exception.Code);
     }
 
     [Fact]
@@ -203,15 +348,33 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
             CapabilityDeclaration = BuiltInEngineBackendCapabilityCatalog.Get(
                 BuiltInEngineBackendKind.ByeDpi,
                 EngineHostPlatform.Windows),
+            Profiles =
+            [
+                new EngineProfileDescriptor(EngineProfileId.Parse("discord"), "Discord")
+            ],
             State = EngineProfileRuntimeState.Active(
                 EngineProfileId.Parse("discord"))
         };
-        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime);
+        var adapter = new EngineProfileStrategyRuntimeAdapter(
+            runtime,
+            new FixedAdmissionPolicy(true));
 
         var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
             () => adapter.GetStateAsync());
 
         Assert.Equal("ActiveProfileCapabilitiesMismatch", exception.Code);
+    }
+
+    [Fact]
+    public void DenyAllAdmissionPolicy_AlwaysRejectsTrustedDeclaration()
+    {
+        var runtime = new FakeProfileRuntime();
+
+        var admitted = DenyAllEngineRuntimeAdmissionPolicy.Instance.IsAdmitted(
+            runtime,
+            runtime.CapabilityDeclaration);
+
+        Assert.False(admitted);
     }
 
     private sealed class FakeProfileRuntime :
@@ -255,6 +418,25 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
 
             LastActivatedProfileId = profileId;
             return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class FixedAdmissionPolicy(bool admitted) : IEngineRuntimeAdmissionPolicy
+    {
+        public int CallCount { get; private set; }
+
+        public IEngineProfileRuntime? LastRuntime { get; private set; }
+
+        public EngineBackendCapabilityDeclaration? LastDeclaration { get; private set; }
+
+        public bool IsAdmitted(
+            IEngineProfileRuntime profileRuntime,
+            EngineBackendCapabilityDeclaration declaration)
+        {
+            CallCount++;
+            LastRuntime = profileRuntime;
+            LastDeclaration = declaration;
+            return admitted;
         }
     }
 

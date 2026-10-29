@@ -6,14 +6,22 @@ namespace NetPilot.Automation;
 /// Переходный адаптер: существующий selector стратегий работает поверх нового
 /// engine-neutral профиля. Строковый ID не проходит к движку напрямую —
 /// перед вызовом runtime он обязан быть разобран как EngineProfileId.
-/// Дополнительно адаптер fail-closed проверяет доверенную backend declaration,
-/// её канонический EngineId и возможности, необходимые встроенному профилю.
+///
+/// Адаптер fail-closed проверяет три независимые границы:
+/// 1) профиль опубликован доверенным runtime-каталогом;
+/// 2) backend имеет доверенную capability declaration с совпадающим EngineId;
+/// 3) внешняя runtime admission policy отдельно разрешает использование backend.
+/// Capability declaration сама по себе никогда не означает ADMIT.
 /// </summary>
 public sealed class EngineProfileStrategyRuntimeAdapter(
-    IEngineProfileRuntime profileRuntime) : IStrategyRuntime
+    IEngineProfileRuntime profileRuntime,
+    IEngineRuntimeAdmissionPolicy admissionPolicy) : IStrategyRuntime
 {
     private readonly IEngineProfileRuntime _profileRuntime =
         profileRuntime ?? throw new ArgumentNullException(nameof(profileRuntime));
+
+    private readonly IEngineRuntimeAdmissionPolicy _admissionPolicy =
+        admissionPolicy ?? throw new ArgumentNullException(nameof(admissionPolicy));
 
     public async Task<IReadOnlyList<StrategyDescriptor>> ListStrategiesAsync(
         CancellationToken cancellationToken = default)
@@ -25,8 +33,9 @@ public sealed class EngineProfileStrategyRuntimeAdapter(
         }
 
         var declaration = RequireTrustedCapabilityDeclaration();
-        var result = new List<StrategyDescriptor>(profiles.Count);
+        EnsureRuntimeAdmitted(declaration);
 
+        var result = new List<StrategyDescriptor>(profiles.Count);
         foreach (var profile in profiles)
         {
             if (!SupportsProfile(profile.Id, declaration.DirectCapabilities))
@@ -57,7 +66,17 @@ public sealed class EngineProfileStrategyRuntimeAdapter(
                 "Движок сообщил об активном профиле без корректного идентификатора.");
         }
 
+        var profiles = await GetValidatedProfilesAsync(cancellationToken);
+        if (!profiles.Any(profile => profile.Id == activeProfileId))
+        {
+            throw new StrategyRuntimeException(
+                "ActiveProfileNotPublished",
+                "Движок сообщил об активном профиле, которого нет в опубликованном доверенном каталоге.");
+        }
+
         var declaration = RequireTrustedCapabilityDeclaration();
+        EnsureRuntimeAdmitted(declaration);
+
         if (!SupportsProfile(activeProfileId, declaration.DirectCapabilities))
         {
             throw new StrategyRuntimeException(
@@ -80,17 +99,21 @@ public sealed class EngineProfileStrategyRuntimeAdapter(
         }
 
         var profiles = await GetValidatedProfilesAsync(cancellationToken);
-        var isPublished = profiles.Any(profile => profile.Id == profileId);
-
-        if (isPublished)
+        if (!profiles.Any(profile => profile.Id == profileId))
         {
-            var declaration = RequireTrustedCapabilityDeclaration();
-            if (!SupportsProfile(profileId, declaration.DirectCapabilities))
-            {
-                throw new StrategyRuntimeException(
-                    "UnsupportedProfileCapabilities",
-                    "Профиль отклонён: доверенная backend declaration не содержит все необходимые сетевые возможности.");
-            }
+            throw new StrategyRuntimeException(
+                "UnknownProfile",
+                "Профиль не опубликован доверенным runtime-каталогом Net.Pilot.");
+        }
+
+        var declaration = RequireTrustedCapabilityDeclaration();
+        EnsureRuntimeAdmitted(declaration);
+
+        if (!SupportsProfile(profileId, declaration.DirectCapabilities))
+        {
+            throw new StrategyRuntimeException(
+                "UnsupportedProfileCapabilities",
+                "Профиль отклонён: доверенная backend declaration не содержит все необходимые сетевые возможности.");
         }
 
         try
@@ -178,6 +201,17 @@ public sealed class EngineProfileStrategyRuntimeAdapter(
         }
 
         return declaration;
+    }
+
+    private void EnsureRuntimeAdmitted(
+        EngineBackendCapabilityDeclaration declaration)
+    {
+        if (!_admissionPolicy.IsAdmitted(_profileRuntime, declaration))
+        {
+            throw new StrategyRuntimeException(
+                "EngineRuntimeNotAdmitted",
+                "Использование сетевого backend запрещено: runtime не имеет отдельного security admission.");
+        }
     }
 
     private static bool SupportsProfile(

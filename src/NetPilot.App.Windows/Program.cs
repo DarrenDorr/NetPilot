@@ -85,10 +85,13 @@ internal static class Program
         var serviceClient = new WindowsPrivilegedServiceClient();
 
         // Пока native admission не содержит ADMIT, GUI/Automation вообще не получают
-        // legacy Zapret runtime. Даже ошибочный вызов selector не сможет активировать
-        // native-код: profile runtime физически fail-closed.
+        // legacy Zapret runtime. Дополнительно adapter получает явную deny-all admission
+        // policy: trusted capability declaration в будущем сама по себе не сможет открыть
+        // profile runtime без отдельного security admission.
         var profileRuntime = new NoAdmittedEngineProfileRuntime();
-        var strategyRuntime = new EngineProfileStrategyRuntimeAdapter(profileRuntime);
+        var strategyRuntime = new EngineProfileStrategyRuntimeAdapter(
+            profileRuntime,
+            DenyAllEngineRuntimeAdmissionPolicy.Instance);
 
         var healthProbe = new PublicResourceHealthProbe(healthChecker);
         var selectionEngine = new StrategySelectionEngine(strategyRuntime, healthProbe);
