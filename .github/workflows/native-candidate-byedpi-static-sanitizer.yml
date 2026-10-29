@@ -46,7 +46,7 @@ jobs:
           patch1='security/native-admission/patches/byedpi-r28/0001-loopback-only-listener.patch'
           patch2='security/native-admission/patches/byedpi-r28/0002-kavl-iterator-no-before-array-sentinel.patch'
           test "$(git -C netpilot rev-parse "HEAD:$patch1")" = "fa9ba3349792d66f40d925bc612310e8d18aae8a"
-          test "$(git -C netpilot rev-parse "HEAD:$patch2")" = "82921e2f9e594ca406948307a2ca0566c4283b0d"
+          test "$(git -C netpilot rev-parse "HEAD:$patch2")" = "6f51d66597847ee49e373922e4905c80b8ee2f47"
 
           mkdir -p scratch evidence
           git -C netpilot show "HEAD:$patch1" > scratch/0001.patch
@@ -55,7 +55,7 @@ jobs:
           observed_patch2_sha="$(sha256sum scratch/0002.patch | awk '{print $1}')"
           printf 'patch_0001_sha256=%s\npatch_0002_sha256=%s\n' "$observed_patch1_sha" "$observed_patch2_sha"
           test "$observed_patch1_sha" = "3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068"
-          test "$observed_patch2_sha" = "7b12a9bf63995c0aa0a96f7f03396a4c104ae30c2e66990d140f25634be2fa0f"
+          test "$observed_patch2_sha" = "6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7"
 
           git -C byedpi apply --verbose --check "$PWD/scratch/0001.patch"
           git -C byedpi apply --verbose "$PWD/scratch/0001.patch"
@@ -143,14 +143,14 @@ jobs:
           set -euo pipefail
           harness_sha256="$(sha256sum netpilot/security/native-admission/harnesses/byedpi-r28/kavl_iterator_harness.c | awk '{print $1}')"
           {
-            echo 'schema_version=2'
+            echo 'schema_version=3'
             echo 'scope=byedpi-v0.17.3-kavl-iterator-sanitizer'
             echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
             echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
             echo 'patch_0001_git_blob_sha1=fa9ba3349792d66f40d925bc612310e8d18aae8a'
             echo 'patch_0001_sha256=3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068'
-            echo 'patch_0002_git_blob_sha1=82921e2f9e594ca406948307a2ca0566c4283b0d'
-            echo 'patch_0002_sha256=7b12a9bf63995c0aa0a96f7f03396a4c104ae30c2e66990d140f25634be2fa0f'
+            echo 'patch_0002_git_blob_sha1=6f51d66597847ee49e373922e4905c80b8ee2f47'
+            echo 'patch_0002_sha256=6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7'
             echo 'harness_git_blob_sha1=62b6558bfb90284d97cc1d023454591f749c27e5'
             echo "harness_sha256=$harness_sha256"
             echo "compiler=$(gcc --version | head -n1)"
