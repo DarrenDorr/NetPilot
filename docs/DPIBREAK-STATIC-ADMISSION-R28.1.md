@@ -1,213 +1,225 @@
-# R28.1 — статический admission-аудит DPIBreak v0.6.2
+# R28.4 — статический admission-аудит DPIBreak v0.6.2
 
-Дата: 28.10.2026.
+Дата актуализации: 29.10.2026.
 
-Проверяемая точка: `dilluti0n/dpibreak@v0.6.2`, release commit `334285b60aabd5a32a83a65211ac60bce968b211`.
+Проверяемая точка: `dilluti0n/dpibreak@v0.6.2`.
 
-Этот документ **не присваивает ADMIT**, не разрешает запуск DPIBreak из NetPilot и не разрешает автоматическое обновление с upstream.
+Exact identity:
 
-## Итог текущего прохода
+- annotated tag object: `7601532147fe92130964e49a644d3207e74b8a51`;
+- release commit: `334285b60aabd5a32a83a65211ac60bce968b211`;
+- source tree: `7e95a17933fe9fda521865b1317c4f9f75d6c58c`;
+- Cargo.lock Git blob: `e3adcd1b21711e7e754878b15625076c7bcaf7e9`.
 
-Статус: **REVIEW / release gate BLOCK**.
+Этот документ **не присваивает ADMIT**, не разрешает запуск DPIBreak из Net.Pilot, не разрешает загрузку WinDivert, создание NFQUEUE/firewall rules или автоматическое обновление с upstream.
 
-DPIBreak остаётся хорошим secondary/fallback кандидатом для HTTPS/YouTube на Windows и Linux. У проекта есть сильные признаки release provenance: signed annotated tag, SHA-256 assets, подпись checksum-файла и buildinfo с exact source/toolchain. Но это не заменяет security admission: Windows путь включает WinDivert/FFI/driver boundary, Linux имеет открытый вопрос NFQUEUE/GSO semantics, а функциональный scope движка существенно уже zapret2 и не закрывает полноценный Discord/UDP профиль.
+## Итог
 
-Предварительная fork-стратегия: **upstream-first, без собственного форка по умолчанию**. Форк имеет смысл только если конкретный NetPilot blocker нельзя решить adapter policy или upstream fix.
+Статус: **REVIEW / release gate BLOCK / may_execute=false / may_integrate=false**.
 
-## 1. Функциональный scope
+DPIBreak сохраняется как сильный резервный Windows/Linux кандидат для HTTPS/YouTube-сценариев, но не как основной движок. У проекта хороший release provenance, активный upstream и Rust core, однако текущий функциональный scope уже zapret2, QUIC support ещё не реализован, Linux имеет открытые NFQUEUE/firewall вопросы, а Windows требует отдельного WinDivert admission.
 
-README exact v0.6.2 прямо описывает DPIBreak как инструмент для обхода DPI на HTTPS connections путём изменения исходящего TLS ClientHello. Движок перехватывает только небольшие пакеты, необходимые для TLS/SNI manipulation; остальной трафик должен проходить без обработки.
+Предварительная fork-стратегия: **upstream-first, без собственного форка по умолчанию**. Форк создаётся только для конкретного подтверждённого blocker/hardening fix, который нельзя закрыть adapter policy или получить upstream вовремя.
 
-Это хороший дизайн для низкого overhead и ограниченной attack surface, но он означает продуктовый предел:
+## 1. Release provenance
+
+Для v0.6.2 подтверждено:
+
+- GitHub-verified signed annotated tag;
+- tag указывает на exact commit `334285b60aab...`;
+- Windows asset `dpibreak-0.6.2-x86_64-pc-windows-msvc.zip` имеет SHA-256 `606a2b4179b423ab9d4b0f0210dedbb3fc9e7c09af52949164893bd53a7dda6f`;
+- Linux asset `dpibreak-0.6.2-x86_64-unknown-linux-musl.tar.gz` имеет SHA-256 `bb19b1f9716efa15b801c2ad53f787412b44d59123b81b740f569eda2abd3f9a`;
+- `sha256sum.txt` имеет SHA-256 `d7adc8616e884d4d43b573c30d7ac70517553320717491ac310646943d72fdb7`;
+- отдельный `sha256sum.txt.sig` имеет SHA-256 `d56289ce991a2d58d62676b080c57aea31b3c2a1677df48f7f0a05f13e1af795`;
+- release buildinfo указывает exact source commit и toolchain.
+
+Важно: сам release commit в GitHub commit verification отображается unsigned. Поэтому нашим provenance anchor является подтверждённый signed annotated tag + exact commit/tree + самостоятельно закреплённые hashes release assets.
+
+## 2. Функциональная роль
+
+DPIBreak ориентирован на системное изменение трафика вокруг TLS/HTTPS и перехватывает ограниченный набор пакетов для обработки ClientHello.
+
+Для Net.Pilot это означает:
 
 - HTTPS/браузинг — релевантно;
-- YouTube HTTPS path — релевантно;
-- полный Discord TCP/UDP/voice scope — не доказан и не заявлен как основная цель;
-- WireGuard/произвольные UDP protocol scenarios — не являются текущим scope.
+- YouTube HTTPS — потенциально релевантно;
+- QUIC/HTTP3 — **не считать поддержанным**, пока upstream issue #32 остаётся открытым;
+- полный Discord TCP/UDP/voice — не доказан;
+- forwarded VPN/WireGuard traffic — требует отдельного routing/firewall review.
 
-Решение: DPIBreak не рассматривается как единственный основной engine NetPilot. Его роль — secondary HTTPS/YouTube fallback.
+Поэтому текущая роль: **secondary HTTPS/YouTube fallback**.
 
-## 2. Rust — плюс, но не автоматический security proof
+## 3. Rust и native boundaries
 
-Core написан на Rust, release profile использует `panic = "abort"` и LTO. Это уменьшает ряд типичных memory-safety рисков в безопасном Rust-коде.
+Core написан на Rust, package использует edition 2024, `rust-version = 1.88`, release profile с LTO и `panic = "abort"`.
 
-Но Windows path использует in-tree `windivert` crate, который является wrapper вокруг `windivert-sys`/native WinDivert и системных Windows API. Следовательно, остаются:
+Это положительный фактор, но не security proof. Остаются:
 
-- FFI boundary;
-- native DLL/SYS;
-- kernel driver;
-- service lifecycle;
+- unsafe/FFI surfaces;
+- in-tree `windivert` crate;
+- native WinDivert DLL/SYS и kernel driver;
+- Windows service lifecycle;
+- Linux NFQUEUE;
+- nftables/iptables mutation;
 - packet parsing correctness;
-- unsafe blocks/dependency risks;
-- supply-chain dependencies.
+- dependency/supply-chain risks.
 
-Поэтому фраза «на Rust» учитывается как положительный фактор, но не меняет admission gate.
+`crates/windivert` имеет лицензию LGPL-3.0-or-later и зависит, в частности, от `windivert-sys 0.10.0`. Основной DPIBreak имеет GPL-3.0-or-later.
 
-## 3. Dependency boundary
+## 4. Актуальные upstream issues
 
-`Cargo.toml` v0.6.2 фиксирует package version 0.6.2, Rust edition 2024 и `rust-version = 1.88`.
+### #24 — NFQUEUE / GSO semantics
 
-Основные dependencies включают:
+Issue остаётся open/bug. Upstream описывает ситуацию, когда NFQUEUE может сегментировать GSO TCP packet перед userspace, а последующие сегменты той же connection попадают в обработку, рассчитанную на ClientHello.
 
-- `anyhow`;
-- `etherparse`;
-- Linux: `nfq-updated`, `socket2`, `daemonize`, `libc`, `thiserror`;
-- Windows: in-tree `windivert`, `windows-services`, `windows`;
-- build dependency `winres`.
-
-In-tree `crates/windivert` в свою очередь использует:
-
-- `windivert-sys 0.10.0`;
-- `etherparse 0.13`;
-- `windows 0.48`;
-- `thiserror`.
-
-До ADMIT требуется exact `Cargo.lock` inventory, advisory review и проверка unsafe/FFI surfaces. Одного `Cargo.toml` недостаточно.
-
-## 4. Windows WinDivert boundary
-
-DPIBreak v0.6.2 использует WinDivert 2.2.2-A. Release notes указывают, что в этой версии были исправлены dangling pointer в `windivert` crate и cleanup WinDivert service при завершении процесса.
-
-Это положительное evidence наличия upstream fixes, но NetPilot всё равно должен независимо проверить exact release component set:
-
-- `dpibreak.exe` SHA-256/PE metadata/Authentiсode;
-- `WinDivert.dll` SHA-256 и происхождение;
-- `WinDivert64.sys` SHA-256, подпись и certificate chain;
-- DLL search path;
-- service/driver ACL;
-- start/stop/restart;
-- abnormal termination;
-- update/uninstall cleanup;
-- отсутствие оставшегося WinDivert service/driver state после завершения.
-
-NetPilot не будет повторять upstream UX, предлагающий пользователю вручную обходить SmartScreen предупреждение. Наш admitted component должен поставляться через собственную проверенную install/signing chain.
-
-## 5. Open issue #24 — Linux NFQUEUE/GSO semantics
-
-Issue #24 остаётся открытым. Первоначально наблюдалось, что последующие TCP segments одной TLS connection попадали в обработчик и рассматривались как отдельные ClientHello.
-
-Upstream позже уточнил причину: default NFQUEUE behavior может нормализовать/сегментировать GSO packet перед userspace. `NFQA_CFG_F_GSO` позволяет изменить это поведение, но тогда userspace может получить packet больше MTU; при отправке через raw socket возможен `EMSGSIZE`, если split order не учитывает MTU.
-
-Это не выглядит как доказанная memory-safety vulnerability, но является correctness/failure-mode проблемой для packet engine.
-
-Для NetPilot Linux admission требуется отдельный тестовый matrix:
+Для Net.Pilot это correctness/failure-mode blocker для Linux lab, пока не проверены:
 
 - GSO on/off;
 - packet > MTU;
 - fragmented/segmented ClientHello;
-- exact split strategies;
-- fail-open behavior при `EMSGSIZE`;
-- отсутствие packet loss/stall;
-- cleanup NFQUEUE/firewall state после crash.
+- `EMSGSIZE`/fail-safe path;
+- отсутствие потери/stall трафика;
+- cleanup NFQUEUE/firewall state после crash/timeout.
 
-Windows WinDivert behavior нельзя считать автоматически таким же; его нужно измерить отдельно.
+Windows segmentation behavior нельзя автоматически считать таким же.
 
-## 6. Supply-chain: сильные release artifacts, но build recipe требует hardening
+### #26 — локальные HTTPS-сервисы
 
-Положительные признаки v0.6.2:
+Open issue сообщает, что агрессивный режим может приводить к `SSL_ERROR_RX_MALFORMED_SERVER_HELLO` для локально размещённого HTTPS-сервиса и предлагает domain exclusion.
 
-- signed annotated tag;
-- Windows/Linux assets имеют SHA-256;
-- release содержит `sha256sum.txt.sig`;
-- buildinfo фиксирует commit/toolchain;
-- release build автоматизирован.
+Следствие для Net.Pilot: broad/universal profile нельзя считать безопасным по умолчанию. Перед таким профилем нужна typed local/LAN exclusion policy и regression evidence.
 
-При этом exact upstream `release.yml` не соответствует строгой trust policy NetPilot:
+### #28 — автоматические nft/iptables rules
 
-- `actions/checkout@v4`, `actions/upload-artifact@v4`, `actions/download-artifact@v4`, `softprops/action-gh-release@v2` — floating major refs, а не immutable full commit SHA;
-- используется `dtolnay/rust-toolchain@stable`/`toolchain: stable`;
-- Windows job скачивает `WinDivert-2.2.2-A.zip` по HTTPS и перед распаковкой не сравнивает заранее зафиксированный expected SHA-256;
-- `windows-latest`/`ubuntu-latest` являются плавающей runner environment;
-- winget publishing скачивает `wingetcreate/latest`.
+Open issue от upstream предлагает возможность отключить встроенное выполнение `nft`/`iptables`, отмечая maintainability/user-experience проблемы текущей hard-coded модели.
 
-Это **не finding против upstream**: проект может считать этот уровень достаточным. Но NetPilot controlled build должен быть строже.
+Для нашего Linux lab это означает обязательные:
 
-Требования NetPilot:
+- exact rule inventory;
+- NetPilot-owned временные имена;
+- before/after diff;
+- crash/timeout rollback;
+- fail-safe traffic path;
+- отсутствие чужих rule modifications.
 
-1. pin GitHub Actions по full immutable SHA;
-2. pin exact Rust toolchain и target;
-3. использовать `Cargo.lock --locked` для build;
-4. pin WinDivert archive SHA-256 до распаковки/использования;
-5. сохранить SBOM/build manifest;
-6. записать source commit, toolchain, dependency lock hash, input hashes и output hashes;
-7. не использовать `latest` как trust input;
-8. сравнить собственный build с upstream artifact на уровне inventory/behavior, даже если byte-for-byte reproducibility недостижима.
+### #31 — WireGuard compatibility
 
-## 7. Licensing boundary
+Open issue имеет labels `workaround` и `compatibility`: forwarded WireGuard client traffic не обрабатывается автоматически текущей конфигурацией.
 
-DPIBreak имеет `GPL-3.0-or-later`. NetPilot Core — MIT.
+Мы рассматриваем VPN coexistence и forwarded-client routing как отдельный test matrix, не как гарантированную capability.
 
-Это не запрещает использовать DPIBreak как отдельный executable/component, но требует аккуратной модели распространения:
+### #32 — QUIC support
 
-- DPIBreak/fork остаётся GPL-3.0-or-later;
-- соответствующий source и notices доступны пользователю;
-- GPL implementation не копируется в MIT Core без отдельного legal review;
-- adapter/API boundary документируется;
-- если создаётся fork, все наши изменения к DPIBreak публикуются с выполнением GPL obligations.
+Issue открыт самим upstream как enhancement.
 
-Поэтому собственный fork DPIBreak имеет более высокую стоимость сопровождения, чем MIT zapret2/ByeDPI. При активном upstream нет причины создавать его заранее.
+Следствие: DPIBreak нельзя использовать как основание утверждения, что Net.Pilot уже закрывает QUIC/HTTP3 или Discord UDP.
 
-## 8. Почему пока не форкаем DPIBreak
+## 5. Windows WinDivert boundary
 
-На текущем этапе у нас не найден NetPilot-specific blocker, который обязательно требует изменения upstream source.
+Release notes v0.6.2 заявляют исправления:
 
-Большую часть наших требований можно обеспечить внешней интеграцией:
+- dangling pointer в Windows `windivert` crate;
+- stop WinDivert service при завершении для освобождения driver file;
+- связанный cleanup update path.
 
-- typed allowlisted profile;
-- fixed executable identity;
-- hash pinning;
-- закрытый updater;
-- ProgramFiles/ACL;
-- проверенный start/stop lifecycle;
-- отсутствие raw CLI в UI/IPC.
+Это полезные upstream fixes, но перед любым Windows runtime Net.Pilot обязан независимо получить exact component inventory:
 
-А открытый Linux GSO/NFQUEUE вопрос логичнее сначала проверить на exact release/upstream fixes, а не создавать расходящийся fork.
+- `dpibreak.exe` hash/PE metadata/Authentiсode;
+- exact WinDivert DLL/SYS version и SHA-256;
+- driver signature/certificate chain;
+- DLL search path;
+- service/driver ACL/lifecycle;
+- start/stop/restart/crash/update/uninstall/reboot cleanup.
 
-Решение: **upstream-first tracking**. Fork создаётся только при одном из условий:
+Net.Pilot не будет предлагать отключать Defender, добавлять exclusions или обходить SmartScreen как способ admission.
 
-1. подтверждённый security/correctness blocker не исправляется upstream;
-2. нужен минимальный hardening patch, который невозможно обеспечить adapter boundary;
-3. нужна критичная для NetPilot cleanup/fail-safe гарантия, отсутствующая upstream.
+## 6. Dependency provenance gate
 
-## 9. Что нужно проверить в R28.2
+Добавлен workflow:
 
-До любого ADMIT:
+`.github/workflows/native-candidate-dpibreak-provenance.yml`
 
-- exact `Cargo.lock` inventory;
-- cargo advisory/security review;
-- `unsafe`/FFI search и ручной анализ WinDivert wrapper;
-- controlled Windows/Linux build;
-- native inventory Windows package;
-- PE/Authentiсode/signature chain;
-- WinDivert service/driver lifecycle;
-- crash/kill/power-interruption cleanup simulation;
-- Linux NFQUEUE/GSO/MTU regression tests;
-- Windows ClientHello segmentation behavior;
-- HTTPS/YouTube functional tests;
-- coexistence с распространёнными VPN/security products;
-- bounded CPU/memory tests под burst traffic.
+Он **не собирает и не запускает DPIBreak**.
 
-## 10. Product integration policy
+Gate проверяет:
 
-Если exact DPIBreak component когда-либо получает `ADMIT`, NetPilot всё равно не передаёт пользователю raw CLI.
+1. exact commit/tree;
+2. annotated tag object и peeled commit mapping;
+3. exact Cargo.lock Git blob;
+4. package/license/rust-version markers;
+5. полный Cargo.lock через Python `tomllib`;
+6. registry dependencies обязаны иметь checksum;
+7. неожиданные git/path sources fail closed;
+8. разрешены только ожидаемые local workspace packages `dpibreak` и `windivert`;
+9. сохраняются text-only evidence и SHA-256 входных manifests.
 
-Допускается только:
+Любая будущая версия/lock drift требует нового admission delta.
 
-`EngineProfileId -> внутренний typed plan -> фиксированный ArgumentList`.
+## 7. Supply-chain policy
 
-Не допускаются:
+Upstream release automation рассматривается как источник полезного evidence, но не как доверенный runtime updater Net.Pilot.
 
-- arbitrary executable/path;
-- arbitrary segment order из пользовательского config без allowlist;
-- shell command;
-- BAT/PowerShell;
-- произвольный driver/service name;
-- upstream latest download at runtime.
+Наш controlled pipeline должен:
 
-## Решение R28.1 по DPIBreak
+- pin GitHub Actions по immutable full SHA;
+- pin exact source commit/tree/tag mapping;
+- использовать exact Cargo.lock/`--locked`;
+- pin Rust toolchain;
+- pin native dependency archives до использования;
+- сохранять SBOM/build manifest/input/output hashes;
+- никогда не превращать `latest` в trust decision.
 
-**DPIBreak v0.6.2 сохраняется как кандидат №3 — secondary HTTPS/YouTube fallback.**
+## 8. Licensing boundary
 
-Его supply-chain оформление лучше многих рассмотренных аналогов, а Rust уменьшает часть рисков. Но функциональный scope уже zapret2, Windows зависит от WinDivert native boundary, Linux issue #24 требует runtime evidence, а GPL делает ненужный ранний fork менее выгодным.
+DPIBreak — GPL-3.0-or-later, Net.Pilot Core — MIT.
 
-На текущем этапе стратегия: **не форкать; отслеживать upstream и провести controlled admission exact v0.6.2/актуального следующего tagged release перед интеграцией**. Статус остаётся **REVIEW / BLOCK**.
+Текущая политика:
+
+- не копировать GPL implementation в MIT Core;
+- держать DPIBreak/fork отдельным компонентом;
+- сохранять copyright/license notices;
+- выполнять source/distribution obligations выбранной модели;
+- при создании fork он остаётся GPL-3.0-or-later;
+- adapter/API boundary документируется отдельно.
+
+Это делает ранний собственный fork дороже по сопровождению, чем MIT zapret2/ByeDPI, поэтому без конкретного blocker мы его не создаём.
+
+## 9. Что нужно до любого lab/runtime
+
+- PASS source/dependency provenance exact v0.6.2;
+- exact Cargo.lock/advisory review;
+- manual review unsafe/FFI surfaces;
+- controlled compile-only Linux/Windows;
+- exact Windows WinDivert inventory;
+- Linux NFQUEUE/GSO/MTU design + regression plan;
+- reversible nftables/iptables lifecycle design;
+- local/LAN exclusion behavior;
+- VPN/WireGuard coexistence scope;
+- bounded resource tests;
+- candidate-specific `DRAFT_NOT_APPROVED` lab plan;
+- отдельный HIGH_ASSURANCE human approval.
+
+Даже успешный lab PASS не будет автоматически означать `ADMIT`.
+
+## Решение
+
+**DPIBreak v0.6.2 остаётся кандидатом №3 — reserve/secondary Windows/Linux HTTPS backend.**
+
+Причины сохранить его в shortlist:
+
+- активный upstream;
+- signed release provenance;
+- Rust core;
+- Windows/Linux system-wide модель;
+- заметная работа upstream над cleanup/robustness.
+
+Причины не делать его primary сейчас:
+
+- QUIC support отсутствует;
+- полный Discord/UDP scope не доказан;
+- открыты Linux NFQUEUE/GSO и firewall lifecycle вопросы;
+- local HTTPS compatibility требует exclusions;
+- Windows всё равно зависит от kernel-driver boundary;
+- GPL добавляет отдельную distribution/fork boundary.
+
+Статус остаётся **REVIEW / BLOCK**. Ни один DPIBreak binary/native component пока не разрешён к запуску или интеграции в production Net.Pilot.
