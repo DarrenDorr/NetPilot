@@ -78,20 +78,21 @@ jobs:
               raise SystemExit("ByeDPI draft lab plan is missing")
           byedpi = byedpi_path.read_text(encoding="utf-8")
           require(byedpi, r"^\s*- 0007-windows-aux-socket-probes\.patch\s*$", "ByeDPI lab plan is stale: patch 0007 is missing")
-          require(byedpi, r"^\s*patch_0007_git_blob_sha1:\s*e1e7cf53a87e9f51224147d7b1d4faf39dcf8ef6\s*$", "ByeDPI lab plan patch 0007 Git identity mismatch")
-          require(byedpi, r"^\s*patch_0007_sha256:\s*ddfe7a3b6280c55dc89afd99ea89badea2f30348031f4f93a6ca6debcf939897\s*$", "ByeDPI lab plan patch 0007 SHA-256 mismatch")
+          require(byedpi, r"^\s*patch_0007_git_blob_sha1:\s*e7b590a7d0594be0629bac221cb120c165dab8cd\s*$", "ByeDPI lab plan patch 0007 Git identity mismatch")
+          require(byedpi, r"^\s*patch_0007_sha256:\s*778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25\s*$", "ByeDPI lab plan patch 0007 SHA-256 mismatch")
           require(matrix, r"^\s*- 0007-windows-aux-socket-probes\.patch\s*$", "Pre-lab matrix is stale: ByeDPI patch 0007 is missing")
-          require(matrix, r"^\s*patch_0007_git_blob_sha1:\s*e1e7cf53a87e9f51224147d7b1d4faf39dcf8ef6\s*$", "Pre-lab matrix patch 0007 Git identity mismatch")
-          require(matrix, r"^\s*patch_0007_sha256:\s*ddfe7a3b6280c55dc89afd99ea89badea2f30348031f4f93a6ca6debcf939897\s*$", "Pre-lab matrix patch 0007 SHA-256 mismatch")
+          require(matrix, r"^\s*patch_0007_git_blob_sha1:\s*e7b590a7d0594be0629bac221cb120c165dab8cd\s*$", "Pre-lab matrix patch 0007 Git identity mismatch")
+          require(matrix, r"^\s*patch_0007_sha256:\s*778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25\s*$", "Pre-lab matrix patch 0007 SHA-256 mismatch")
 
           Path("lab-plan-policy-evidence.txt").write_text(
-              "schema_version=2\n"
+              "schema_version=3\n"
               "scope=native-lab-plan-draft-policy\n"
               "result=PASS\n"
               "production_activation_allowed=false\n"
               "native_runtime_authorized=false\n"
               "byedpi_current_patchset=0001-0007\n"
-              "byedpi_patch_0007_sha256=ddfe7a3b6280c55dc89afd99ea89badea2f30348031f4f93a6ca6debcf939897\n"
+              "byedpi_patch_0007_git_blob_sha1=e7b590a7d0594be0629bac221cb120c165dab8cd\n"
+              "byedpi_patch_0007_sha256=778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25\n"
               "checked_plans=" + ",".join(checked) + "\n",
               encoding="utf-8",
           )
