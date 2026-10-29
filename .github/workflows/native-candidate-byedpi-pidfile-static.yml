@@ -1,0 +1,151 @@
+name: Native Candidate ByeDPI PID File Static
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/native-candidate-byedpi-pidfile-static.yml"
+      - "security/native-admission/patches/byedpi-r28/**"
+      - "security/native-admission/byedpi-v0.17.3-fork-candidate.yaml"
+      - "docs/BYEDPI-*.md"
+
+permissions:
+  contents: read
+
+jobs:
+  pidfile-static:
+    name: ByeDPI PID-file hardening compile/static gate without execution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout NetPilot without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: netpilot
+          persist-credentials: false
+
+      - name: Checkout exact ByeDPI v0.17.3 source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: hufrea/byedpi
+          ref: 7efde1b1296eaaa187b70e951894dde17527489c
+          fetch-depth: 1
+          path: byedpi
+          persist-credentials: false
+
+      - name: Verify exact identities and apply current hardening sequence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C byedpi rev-parse HEAD)" = "7efde1b1296eaaa187b70e951894dde17527489c"
+          test "$(git -C byedpi rev-parse 'HEAD^{tree}')" = "8d13f6f5939190cd27ee68696247073a00b3e7dc"
+
+          patch_dir="$PWD/netpilot/security/native-admission/patches/byedpi-r28"
+          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0001-loopback-only-listener.patch')" = "fa9ba3349792d66f40d925bc612310e8d18aae8a"
+          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0002-kavl-iterator-no-before-array-sentinel.patch')" = "6f51d66597847ee49e373922e4905c80b8ee2f47"
+          test "$(git -C netpilot rev-parse 'HEAD:security/native-admission/patches/byedpi-r28/0003-pid-file-fail-safe-write.patch')" = "d56d0f8659a49c48c923b6af85a523a952e77e0c"
+
+          echo "3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068  $patch_dir/0001-loopback-only-listener.patch" | sha256sum -c -
+          echo "6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7  $patch_dir/0002-kavl-iterator-no-before-array-sentinel.patch" | sha256sum -c -
+          echo "5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738  $patch_dir/0003-pid-file-fail-safe-write.patch" | sha256sum -c -
+
+          for patch in \
+            0001-loopback-only-listener.patch \
+            0002-kavl-iterator-no-before-array-sentinel.patch \
+            0003-pid-file-fail-safe-write.patch
+          do
+            git -C byedpi apply --verbose --check "$patch_dir/$patch"
+            git -C byedpi apply --verbose "$patch_dir/$patch"
+          done
+
+      - name: Verify PID-file fail-safe source anchors
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('byedpi/main.c').read_text()
+          start = s.index('static int reset_pid_fd(void)')
+          end = s.index('#endif', start)
+          block = s[start:end]
+          required = [
+              'fcntl(params.pid_fd, F_SETLK, &fl)',
+              'ftruncate(params.pid_fd, 0)',
+              'lseek(params.pid_fd, 0, SEEK_SET)',
+              'while (written < (size_t)pid_len)',
+              'if (errno == EINTR)',
+              'return reset_pid_fd();',
+              'params.pid_file = fname;'
+          ]
+          for marker in required:
+              assert marker in block, marker
+          assert block.index('fcntl(params.pid_fd, F_SETLK, &fl)') < block.index('ftruncate(params.pid_fd, 0)')
+          assert block.index('while (written < (size_t)pid_len)') < block.index('params.pid_file = fname;')
+          assert 'write(params.pid_fd, pid_str, strlen(pid_str));' not in block
+          PY
+
+      - name: Compile patched real main.c with ignored-result promoted to error
+        id: compile
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence scratch
+          gcc \
+            -D_DEFAULT_SOURCE \
+            -Ibyedpi \
+            -std=c99 -O2 \
+            -Wall -Wextra -Wno-unused-parameter \
+            -Werror=unused-result \
+            -c byedpi/main.c \
+            -o scratch/main.o \
+            2>&1 | tee evidence/main-compile.log
+          test -f scratch/main.o
+
+      - name: Produce text-only evidence and remove object
+        if: always()
+        shell: bash
+        env:
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'schema_version=1'
+            echo 'scope=byedpi-v0.17.3-pid-file-static-hardening'
+            echo 'source_commit=7efde1b1296eaaa187b70e951894dde17527489c'
+            echo 'source_tree=8d13f6f5939190cd27ee68696247073a00b3e7dc'
+            echo 'patch_0001_sha256=3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068'
+            echo 'patch_0002_sha256=6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7'
+            echo 'patch_0003_git_blob_sha1=d56d0f8659a49c48c923b6af85a523a952e77e0c'
+            echo 'patch_0003_sha256=5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738'
+            echo "compiler=$(gcc --version | head -n1)"
+            echo "main_compile_outcome=$COMPILE_OUTCOME"
+            echo 'source_anchor_check=success'
+            echo 'candidate_binary_executed=false'
+            echo 'pid_file_opened=false'
+            echo 'listener_opened=false'
+            echo 'routing_changed=false'
+            echo 'admission_effect=NONE'
+            echo 'release_gate=BLOCK'
+          } > evidence/byedpi-pidfile-static.txt
+          rm -f scratch/main.o
+          sha256sum evidence/* | sort > evidence/SHA256SUMS-byedpi-pidfile-static.txt
+
+      - name: Upload text evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: byedpi-r28-pidfile-static-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce PID-file static gate
+        if: always()
+        shell: bash
+        env:
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+        run: |
+          set -euo pipefail
+          test "$COMPILE_OUTCOME" = 'success'
