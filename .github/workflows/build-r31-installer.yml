@@ -1,0 +1,66 @@
+name: Build R31 First Boot Installer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: netpilot-r31-installer
+  cancel-in-progress: false
+
+jobs:
+  build-r31-installer:
+    name: Build verified R31 installer
+    runs-on: windows-2025
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout exact R31 checkpoint
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: d441d7b73392a8004907d6e6682549a98db7f7b8
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify exact checkpoint
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = 'd441d7b73392a8004907d6e6682549a98db7f7b8'
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $expected) {
+            throw "Unexpected checkout SHA: $actual"
+          }
+          Write-Host "CHECKPOINT_SHA=$actual"
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build and test R31 First Boot installer
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File scripts/windows-first-boot-build.ps1 -Version 0.1.0-alpha-r31 -VersionInfoVersion 0.1.0.0
+
+      - name: Create installer checksum file
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Resolve-Path 'artifacts\installer\NetPilot-Setup-0.1.0-alpha-r31-x64.exe'
+          $hash = (Get-FileHash -Algorithm SHA256 -Path $installer).Hash.ToLowerInvariant()
+          "$hash  NetPilot-Setup-0.1.0-alpha-r31-x64.exe" | Set-Content -Encoding ascii 'artifacts\installer\NetPilot-Setup-0.1.0-alpha-r31-x64.sha256'
+          Write-Host "INSTALLER_SHA256=$hash"
+          Write-Host 'NATIVE_ENGINE_ADMISSION=BLOCKED'
+
+      - name: Upload ready-to-test installer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: NetPilot-R31-First-Boot
+          path: |
+            artifacts/installer/NetPilot-Setup-0.1.0-alpha-r31-x64.exe
+            artifacts/installer/NetPilot-Setup-0.1.0-alpha-r31-x64.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
