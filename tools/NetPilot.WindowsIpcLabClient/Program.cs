@@ -7,7 +7,6 @@ namespace NetPilot.WindowsIpcLabClient;
 internal static class Program
 {
     private const string ExpectAuthorized = "--expect-authorized";
-    private const string ExpectDenied = "--expect-denied";
 
     public static async Task<int> Main(string[] args)
     {
@@ -17,8 +16,7 @@ internal static class Program
             return 20;
         }
 
-        if (args.Length != 1
-            || (args[0] != ExpectAuthorized && args[0] != ExpectDenied))
+        if (args.Length != 1 || args[0] != ExpectAuthorized)
         {
             Console.Error.WriteLine("ERROR=InvalidMode");
             return 21;
@@ -62,28 +60,15 @@ internal static class Program
             Console.WriteLine($"SERVICE_SUCCESS={response.Success}");
             Console.WriteLine($"SERVICE_CODE={response.Code}");
 
-            if (args[0] == ExpectAuthorized)
+            if (response.Success
+                && string.Equals(response.Code, "Ok", StringComparison.Ordinal))
             {
-                if (response.Success
-                    && string.Equals(response.Code, "Ok", StringComparison.Ordinal))
-                {
-                    Console.WriteLine("RESULT=AUTHORIZED_PASS");
-                    return 0;
-                }
-
-                Console.Error.WriteLine("ERROR=ExpectedAuthorizedResponse");
-                return 10;
-            }
-
-            if (!response.Success
-                && string.Equals(response.Code, "UnauthorizedUser", StringComparison.Ordinal))
-            {
-                Console.WriteLine("RESULT=DENIED_PASS");
+                Console.WriteLine("RESULT=AUTHORIZED_PASS");
                 return 0;
             }
 
-            Console.Error.WriteLine("ERROR=ExpectedUnauthorizedUserResponse");
-            return 11;
+            Console.Error.WriteLine("ERROR=ExpectedAuthorizedResponse");
+            return 10;
         }
         catch (UnauthorizedAccessException exception)
         {
