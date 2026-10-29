@@ -1,0 +1,164 @@
+name: Native Candidate DPIBreak Provenance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/native-candidate-dpibreak-provenance.yml"
+      - "security/native-admission/dpibreak-v0.6.2-candidate.yaml"
+      - "docs/DPIBREAK-*.md"
+
+permissions:
+  contents: read
+
+jobs:
+  dpibreak-provenance:
+    name: Verify exact release and locked dependency graph without candidate execution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout NetPilot without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: netpilot
+          persist-credentials: false
+
+      - name: Checkout exact DPIBreak v0.6.2 release commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: dilluti0n/dpibreak
+          ref: 334285b60aabd5a32a83a65211ac60bce968b211
+          fetch-depth: 1
+          path: dpibreak
+          persist-credentials: false
+
+      - name: Verify exact source identity and annotated tag mapping
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+
+          test "$(git -C dpibreak rev-parse HEAD)" = "334285b60aabd5a32a83a65211ac60bce968b211"
+          test "$(git -C dpibreak rev-parse 'HEAD^{tree}')" = "7e95a17933fe9fda521865b1317c4f9f75d6c58c"
+          test "$(git -C dpibreak rev-parse 'HEAD:Cargo.lock')" = "e3adcd1b21711e7e754878b15625076c7bcaf7e9"
+
+          tag_object="$(git -C dpibreak ls-remote --tags origin refs/tags/v0.6.2 | awk '{print $1}')"
+          peeled_commit="$(git -C dpibreak ls-remote --tags origin 'refs/tags/v0.6.2^{}' | awk '{print $1}')"
+          test "$tag_object" = "7601532147fe92130964e49a644d3207e74b8a51"
+          test "$peeled_commit" = "334285b60aabd5a32a83a65211ac60bce968b211"
+
+          grep -Fq 'version = "0.6.2"' dpibreak/Cargo.toml
+          grep -Fq 'license = "GPL-3.0-or-later"' dpibreak/Cargo.toml
+          grep -Fq 'rust-version = "1.88"' dpibreak/Cargo.toml
+
+          {
+            echo 'schema_version=1'
+            echo 'scope=dpibreak-v0.6.2-source-and-lock-provenance'
+            echo 'release_tag=v0.6.2'
+            echo 'annotated_tag_object=7601532147fe92130964e49a644d3207e74b8a51'
+            echo 'release_commit=334285b60aabd5a32a83a65211ac60bce968b211'
+            echo 'release_tree=7e95a17933fe9fda521865b1317c4f9f75d6c58c'
+            echo 'cargo_lock_git_blob_sha1=e3adcd1b21711e7e754878b15625076c7bcaf7e9'
+            echo 'candidate_binary_executed=false'
+            echo 'windivert_loaded=false'
+            echo 'nfqueue_enabled=false'
+            echo 'firewall_changed=false'
+          } > evidence/identity.txt
+
+      - name: Inventory exact Cargo.lock without building or executing candidate
+        id: lock_inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import tomllib
+
+          lock_path = Path('dpibreak/Cargo.lock')
+          data = tomllib.loads(lock_path.read_text(encoding='utf-8'))
+          packages = data.get('package', [])
+
+          allowed_local = {'dpibreak', 'windivert'}
+          registry = []
+          local = []
+          unexpected_sources = []
+          missing_registry_checksum = []
+
+          for pkg in packages:
+              name = pkg['name']
+              version = pkg['version']
+              source = pkg.get('source')
+              checksum = pkg.get('checksum')
+              if source is None:
+                  local.append((name, version))
+                  if name not in allowed_local:
+                      unexpected_sources.append((name, version, 'local/path'))
+              elif source.startswith('registry+https://github.com/rust-lang/crates.io-index'):
+                  registry.append((name, version, checksum or ''))
+                  if not checksum:
+                      missing_registry_checksum.append((name, version))
+              else:
+                  unexpected_sources.append((name, version, source))
+
+          if unexpected_sources:
+              raise SystemExit(f'unexpected dependency source(s): {unexpected_sources}')
+          if missing_registry_checksum:
+              raise SystemExit(f'registry package(s) without checksum: {missing_registry_checksum}')
+
+          versions = {}
+          for pkg in packages:
+              versions.setdefault(pkg['name'], []).append(pkg['version'])
+
+          important = [
+              'dpibreak', 'windivert', 'windivert-sys', 'nfq-updated',
+              'etherparse', 'windows-services', 'windows', 'socket2',
+              'daemonize', 'libc', 'thiserror', 'anyhow', 'winres'
+          ]
+
+          out = []
+          out.append('schema_version=1')
+          out.append('scope=exact-cargo-lock-inventory')
+          out.append(f'package_count={len(packages)}')
+          out.append(f'registry_package_count={len(registry)}')
+          out.append(f'local_package_count={len(local)}')
+          out.append('allowed_local_packages=' + ','.join(f'{n}@{v}' for n, v in sorted(local)))
+          out.append('unexpected_dependency_sources=0')
+          out.append('registry_packages_without_checksum=0')
+          for name in important:
+              vals = sorted(set(versions.get(name, [])))
+              out.append(f"dependency_{name.replace('-', '_')}=" + ','.join(vals))
+
+          Path('evidence/cargo-lock-inventory.txt').write_text('\n'.join(out) + '\n', encoding='utf-8')
+          PY
+
+          cat evidence/cargo-lock-inventory.txt
+
+      - name: Record exact manifest hashes and remove no binaries because none were built
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          sha256sum dpibreak/Cargo.toml dpibreak/Cargo.lock dpibreak/crates/windivert/Cargo.toml | sort > evidence/input-sha256.txt
+          {
+            echo 'build_performed=false'
+            echo 'candidate_binary_executed=false'
+            echo 'driver_installed=false'
+            echo 'driver_loaded=false'
+            echo 'network_interception_enabled=false'
+            echo 'firewall_changed=false'
+            echo 'admission_effect=NONE'
+            echo 'release_gate=BLOCK'
+          } > evidence/execution-boundary.txt
+          sha256sum evidence/* | sort > evidence/SHA256SUMS-dpibreak-provenance.txt
+
+      - name: Upload text evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dpibreak-r28-source-dependency-provenance
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
