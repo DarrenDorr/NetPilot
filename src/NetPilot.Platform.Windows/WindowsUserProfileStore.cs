@@ -15,14 +15,29 @@ public sealed class WindowsUserProfileStore
     private readonly object _sync = new();
     private readonly string _installationRoot;
     private readonly string _usersRoot;
+    private readonly IWindowsUserProfileDirectorySecurity _directorySecurity;
 
-    public WindowsUserProfileStore(string installationRoot)
+    public WindowsUserProfileStore(
+        string installationRoot,
+        IWindowsUserProfileDirectorySecurity directorySecurity)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(installationRoot);
+        ArgumentNullException.ThrowIfNull(directorySecurity);
 
         _installationRoot = Path.GetFullPath(installationRoot)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         _usersRoot = Path.Combine(_installationRoot, "Users");
+        _directorySecurity = directorySecurity;
+    }
+
+    public void EnsureRoot()
+    {
+        lock (_sync)
+        {
+            EnsureExistingNonReparseDirectory(_installationRoot);
+            EnsureExistingNonReparseDirectory(_usersRoot);
+            _directorySecurity.SecureUsersRoot(_usersRoot);
+        }
     }
 
     public WindowsUserProfile EnsureProfile(string userSid)
@@ -31,12 +46,14 @@ public sealed class WindowsUserProfileStore
 
         lock (_sync)
         {
-            EnsureProtectedDirectory(_installationRoot, create: false);
-            EnsureProtectedDirectory(_usersRoot, create: true);
+            EnsureExistingNonReparseDirectory(_installationRoot);
+            EnsureExistingNonReparseDirectory(_usersRoot);
+            _directorySecurity.SecureUsersRoot(_usersRoot);
 
             var profileRoot = Path.Combine(_usersRoot, sid.Value);
             EnsureStrictChild(_usersRoot, profileRoot);
-            EnsureProtectedDirectory(profileRoot, create: true);
+            _directorySecurity.CreateOrSecureProfileRoot(profileRoot);
+            EnsureExistingNonReparseDirectory(profileRoot);
 
             return new WindowsUserProfile(sid.Value, profileRoot);
         }
@@ -70,13 +87,8 @@ public sealed class WindowsUserProfileStore
         return sid;
     }
 
-    private static void EnsureProtectedDirectory(string path, bool create)
+    private static void EnsureExistingNonReparseDirectory(string path)
     {
-        if (create)
-        {
-            Directory.CreateDirectory(path);
-        }
-
         if (!Directory.Exists(path))
         {
             throw new DirectoryNotFoundException($"Защищённый каталог NetPilot не найден: {path}");
