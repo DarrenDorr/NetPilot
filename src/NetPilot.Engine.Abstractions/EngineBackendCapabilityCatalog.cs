@@ -24,6 +24,8 @@ public enum EngineHostPlatform
 /// <summary>
 /// Доверенная декларация прямых сетевых возможностей конкретной пары backend/platform.
 /// Она не содержит executable, путей, аргументов, URL, команды запуска или статуса admission.
+/// Создать такую декларацию вне Engine.Abstractions нельзя: adapters должны получать её
+/// только из BuiltInEngineBackendCapabilityCatalog.
 /// </summary>
 public sealed record EngineBackendCapabilityDeclaration
 {
@@ -38,6 +40,14 @@ public sealed record EngineBackendCapabilityDeclaration
     }
 
     public BuiltInEngineBackendKind Backend { get; }
+
+    public string EngineId => Backend switch
+    {
+        BuiltInEngineBackendKind.Zapret2 => "zapret2",
+        BuiltInEngineBackendKind.ByeDpi => "byedpi",
+        _ => throw new InvalidOperationException(
+            "Для backend отсутствует канонический EngineId Net.Pilot.")
+    };
 
     public EngineHostPlatform Platform { get; }
 

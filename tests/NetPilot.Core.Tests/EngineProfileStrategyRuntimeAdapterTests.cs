@@ -39,9 +39,9 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
     {
         var runtime = new FakeProfileRuntime
         {
-            Capabilities = new EngineCapabilitySet(
-                EngineTrafficCapability.ExplicitProxyTcp
-                | EngineTrafficCapability.ExplicitProxyUdp),
+            CapabilityDeclaration = BuiltInEngineBackendCapabilityCatalog.Get(
+                BuiltInEngineBackendKind.ByeDpi,
+                EngineHostPlatform.Windows),
             Profiles =
             [
                 new EngineProfileDescriptor(EngineProfileId.Parse("discord"), "Discord"),
@@ -56,7 +56,7 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
     }
 
     [Fact]
-    public async Task ListStrategiesAsync_RejectsNonEmptyCatalogWithoutCapabilities()
+    public async Task ListStrategiesAsync_RejectsNonEmptyCatalogWithoutTrustedDeclaration()
     {
         var runtime = new LegacyProfileRuntime(
         [
@@ -67,7 +67,44 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
         var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
             () => adapter.ListStrategiesAsync());
 
-        Assert.Equal("MissingEngineCapabilities", exception.Code);
+        Assert.Equal("MissingTrustedEngineCapabilityDeclaration", exception.Code);
+    }
+
+    [Fact]
+    public async Task ListStrategiesAsync_RejectsWeakProviderWithManuallyClaimedCapabilities()
+    {
+        var runtime = new WeakOnlyCapabilityRuntime(
+        [
+            new EngineProfileDescriptor(EngineProfileId.Parse("discord"), "Discord")
+        ]);
+        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime);
+
+        var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
+            () => adapter.ListStrategiesAsync());
+
+        Assert.Equal("MissingTrustedEngineCapabilityDeclaration", exception.Code);
+    }
+
+    [Fact]
+    public async Task ListStrategiesAsync_RejectsBackendIdentityMismatch()
+    {
+        var runtime = new FakeProfileRuntime
+        {
+            EngineIdOverride = "zapret2",
+            CapabilityDeclaration = BuiltInEngineBackendCapabilityCatalog.Get(
+                BuiltInEngineBackendKind.ByeDpi,
+                EngineHostPlatform.Windows),
+            Profiles =
+            [
+                new EngineProfileDescriptor(EngineProfileId.Parse("youtube"), "YouTube")
+            ]
+        };
+        var adapter = new EngineProfileStrategyRuntimeAdapter(runtime);
+
+        var exception = await Assert.ThrowsAsync<StrategyRuntimeException>(
+            () => adapter.ListStrategiesAsync());
+
+        Assert.Equal("EngineCapabilityIdentityMismatch", exception.Code);
     }
 
     [Theory]
@@ -107,9 +144,9 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
     {
         var runtime = new FakeProfileRuntime
         {
-            Capabilities = new EngineCapabilitySet(
-                EngineTrafficCapability.ExplicitProxyTcp
-                | EngineTrafficCapability.ExplicitProxyUdp),
+            CapabilityDeclaration = BuiltInEngineBackendCapabilityCatalog.Get(
+                BuiltInEngineBackendKind.ByeDpi,
+                EngineHostPlatform.Windows),
             Profiles =
             [
                 new EngineProfileDescriptor(EngineProfileId.Parse("discord"), "Discord")
@@ -163,7 +200,9 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
     {
         var runtime = new FakeProfileRuntime
         {
-            Capabilities = new EngineCapabilitySet(EngineTrafficCapability.TransparentTcp),
+            CapabilityDeclaration = BuiltInEngineBackendCapabilityCatalog.Get(
+                BuiltInEngineBackendKind.ByeDpi,
+                EngineHostPlatform.Windows),
             State = EngineProfileRuntimeState.Active(
                 EngineProfileId.Parse("discord"))
         };
@@ -175,13 +214,18 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
         Assert.Equal("ActiveProfileCapabilitiesMismatch", exception.Code);
     }
 
-    private sealed class FakeProfileRuntime : IEngineProfileRuntime, IEngineCapabilityProvider
+    private sealed class FakeProfileRuntime :
+        IEngineProfileRuntime,
+        IEngineBackendCapabilityProvider
     {
-        public string EngineId => "fake";
+        public EngineBackendCapabilityDeclaration CapabilityDeclaration { get; init; } =
+            BuiltInEngineBackendCapabilityCatalog.Get(
+                BuiltInEngineBackendKind.Zapret2,
+                EngineHostPlatform.Windows);
 
-        public EngineCapabilitySet Capabilities { get; init; } = new(
-            EngineTrafficCapability.TransparentTcp
-            | EngineTrafficCapability.TransparentUdp);
+        public string? EngineIdOverride { get; init; }
+
+        public string EngineId => EngineIdOverride ?? CapabilityDeclaration.EngineId;
 
         public IReadOnlyList<EngineProfileDescriptor> Profiles { get; init; } = [];
 
@@ -218,6 +262,31 @@ public sealed class EngineProfileStrategyRuntimeAdapterTests
         IReadOnlyList<EngineProfileDescriptor> profiles) : IEngineProfileRuntime
     {
         public string EngineId => "legacy-no-capabilities";
+
+        public ValueTask<IReadOnlyList<EngineProfileDescriptor>> ListProfilesAsync(
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(profiles);
+
+        public ValueTask<EngineProfileRuntimeState> GetProfileStateAsync(
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(EngineProfileRuntimeState.Inactive);
+
+        public ValueTask ActivateProfileAsync(
+            EngineProfileId profileId,
+            CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+    }
+
+    private sealed class WeakOnlyCapabilityRuntime(
+        IReadOnlyList<EngineProfileDescriptor> profiles) :
+        IEngineProfileRuntime,
+        IEngineCapabilityProvider
+    {
+        public string EngineId => "manual-capabilities";
+
+        public EngineCapabilitySet Capabilities { get; } = new(
+            EngineTrafficCapability.TransparentTcp
+            | EngineTrafficCapability.TransparentUdp);
 
         public ValueTask<IReadOnlyList<EngineProfileDescriptor>> ListProfilesAsync(
             CancellationToken cancellationToken) =>

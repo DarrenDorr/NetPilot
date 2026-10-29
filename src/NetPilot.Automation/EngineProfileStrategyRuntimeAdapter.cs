@@ -6,8 +6,8 @@ namespace NetPilot.Automation;
 /// Переходный адаптер: существующий selector стратегий работает поверх нового
 /// engine-neutral профиля. Строковый ID не проходит к движку напрямую —
 /// перед вызовом runtime он обязан быть разобран как EngineProfileId.
-/// Дополнительно адаптер fail-closed проверяет, что backend явно объявил
-/// возможности, необходимые встроенному профилю.
+/// Дополнительно адаптер fail-closed проверяет доверенную backend declaration,
+/// её канонический EngineId и возможности, необходимые встроенному профилю.
 /// </summary>
 public sealed class EngineProfileStrategyRuntimeAdapter(
     IEngineProfileRuntime profileRuntime) : IStrategyRuntime
@@ -24,12 +24,12 @@ public sealed class EngineProfileStrategyRuntimeAdapter(
             return [];
         }
 
-        var capabilityProvider = RequireCapabilityProvider();
+        var declaration = RequireTrustedCapabilityDeclaration();
         var result = new List<StrategyDescriptor>(profiles.Count);
 
         foreach (var profile in profiles)
         {
-            if (!SupportsProfile(profile.Id, capabilityProvider.Capabilities))
+            if (!SupportsProfile(profile.Id, declaration.DirectCapabilities))
             {
                 continue;
             }
@@ -57,12 +57,12 @@ public sealed class EngineProfileStrategyRuntimeAdapter(
                 "Движок сообщил об активном профиле без корректного идентификатора.");
         }
 
-        var capabilityProvider = RequireCapabilityProvider();
-        if (!SupportsProfile(activeProfileId, capabilityProvider.Capabilities))
+        var declaration = RequireTrustedCapabilityDeclaration();
+        if (!SupportsProfile(activeProfileId, declaration.DirectCapabilities))
         {
             throw new StrategyRuntimeException(
                 "ActiveProfileCapabilitiesMismatch",
-                "Движок сообщил об активном профиле, требования которого не покрываются объявленными возможностями backend.");
+                "Движок сообщил об активном профиле, требования которого не покрываются доверенной backend declaration.");
         }
 
         return StrategyRuntimeState.Running(activeProfileId.Value);
@@ -84,12 +84,12 @@ public sealed class EngineProfileStrategyRuntimeAdapter(
 
         if (isPublished)
         {
-            var capabilityProvider = RequireCapabilityProvider();
-            if (!SupportsProfile(profileId, capabilityProvider.Capabilities))
+            var declaration = RequireTrustedCapabilityDeclaration();
+            if (!SupportsProfile(profileId, declaration.DirectCapabilities))
             {
                 throw new StrategyRuntimeException(
                     "UnsupportedProfileCapabilities",
-                    "Профиль отклонён: backend не объявил все необходимые сетевые возможности.");
+                    "Профиль отклонён: доверенная backend declaration не содержит все необходимые сетевые возможности.");
             }
         }
 
@@ -144,22 +144,40 @@ public sealed class EngineProfileStrategyRuntimeAdapter(
 
         if (profiles.Count > 0)
         {
-            _ = RequireCapabilityProvider();
+            _ = RequireTrustedCapabilityDeclaration();
         }
 
         return profiles;
     }
 
-    private IEngineCapabilityProvider RequireCapabilityProvider()
+    private EngineBackendCapabilityDeclaration RequireTrustedCapabilityDeclaration()
     {
-        if (_profileRuntime is IEngineCapabilityProvider capabilityProvider)
+        if (_profileRuntime is not IEngineBackendCapabilityProvider capabilityProvider)
         {
-            return capabilityProvider;
+            throw new StrategyRuntimeException(
+                "MissingTrustedEngineCapabilityDeclaration",
+                "Движок публикует или использует профиль без доверенной backend capability declaration.");
         }
 
-        throw new StrategyRuntimeException(
-            "MissingEngineCapabilities",
-            "Движок публикует или использует профиль без явной декларации сетевых возможностей.");
+        var declaration = capabilityProvider.CapabilityDeclaration;
+        if (declaration is null)
+        {
+            throw new StrategyRuntimeException(
+                "MissingTrustedEngineCapabilityDeclaration",
+                "Движок вернул пустую backend capability declaration.");
+        }
+
+        if (!string.Equals(
+                _profileRuntime.EngineId,
+                declaration.EngineId,
+                StringComparison.Ordinal))
+        {
+            throw new StrategyRuntimeException(
+                "EngineCapabilityIdentityMismatch",
+                "EngineId runtime не соответствует доверенной backend capability declaration.");
+        }
+
+        return declaration;
     }
 
     private static bool SupportsProfile(

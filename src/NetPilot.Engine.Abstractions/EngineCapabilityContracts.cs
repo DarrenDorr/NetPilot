@@ -55,13 +55,23 @@ public readonly record struct EngineCapabilitySet
 }
 
 /// <summary>
-/// Отдельный capability-контракт не ломает IEngineProfileRuntime.
-/// Runtime, публикующий реальные профили, обязан реализовать этот контракт,
-/// иначе переходный адаптер отклонит непустой каталог fail-closed.
+/// Общий capability-контракт. Он подходит для диагностических/no-admit runtime,
+/// но сам по себе недостаточен для публикации реальных пользовательских профилей:
+/// набор флагов может быть создан вручную.
 /// </summary>
 public interface IEngineCapabilityProvider
 {
     EngineCapabilitySet Capabilities { get; }
+}
+
+/// <summary>
+/// Усиленный контракт для runtime, публикующего реальные профили.
+/// Декларация имеет internal-конструктор и должна быть получена из доверенного
+/// BuiltInEngineBackendCapabilityCatalog, поэтому adapter не принимает произвольные флаги.
+/// </summary>
+public interface IEngineBackendCapabilityProvider
+{
+    EngineBackendCapabilityDeclaration CapabilityDeclaration { get; }
 }
 
 /// <summary>

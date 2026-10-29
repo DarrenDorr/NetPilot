@@ -5,13 +5,14 @@ namespace NetPilot.Core.Tests;
 public sealed class EngineBackendCapabilityCatalogTests
 {
     [Fact]
-    public void Zapret2Windows_DeclaresTransparentTcpAndUdp()
+    public void Zapret2Windows_DeclaresCanonicalIdentityAndTransparentTcpUdp()
     {
         var declaration = BuiltInEngineBackendCapabilityCatalog.Get(
             BuiltInEngineBackendKind.Zapret2,
             EngineHostPlatform.Windows);
 
         Assert.Equal(BuiltInEngineBackendKind.Zapret2, declaration.Backend);
+        Assert.Equal("zapret2", declaration.EngineId);
         Assert.Equal(EngineHostPlatform.Windows, declaration.Platform);
         Assert.True(declaration.DirectCapabilities.Supports(
             EngineTrafficCapability.TransparentTcp
@@ -25,18 +26,20 @@ public sealed class EngineBackendCapabilityCatalogTests
             BuiltInEngineBackendKind.Zapret2,
             EngineHostPlatform.Linux);
 
+        Assert.Equal("zapret2", declaration.EngineId);
         Assert.True(declaration.DirectCapabilities.Supports(
             EngineTrafficCapability.TransparentTcp
             | EngineTrafficCapability.TransparentUdp));
     }
 
     [Fact]
-    public void ByeDpiWindows_DeclaresExplicitProxyOnly()
+    public void ByeDpiWindows_DeclaresCanonicalIdentityAndExplicitProxyOnly()
     {
         var declaration = BuiltInEngineBackendCapabilityCatalog.Get(
             BuiltInEngineBackendKind.ByeDpi,
             EngineHostPlatform.Windows);
 
+        Assert.Equal("byedpi", declaration.EngineId);
         Assert.True(declaration.DirectCapabilities.Supports(
             EngineTrafficCapability.ExplicitProxyTcp
             | EngineTrafficCapability.ExplicitProxyUdp));
@@ -85,7 +88,7 @@ public sealed class EngineBackendCapabilityCatalogTests
     }
 
     [Fact]
-    public void Declaration_ExposesOnlyIdentityPlatformAndCapabilities()
+    public void Declaration_ExposesOnlyTrustedIdentityPlatformAndCapabilities()
     {
         var propertyNames = typeof(EngineBackendCapabilityDeclaration)
             .GetProperties()
@@ -94,7 +97,7 @@ public sealed class EngineBackendCapabilityCatalogTests
             .ToArray();
 
         Assert.Equal(
-            ["Backend", "DirectCapabilities", "Platform"],
+            ["Backend", "DirectCapabilities", "EngineId", "Platform"],
             propertyNames);
     }
 
