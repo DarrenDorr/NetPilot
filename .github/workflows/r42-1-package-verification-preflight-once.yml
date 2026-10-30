@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  NETPILOT_R42_1_SHA: d3dbc2849aeb083d0280042f5d77d9146e096472
+  NETPILOT_R42_1_SHA: 2650039479f8846d66eaeb35bb3622d0e77b2a9e
 
 jobs:
   managed-verification:
