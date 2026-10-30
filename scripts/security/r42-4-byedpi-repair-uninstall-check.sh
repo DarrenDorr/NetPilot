@@ -15,13 +15,13 @@ done
 bash scripts/security/r42-3-byedpi-atomic-promotion-check.sh >/tmp/netpilot-r42-4-parent.txt
 for marker in \
   'R42_3_PARENT_R42_2_GUARD=PASS' \
-  'R42_3_TYPED_SOURCE_REVALIDATION=PASS' \
+  'R42_3_TYPED_PROMOTION_SOURCE=PASS' \
   'R42_3_TARGET_FREE_ROLLBACK=PASS' \
   'R42_3_NO_PROCESS_OR_NETWORK_PRIMITIVES=PASS' \
   'R42_3_SERVICE_IPC_WIRING=ABSENT' \
   'R42_3_NATIVE_EXECUTION_TESTED=False' \
   'R42_3_PRODUCTION_ADMISSION=BLOCK' \
-  'RESULT=R42_3_ATOMIC_PROMOTION_PASS_BLOCK'; do
+  'RESULT=R42_3_ATOMIC_PROMOTION_ROLLBACK_PASS_BLOCK'; do
   grep -Fq "$marker" /tmp/netpilot-r42-4-parent.txt
 done
 rm -f /tmp/netpilot-r42-4-parent.txt
