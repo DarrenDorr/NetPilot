@@ -1,0 +1,56 @@
+schema_version: 1
+milestone: R42.6
+engine: byedpi
+platform: windows-x64
+scope: immutable_distribution_release_identity
+parent_checkpoint: dc28fc4f0b635c34c63bbaed99ea7658d8a9c827
+
+repository_identity:
+  owner: DarrenDorr
+  name: NetPilot
+
+release_identity:
+  version: 0.17.3
+  tag: byedpi-v0.17.3
+  reviewed_source_commit: 7efde1b1296eaaa187b70e951894dde17527489c
+  reviewed_source_tree: 8d13f6f5939190cd27ee68696247073a00b3e7dc
+
+immutable_assets:
+  payload:
+    name: NetPilot-ByeDPI-0.17.3-x64.zip
+    sha256: c0fe998e3d81ccb871f09d126e7b5ee0ab82d15daf78bc44bcd63b7762313db7
+  manifest:
+    name: NetPilot-ByeDPI-0.17.3-x64.manifest.json
+    sha256: eaa6f063fcb8e012810f849ed08b6bd82d4d046d4796c2fb4b903c4195985f54
+  provenance:
+    name: NetPilot-ByeDPI-0.17.3-x64.provenance.json
+    sha256: e1f98760eed94f5daa7d37a868015755220cb17d389000bc49e031da511f7f31
+
+publication_contract:
+  descriptor_unknown_fields: REJECT
+  descriptor_duplicate_fields: REJECT
+  repository_drift: REJECT
+  release_tag_drift: REJECT
+  asset_name_drift: REJECT
+  asset_hash_drift: REJECT
+  noncanonical_version: REJECT
+  mutable_tag_retargeting: FORBIDDEN_BY_POLICY
+  immutable_release_required_before_downloader: true
+
+boundaries:
+  release_creation_or_upload: NOT_IMPLEMENTED
+  product_downloader: NOT_IMPLEMENTED
+  network_acquisition: NOT_IMPLEMENTED
+  service_or_ipc_wiring: NOT_IMPLEMENTED
+  installer_integration: NOT_IMPLEMENTED
+  native_execution: NOT_IMPLEMENTED
+  production_admission: BLOCK
+
+evidence_required:
+  - parent_r42_5_guard
+  - deterministic_descriptor_roundtrip
+  - strict_negative_parser_tests
+  - exact_repository_and_release_identity
+  - exact_asset_names_and_hashes
+  - full_solution_build
+  - security_guard
