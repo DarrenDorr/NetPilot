@@ -215,5 +215,17 @@ public sealed class WindowsZapretStrategyRuntimeTests
             StopCalls++;
             return Task.FromResult(StopResponse);
         }
+
+        // This fake is intentionally scoped to Zapret adapter tests. ByeDPI operations
+        // fail closed so extending IPrivilegedServiceClient cannot accidentally make
+        // unrelated Zapret tests exercise or simulate a second native engine.
+        public Task<IpcResponse> GetByeDpiStatusAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Failure("NotSupportedByZapretTestFake"));
+
+        public Task<IpcResponse> StartByeDpiAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Failure("NotSupportedByZapretTestFake"));
+
+        public Task<IpcResponse> StopByeDpiAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Failure("NotSupportedByZapretTestFake"));
     }
 }
