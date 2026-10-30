@@ -19,8 +19,11 @@ public sealed class PrivilegedIpcWorker(
     UserResourceOwnership zapretOwnership,
     ZapretEngineController zapretController,
     ZapretUpdateOrchestrator zapretUpdater,
+    WindowsByeDpiRuntimeSession byeDpiRuntime,
     ILogger<PrivilegedIpcWorker> logger) : BackgroundService
 {
+    private const string ByeDpiResourceId = "byedpi";
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // LocalSystem закрывает service-owned user storage сразу при старте службы,
@@ -165,6 +168,10 @@ public sealed class PrivilegedIpcWorker(
             {
                 response = Failure(request, exception.Code, exception.Message);
             }
+            catch (WindowsServiceOwnedEngineProcessException exception)
+            {
+                response = Failure(request, exception.Code, exception.Message);
+            }
             catch (UpdateSecurityException exception)
             {
                 response = Failure(request, exception.Code, exception.Message);
@@ -249,6 +256,106 @@ public sealed class PrivilegedIpcWorker(
                 return Success(
                     request,
                     "Служба NetPilot доступна; интерактивный пользователь работает в отдельном SID-профиле.");
+
+            case IpcCommand.ByeDpiGetStatus:
+            {
+                var status = await byeDpiRuntime.GetStatusAsync(cancellationToken);
+                ReconcileByeDpiOwnership(status);
+
+                return new IpcResponse(
+                    IpcProtocol.Version,
+                    request.RequestId,
+                    true,
+                    "Ok",
+                    ByeDpiStatus: ToIpcByeDpiStatus(status));
+            }
+
+            case IpcCommand.ByeDpiStart:
+            {
+                if (!operationPolicy.IsAllowed(PrivilegedOperation.EngineStart))
+                {
+                    return Failure(
+                        request,
+                        "OperationDenied",
+                        "Запуск движка запрещён политикой безопасности.");
+                }
+
+                var current = await byeDpiRuntime.GetStatusAsync(cancellationToken);
+                ReconcileByeDpiOwnership(current);
+
+                if (current.State == WindowsServiceOwnedEngineProcessState.Running
+                    && !zapretOwnership.IsOwnedBy(clientSid, ByeDpiResourceId))
+                {
+                    return Failure(
+                        request,
+                        "EngineOwnedByAnotherUser",
+                        "NetPilot уже активен в другой пользовательской сессии.");
+                }
+
+                if (!zapretOwnership.TryAcquire(clientSid, ByeDpiResourceId))
+                {
+                    return Failure(
+                        request,
+                        "EngineSessionBusy",
+                        "Системная engine-сессия NetPilot уже занята другим движком или пользовательской сессией.");
+                }
+
+                try
+                {
+                    var started = await byeDpiRuntime.StartAsync(cancellationToken);
+                    return new IpcResponse(
+                        IpcProtocol.Version,
+                        request.RequestId,
+                        true,
+                        "Ok",
+                        "ByeDPI запущен.",
+                        ByeDpiStatus: ToIpcByeDpiStatus(started));
+                }
+                catch
+                {
+                    var afterFailure = await byeDpiRuntime.GetStatusAsync(CancellationToken.None);
+                    if (afterFailure.State == WindowsServiceOwnedEngineProcessState.Stopped)
+                    {
+                        zapretOwnership.Clear(ByeDpiResourceId);
+                    }
+
+                    throw;
+                }
+            }
+
+            case IpcCommand.ByeDpiStop:
+            {
+                if (!operationPolicy.IsAllowed(PrivilegedOperation.EngineStop))
+                {
+                    return Failure(
+                        request,
+                        "OperationDenied",
+                        "Остановка движка запрещена политикой безопасности.");
+                }
+
+                var current = await byeDpiRuntime.GetStatusAsync(cancellationToken);
+                ReconcileByeDpiOwnership(current);
+
+                if (current.State == WindowsServiceOwnedEngineProcessState.Running
+                    && !zapretOwnership.IsOwnedBy(clientSid, ByeDpiResourceId))
+                {
+                    return Failure(
+                        request,
+                        "EngineOwnedByAnotherUser",
+                        "Нельзя остановить NetPilot, активированный другой пользовательской сессией.");
+                }
+
+                var stopped = await byeDpiRuntime.StopAsync(cancellationToken);
+                zapretOwnership.Clear(ByeDpiResourceId);
+
+                return new IpcResponse(
+                    IpcProtocol.Version,
+                    request.RequestId,
+                    true,
+                    "Ok",
+                    "ByeDPI остановлен.",
+                    ByeDpiStatus: ToIpcByeDpiStatus(stopped));
+            }
 
             case IpcCommand.ZapretGetInstallationStatus:
             {
@@ -454,7 +561,16 @@ public sealed class PrivilegedIpcWorker(
     {
         if (status.State == ZapretProcessState.Stopped)
         {
+            // Compatibility overload is deliberately scoped to the Zapret resource.
             zapretOwnership.Clear();
+        }
+    }
+
+    private void ReconcileByeDpiOwnership(WindowsServiceOwnedEngineProcessSnapshot status)
+    {
+        if (status.State == WindowsServiceOwnedEngineProcessState.Stopped)
+        {
+            zapretOwnership.Clear(ByeDpiResourceId);
         }
     }
 
@@ -466,6 +582,13 @@ public sealed class PrivilegedIpcWorker(
                 ? IpcZapretProcessState.Running
                 : IpcZapretProcessState.Stopped,
             includeStrategy ? snapshot.StrategyId : null);
+
+    private static IpcByeDpiStatus ToIpcByeDpiStatus(
+        WindowsServiceOwnedEngineProcessSnapshot snapshot) =>
+        new(
+            snapshot.State == WindowsServiceOwnedEngineProcessState.Running
+                ? IpcByeDpiProcessState.Running
+                : IpcByeDpiProcessState.Stopped);
 
     private static IpcResponse Success(IpcRequest request, string message) =>
         new(IpcProtocol.Version, request.RequestId, true, "Ok", message);
