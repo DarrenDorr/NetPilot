@@ -2,11 +2,11 @@
 
 ## Status
 
-**LAB PROBE IMPLEMENTED / RUNTIME EVIDENCE PENDING / PRODUCTION ADMISSION BLOCK**
+**REAL SECOND-SID RUNTIME PASS / PRODUCTION ADMISSION BLOCK**
 
 Base: R37 hardened crash containment PASS.
 
-R38 tests the product rule that the global machine engine session belongs to one authenticated Windows SID plus one engine resource. Another authenticated Windows user may observe safe status but must not steal, restart or stop the active engine.
+R38 verifies the product rule that the global machine engine session belongs to one authenticated Windows SID plus one engine resource. Another authenticated Windows user may observe safe status but must not steal, restart or stop the active engine.
 
 ## Product boundary under test
 
@@ -23,7 +23,7 @@ Expected behavior while user A owns an active ByeDPI session:
 - user B `ByeDpiStop` -> `EngineOwnedByAnotherUser`;
 - failed user-B operations do not release or mutate user-A lease;
 - user A can subsequently stop the engine successfully;
-- no owner SID, process id, path or listener port is disclosed through IPC.
+- IPC status does not disclose owner SID, process id, executable path or listener port.
 
 ## Lab-only probe
 
@@ -45,23 +45,65 @@ Fixed modes:
 
 The probe uses only `WindowsPrivilegedServiceClient`. It cannot launch native processes, select executable paths or construct engine arguments.
 
-## Planned runtime evidence
+## Runtime evidence — PASS
 
-A pinned hosted Windows lab should:
+Hosted workflow: `R38 Real Second-SID Lease Runtime Once`
 
-1. use the hardened R37 code and exact R34-tested ByeDPI candidate;
-2. install the isolated LocalSystem lab service under protected Program Files;
-3. primary interactive Windows user enrolls and starts ByeDPI through authenticated IPC;
-4. create a temporary second local Windows user with a random ephemeral password;
-5. run the R38 non-owner probe under that second user's token in a non-zero Windows session;
-6. require authenticated IPC success but Start/Stop denial;
-7. verify engine remains running and still belongs to the first user lease;
-8. first user performs owner Stop and cleanup;
-9. remove the temporary user and workflow-owned service/tree;
-10. upload text-only evidence with no passwords and no owner SID disclosure.
+- run ID: `41009587630`;
+- exact product checkpoint: `61ebea0833ce845c174510274554ad1c67dce2b0`;
+- hosted OS: Windows Server 2025;
+- service account: LocalSystem;
+- exact ByeDPI SHA-256: `866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd`;
+- package: `0.17.3-netpilot-r34-lab`;
+- protected staging under `Program Files\NetPilot`;
+- primary client session was non-zero;
+- a temporary second local Windows account received a distinct SID;
+- second-user authenticated IPC succeeded;
+- second-user Start and Stop were both denied;
+- the original lease and running native process survived both denied operations;
+- the original owner then stopped ByeDPI successfully;
+- no `ciadpi.exe` or loopback listener remained after owner Stop;
+- temporary second user, service and workflow-owned protected tree were cleaned up.
 
-If the second-user process cannot obtain a non-zero interactive session on the hosted runner, the workflow must fail closed rather than treating a Session 0 token as valid multi-user evidence.
+Final evidence markers:
+
+```text
+PRODUCTION_ADMISSION=BLOCK
+PROTECTED_PROGRAM_FILES_TREE=True
+LOCALSYSTEM_SERVICE_RUNNING=True
+PRIMARY_OWNER_ENGINE_RUNNING=PASS
+SECOND_SID_DISTINCT=True
+SECOND_USER_AUTHENTICATED_IPC=PASS
+SECOND_USER_START_DENIED=PASS
+SECOND_USER_STOP_DENIED=PASS
+LEASE_PRESERVED=PASS
+SECOND_USER_CLEANUP=PASS
+PRIMARY_OWNER_STOP_AFTER_DENIAL=PASS
+R38_OWNER_STOP_CLEANUP=PASS
+WORKFLOW_OWNED_STATE_CLEANUP=PASS
+RESULT=R38_REAL_SECOND_SID_LEASE_PASS
+```
+
+Repository evidence copy:
+`security/native-admission/evidence/byedpi-r38/real-second-sid-lease.txt`
+
+Actions artifact:
+
+- name: `r38-byedpi-real-second-sid-lease-evidence`;
+- artifact ID: `12955959862`;
+- ZIP digest: `sha256:fed546422e177eae8f46612951c070e202538eaff6c0a3ea805778ea78c98b61`;
+- retention: 14 days from 2026-10-30.
+
+## Decision
+
+R38 is **PASS** for the scoped multi-user authenticated-IPC lease isolation claim.
+
+This does **not** turn ByeDPI into a production-admitted engine. It does not authorize transparent routing, WinDivert integration, arbitrary native arguments, or production rollout.
+
+## Next gate
+
+R39 should test service restart / ownership reconciliation semantics: after an abrupt or ordinary LocalSystem service restart there must be no orphan native process, no stale lease that another SID can steal, and no path that silently converts missing in-memory ownership into authorization.
 
 ## Production state
 
-Production native admission remains BLOCK. R38 is evidence for SID/lease isolation only; it does not authorize a production engine package or transparent routing.
+Production native admission remains **BLOCK**. Positive production engine catalogs remain empty and the normal `NetPilot.Service` remains fail-closed for native start.
