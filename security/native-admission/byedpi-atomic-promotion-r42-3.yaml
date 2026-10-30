@@ -1,0 +1,50 @@
+schema_version: 1
+milestone: R42.3
+component: byedpi_atomic_promotion_rollback
+parent_gate: R42.2
+platform: windows
+architecture: x64
+
+scope:
+  verified_r42_2_source_revalidation: IMPLEMENTED
+  same_volume_atomic_directory_promotion: IMPLEMENTED
+  canonical_managed_root: IMPLEMENTED
+  exact_manifest_reverification_after_move: IMPLEMENTED
+  protected_acl_owner_reverification_after_move: IMPLEMENTED
+  protected_current_previous_state: IMPLEMENTED
+  target_free_retained_previous_rollback: IMPLEMENTED
+  crash_recovery_journal: IMPLEMENTED
+  install: IMPLEMENTED
+  upgrade: IMPLEMENTED
+  repair: DEFERRED
+  uninstall: DEFERRED
+  production_service_or_ipc_wiring: NOT_IMPLEMENTED
+  runtime_network_acquisition: NOT_IMPLEMENTED
+  native_execution: NOT_IMPLEMENTED
+  production_admission: BLOCK
+
+fixed_boundaries:
+  staging_root: "%ProgramFiles%/NetPilot/Engines/Staging/ByeDPI/<transactionId>"
+  managed_root: "%ProgramFiles%/NetPilot/Engines/Managed/byedpi/<version>/x64"
+  state_root: "%ProgramFiles%/NetPilot/Engines/Managed/byedpi/.state"
+  transaction_id: "32 lowercase hex"
+  version: "canonical major.minor.patch"
+
+security_invariants:
+  - promotion public API accepts no raw filesystem path, URL, command line, executable path, or environment input
+  - promotion requires a typed source created only after exact R42.2 journal/tree revalidation
+  - production promotion and rollback require LocalSystem
+  - staging and managed roots must be on the same Windows volume
+  - existing immutable managed version is never overwritten
+  - exact manifest is reverified after atomic directory move
+  - ACL and owner are reverified after atomic directory move
+  - upgrade retains the exact previous immutable version and only protected state changes current selection
+  - rollback accepts no caller-selected version and may target only protected retained previous state
+  - engine lease blocks install, upgrade, and rollback mutation
+  - recovery metadata contains identifiers, versions, digests, phases, and timestamps but no absolute package paths
+  - repair and uninstall remain outside this milestone
+  - no native process is launched
+  - no Service or IPC command exposes this boundary
+  - trusted production execution catalogs remain empty
+
+result: R42_3_ATOMIC_PROMOTION_ROLLBACK_REVIEW_BLOCK
