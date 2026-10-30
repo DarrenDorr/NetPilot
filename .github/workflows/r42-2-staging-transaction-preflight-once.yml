@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
 
+# Final checkpoint trigger: fba8a822a5af6baf4f7d1f20980dac2c9950da8d
 env:
   NETPILOT_R42_2_SHA: fba8a822a5af6baf4f7d1f20980dac2c9950da8d
 
