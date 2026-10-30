@@ -99,9 +99,9 @@ for marker in \
   grep -Fq "$marker" "$response_policy"
 done
 for marker in \
-  'direct_asset_response_200: ALLOW' \
-  'release_asset_redirect_302: ALLOW_AFTER_POLICY_VALIDATION' \
-  'other_redirects: REJECT' \
+  'direct_200: ALLOW' \
+  'single_302: ALLOW_AFTER_R42_7_REDIRECT_VALIDATION' \
+  'other_status: REJECT' \
   'content_length_if_present: MUST_EQUAL_IMMUTABLE_DESCRIPTOR_SIZE'; do
   grep -Fq "$marker" "$contract"
 done
