@@ -9,5 +9,11 @@
     <ProjectReference Include="../NetPilot.Ipc/NetPilot.Ipc.csproj" />
     <ProjectReference Include="../NetPilot.Platform.Abstractions/NetPilot.Platform.Abstractions.csproj" />
     <ProjectReference Include="../NetPilot.Security/NetPilot.Security.csproj" />
+    <ProjectReference Include="../NetPilot.Updater/NetPilot.Updater.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>NetPilot.Platform.Windows.Tests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 </Project>
