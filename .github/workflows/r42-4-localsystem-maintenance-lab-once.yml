@@ -1,0 +1,201 @@
+name: R42.4 LocalSystem Repair Uninstall Lab Once
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/r42-4-localsystem-maintenance-lab-once.yml'
+
+permissions:
+  contents: read
+
+env:
+  NETPILOT_R42_4_SHA: 7c723a48924e79bbc5427d3f543f5d9a20f0e402
+
+jobs:
+  localsystem-repair-uninstall:
+    runs-on: windows-2025
+    steps:
+      - name: Checkout exact R42.4 checkpoint
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.NETPILOT_R42_4_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Assert clean hosted boundary and create lab marker
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -ne $env:NETPILOT_R42_4_SHA) { throw 'R42.4 checkpoint drift.' }
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) { throw 'Unexpected ciadpi process before R42.4 LocalSystem lab.' }
+
+          $productRoot = Join-Path $env:ProgramFiles 'NetPilot'
+          if (Test-Path -LiteralPath $productRoot) { throw 'R42.4 LocalSystem lab refuses a pre-existing Program Files\NetPilot tree.' }
+
+          $token = "r42-4-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          New-Item -ItemType Directory -Force -Path $productRoot | Out-Null
+          Set-Content -LiteralPath (Join-Path $productRoot '.r42-4-lab-owned') -Value $token -NoNewline
+          New-Item -ItemType Directory -Force -Path evidence | Out-Null
+          "LAB_OWNERSHIP_TOKEN=$token" | Set-Content -LiteralPath evidence\boundary.txt
+          "NETPILOT_R42_4_SHA=$env:NETPILOT_R42_4_SHA" | Add-Content -LiteralPath evidence\boundary.txt
+          'PREEXISTING_PRODUCT_ROOT=False' | Add-Content -LiteralPath evidence\boundary.txt
+          'NATIVE_EXECUTION_TESTED=False' | Add-Content -LiteralPath evidence\boundary.txt
+          'PRODUCTION_ADMISSION=BLOCK' | Add-Content -LiteralPath evidence\boundary.txt
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build isolated synthetic maintenance lab host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish tools\NetPilot.ByeDpiR42MaintenanceLab\NetPilot.ByeDpiR42MaintenanceLab.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            --output .labpublish
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $published = Resolve-Path '.labpublish\NetPilot.ByeDpiR42MaintenanceLab.exe'
+          $tempExe = "C:\Windows\Temp\NetPilotR424Lab-$env:GITHUB_RUN_ID.exe"
+          Copy-Item -LiteralPath $published -Destination $tempExe -Force
+          "LAB_EXE_SHA256=$((Get-FileHash -Algorithm SHA256 -LiteralPath $tempExe).Hash.ToLowerInvariant())" | Add-Content -LiteralPath evidence\boundary.txt
+
+      - name: Execute production repair and uninstall APIs as LocalSystem
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $taskName = "NetPilot-R42-4-$env:GITHUB_RUN_ID"
+          $labExe = "C:\Windows\Temp\NetPilotR424Lab-$env:GITHUB_RUN_ID.exe"
+          $resultPath = "C:\Windows\Temp\NetPilotR424Result-$env:GITHUB_RUN_ID.txt"
+          $token = "r42-4-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $start = (Get-Date).AddMinutes(5).ToString('HH:mm')
+          $taskCommand = "$labExe $resultPath $token"
+
+          & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC ONCE /ST $start /RU SYSTEM /RL HIGHEST /F | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to create R42.4 LocalSystem scheduled task.' }
+          & schtasks.exe /Run /TN $taskName | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to start R42.4 LocalSystem scheduled task.' }
+
+          $content = $null
+          foreach ($attempt in 1..120) {
+            if (Test-Path -LiteralPath $resultPath) {
+              $content = Get-Content -LiteralPath $resultPath -Raw
+              if ($content -match 'RESULT=') { break }
+            }
+            Start-Sleep -Seconds 1
+          }
+
+          if ([string]::IsNullOrWhiteSpace($content) -or $content -notmatch 'RESULT=') {
+            $info = Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction SilentlyContinue
+            if ($null -ne $info) { $info | Format-List * | Out-String | Write-Host }
+            throw 'R42.4 LocalSystem lab did not produce terminal evidence.'
+          }
+
+          $content | Write-Host
+          Copy-Item -LiteralPath $resultPath -Destination evidence\localsystem-result.txt -Force
+
+          foreach ($marker in @(
+            'IDENTITY_LOCALSYSTEM=PASS',
+            'LAB_OWNERSHIP_MARKER=PASS',
+            'INSTALL_PRECONDITION=PASS',
+            'UPGRADE_PRECONDITION=PASS',
+            'INTENTIONAL_CURRENT_CORRUPTION=PASS',
+            'EXACT_CURRENT_REPAIR=PASS',
+            'REPAIR_POST_SWAP_REVERIFY=PASS',
+            'REPAIR_STATE_UNCHANGED=PASS',
+            'TARGET_FREE_UNINSTALL=PASS',
+            'WHOLE_MANAGED_ROOT_REMOVED=PASS',
+            'CLEAN_MAINTENANCE_RECOVERY=PASS',
+            'MAINTENANCE_RESIDUE=ABSENT',
+            'SYNTHETIC_PAYLOAD_NOT_PE=PASS',
+            'SERVICE_IPC_WIRING=ABSENT',
+            'NATIVE_EXECUTION_TESTED=False',
+            'PRODUCTION_ADMISSION=BLOCK',
+            'RESULT=R42_4_LOCALSYSTEM_REPAIR_UNINSTALL_PASS_BLOCK'
+          )) {
+            if (-not $content.Contains($marker, [StringComparison]::Ordinal)) {
+              throw "Missing required R42.4 LocalSystem evidence marker: $marker"
+            }
+          }
+
+          $info = Get-ScheduledTaskInfo -TaskName $taskName
+          if ($info.LastTaskResult -ne 0) { throw "R42.4 LocalSystem task exit code was $($info.LastTaskResult)." }
+
+      - name: Verify real Program Files maintenance evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) { throw 'R42.4 LocalSystem lab unexpectedly launched ciadpi.' }
+
+          $productRoot = Join-Path $env:ProgramFiles 'NetPilot'
+          $managedByeDpi = Join-Path $productRoot 'Engines\Managed\byedpi'
+          if (Test-Path -LiteralPath $managedByeDpi) { throw 'R42.4 uninstall left Managed\byedpi behind.' }
+
+          $maintenanceRoot = Join-Path $productRoot 'Engines\Maintenance\ByeDPI'
+          if (-not (Test-Path -LiteralPath $maintenanceRoot -PathType Container)) { throw 'R42.4 maintenance root is missing.' }
+          $journalRoot = Join-Path $maintenanceRoot 'Journal'
+          $backupRoot = Join-Path $maintenanceRoot 'RepairBackups'
+          $tombstoneRoot = Join-Path $maintenanceRoot 'UninstallTombstones'
+          foreach ($path in @($journalRoot, $backupRoot, $tombstoneRoot)) {
+            if (-not (Test-Path -LiteralPath $path -PathType Container)) { throw "R42.4 maintenance evidence path missing: $path" }
+          }
+          if (@(Get-ChildItem -LiteralPath $journalRoot -File).Count -ne 0) { throw 'R42.4 journal residue remains.' }
+          if (@(Get-ChildItem -LiteralPath $backupRoot -Directory).Count -ne 0) { throw 'R42.4 repair backup residue remains.' }
+          if (@(Get-ChildItem -LiteralPath $tombstoneRoot -Directory).Count -ne 0) { throw 'R42.4 tombstone residue remains.' }
+
+          & icacls.exe $maintenanceRoot | Tee-Object -FilePath evidence\acl-maintenance.txt | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to capture R42.4 maintenance ACL evidence.' }
+          & icacls.exe $journalRoot | Tee-Object -FilePath evidence\acl-journal.txt | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to capture R42.4 journal ACL evidence.' }
+          & icacls.exe $backupRoot | Tee-Object -FilePath evidence\acl-repair-backups.txt | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to capture R42.4 repair backup ACL evidence.' }
+          & icacls.exe $tombstoneRoot | Tee-Object -FilePath evidence\acl-tombstones.txt | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to capture R42.4 tombstone ACL evidence.' }
+
+          'CIADPI_PROCESS_ABSENT=PASS' | Add-Content -LiteralPath evidence\boundary.txt
+          'MANAGED_BYEDPI_REMOVED=PASS' | Add-Content -LiteralPath evidence\boundary.txt
+          'MAINTENANCE_JOURNAL_CLEAN=PASS' | Add-Content -LiteralPath evidence\boundary.txt
+          'REPAIR_BACKUP_RESIDUE=ABSENT' | Add-Content -LiteralPath evidence\boundary.txt
+          'UNINSTALL_TOMBSTONE_RESIDUE=ABSENT' | Add-Content -LiteralPath evidence\boundary.txt
+          'RESULT=R42_4_LOCALSYSTEM_HOSTED_EVIDENCE_PASS_BLOCK' | Add-Content -LiteralPath evidence\boundary.txt
+
+      - name: Cleanup hosted lab state
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $taskName = "NetPilot-R42-4-$env:GITHUB_RUN_ID"
+          & schtasks.exe /End /TN $taskName 2>$null | Out-Null
+          & schtasks.exe /Delete /TN $taskName /F 2>$null | Out-Null
+          Remove-Item -LiteralPath "C:\Windows\Temp\NetPilotR424Lab-$env:GITHUB_RUN_ID.exe" -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath "C:\Windows\Temp\NetPilotR424Result-$env:GITHUB_RUN_ID.txt" -Force -ErrorAction SilentlyContinue
+
+          $productRoot = Join-Path $env:ProgramFiles 'NetPilot'
+          if (Test-Path -LiteralPath $productRoot) {
+            $marker = Join-Path $productRoot '.r42-4-lab-owned'
+            $expected = "r42-4-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+            if ((Test-Path -LiteralPath $marker) -and ((Get-Content -LiteralPath $marker -Raw).Trim() -eq $expected)) {
+              Remove-Item -LiteralPath $productRoot -Recurse -Force
+            } else {
+              Write-Error 'Refusing to delete Program Files\NetPilot because the R42.4 ownership marker is missing or mismatched.'
+            }
+          }
+
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) {
+            Write-Error 'ciadpi process exists after R42.4 LocalSystem lab cleanup.'
+          }
+
+      - name: Upload R42.4 LocalSystem evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r42-4-localsystem-maintenance-evidence
+          path: evidence
+          if-no-files-found: error
+          retention-days: 3
