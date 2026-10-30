@@ -1,3 +1,4 @@
+# Final one-shot trigger for exact R42.5 checkpoint dc28fc4f0b635c34c63bbaed99ea7658d8a9c827.
 name: R42.5 Provenance Package Preflight Once
 
 on:
