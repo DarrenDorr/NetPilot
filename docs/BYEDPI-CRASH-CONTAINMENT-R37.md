@@ -2,46 +2,36 @@
 
 ## Status
 
-**CRASH FINDING CONFIRMED / JOB OBJECT HARDENING IMPLEMENTED / PREFLIGHT PENDING / PRODUCTION ADMISSION BLOCK**
+**CRASH FINDING REMEDIATED / JOB OBJECT HARDENING PREFLIGHT PASS / HARDENED ABRUPT-CRASH RUNTIME PASS / PRODUCTION ADMISSION BLOCK**
 
 Base evidence: R36 installed LocalSystem + authenticated IPC PASS.
 
-## Observation — finding confirmed
+Exact hardened product-code checkpoint:
+`f3717b773cac6316b133ac6a52269db8b26466cf`.
+
+## Observation — finding confirmed before hardening
 
 Pinned observation run `41007700773` used the exact validated R36 product checkpoint and exact R34-tested ByeDPI binary.
 
-The lab:
+After authenticated IPC start, the LocalSystem service process was terminated abruptly with `Stop-Process -Force`.
 
-1. staged the isolated R36 service and exact candidate under protected Program Files;
-2. registered/started `NetPilot.R36.Lab` as LocalSystem;
-3. enrolled/authenticated the interactive client through IPC v4;
-4. started ByeDPI through typed IPC;
-5. proved `ciadpi.exe` was a direct child of the LocalSystem service process and owned by SYSTEM;
-6. terminated the service process abruptly with `Stop-Process -Force`;
-7. observed the engine process/listener after the service process had exited.
-
-Result:
+Pre-hardening result:
 
 - `ABRUPT_CRASH_RESIDUAL_CIADPI=True`;
 - `ABRUPT_CRASH_RESIDUAL_LISTENER=True`;
 - `CRASH_CONTAINMENT=NEEDS_HARDENING`;
 - `RESULT=R37_CRASH_CONTAINMENT_FINDING`.
 
-Evidence artifact:
-- id `12956536478`;
-- name `r37-byedpi-abrupt-service-crash-observation`;
-- ZIP SHA-256 `b1a862edef4228148af16b7227ee38918c1ece475dd7bfdf3b95ff8959a40fec`.
-
 Repository evidence:
 `security/native-admission/evidence/byedpi-r37/abrupt-service-crash-observation.txt`.
 
-This proves graceful `Stop-Service` cleanup from R36 is not sufficient for crash safety.
+This proved graceful `Stop-Service` cleanup from R36 was not sufficient for crash safety.
 
-## Hardening implementation
+## Hardening
 
 R37 adds `WindowsKillOnCloseJob` in the Windows platform boundary.
 
-The containment contract uses a Windows Job Object configured with:
+The containment contract uses Windows Job Objects configured with:
 
 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` (`0x00002000`).
 
@@ -58,32 +48,77 @@ If job creation, policy configuration or assignment fails, launch fails closed:
 - no uncontained engine is returned to the caller;
 - the caller receives `ProcessContainmentFailed`.
 
-Because the Job Object handle is owned by the service process, abrupt termination of that service should cause Windows itself to close the handle and terminate assigned engine processes, without relying on managed `Dispose`/host shutdown.
+If the service process terminates abruptly, Windows closes the service-owned job handle and terminates assigned engine processes without relying on managed `Dispose` or graceful host shutdown.
 
-## Tests and policy gates
+## Security/build preflight — PASS
 
-Added:
+The first preflight attempt, run `41008315384`, passed all security gates but found a compile-only naming collision (`CS0102`) between the Job Object information-class constant and struct. No security policy was weakened.
 
-- `tests/NetPilot.Platform.Windows.Tests/WindowsKillOnCloseJobTests.cs` — attaches a real harmless Windows process to the job and requires job disposal to terminate it;
-- `scripts/security/r37-crash-containment-boundary-check.sh` — enforces:
-  - production Service remains no-admit;
-  - only one `Process.Start` exists in the audited launcher;
-  - launcher requires `WindowsKillOnCloseJob.Attach(process)`;
-  - containment failures map to `ProcessContainmentFailed`;
-  - uncontained process cleanup exists;
-  - exact kill-on-close constant/API boundary remains present;
-  - the Job Object helper cannot become another process-launch surface.
+The constant was renamed to `JobObjectExtendedLimitInformationClass` with no semantic change.
 
-## Required next gates
+Successful pinned preflight run: `41008630281` on exact checkpoint `f3717b773cac6316b133ac6a52269db8b26466cf`.
 
-Before the finding can be considered remediated:
+Confirmed:
 
-1. full security/build preflight must pass on the exact R37 hardening checkpoint;
-2. Windows unit test must prove kill-on-close behavior;
-3. the isolated installed LocalSystem crash lab must be repeated with the hardened code;
-4. after forced service termination the lab must require:
-   - `RESIDUAL_CIADPI=False`;
-   - `RESIDUAL_LISTENER=False`;
-   - `CRASH_CONTAINMENT=PASS`.
+- security policy: PASS;
+- runtime admission policy: PASS;
+- R35 service-integration boundary: PASS;
+- R36 LocalSystem lab boundary: PASS;
+- R37 crash-containment boundary: PASS;
+- Linux full solution build: PASS;
+- Core tests: PASS;
+- Windows tests build: PASS;
+- hardened R36 lab service build: PASS;
+- R36 IPC client build: PASS;
+- real Windows kill-on-close Job Object unit test: PASS.
 
-Even a successful R37 remediation does not grant production engine admission. Multi-user second-SID evidence, reboot/recovery evidence and the separate transparent-routing/WinDivert decision remain later gates.
+## Hardened abrupt-crash runtime — PASS
+
+Pinned run: `41008867818`.
+
+Evidence artifact:
+- id `12956593465`;
+- name `r37-byedpi-hardened-crash-containment-evidence`;
+- ZIP SHA-256 `01c914a0ec5b764cc5571143aab866471bd8fa8b5b9928fe2b837367f3ee44e8`.
+
+Exact ByeDPI candidate SHA-256 remained:
+`866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd`.
+
+Reviewed evidence proves:
+
+- protected Program Files staging: PASS;
+- LocalSystem service start: PASS;
+- enrollment/authenticated IPC: PASS;
+- IPC engine start: PASS;
+- `ciadpi.exe` direct child of service: true;
+- `ciadpi.exe` owner: SYSTEM;
+- LocalSystem service process forcibly terminated: true;
+- `ABRUPT_CRASH_RESIDUAL_CIADPI=False`;
+- `ABRUPT_CRASH_RESIDUAL_LISTENER=False`;
+- `CRASH_CONTAINMENT=PASS`;
+- final result: `R37_HARDENED_CRASH_CONTAINMENT_PASS`;
+- workflow-owned cleanup: PASS.
+
+Repository evidence:
+`security/native-admission/evidence/byedpi-r37/hardened-abrupt-service-crash-pass.txt`.
+
+## Decision
+
+The R37 Job Object hardening **remediates the previously confirmed orphan process/listener defect in the tested installed LocalSystem + authenticated IPC boundary**.
+
+`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` is now a required security invariant for every native process accepted by the single audited launcher.
+
+Production native engine admission remains **BLOCK**.
+
+## Remaining gates
+
+R37 does not yet prove:
+
+- a second independent interactive Windows SID cannot steal or stop an active engine session;
+- reboot/startup recovery for an admitted installed engine;
+- production package/update/rollback admission for ByeDPI;
+- system-wide transparent routing;
+- WinDivert safety;
+- production engine admission.
+
+The next logical evidence gate is the real second-SID/multi-user lease test, followed by reboot/recovery and a scoped admission decision for the explicit-proxy engine path.
