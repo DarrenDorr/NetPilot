@@ -123,7 +123,7 @@ public static class ByeDpiAcquisitionTrustPolicy
             MaxTotalAssetBytes);
     }
 
-    public static Uri GetReleaseByTagApiUri(string releaseTag)
+    private static Uri GetReleaseByTagApiUri(string releaseTag)
     {
         if (string.IsNullOrWhiteSpace(releaseTag) || releaseTag.Length > 96)
         {
@@ -135,7 +135,7 @@ public static class ByeDpiAcquisitionTrustPolicy
             $"{ByeDpiImmutableReleaseDocument.RequiredRepositoryName}/releases/tags/{Uri.EscapeDataString(releaseTag)}");
     }
 
-    public static Uri GetAssetApiUri(long assetId)
+    private static Uri GetAssetApiUri(long assetId)
     {
         if (assetId <= 0)
         {
