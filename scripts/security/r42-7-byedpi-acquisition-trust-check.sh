@@ -50,12 +50,15 @@ for marker in \
   'metadata.Prerelease' \
   '!metadata.Immutable' \
   'metadata.Assets.Count != expectedAssets.Length' \
+  'Distinct().Count() != metadata.Assets.Count' \
   'matches.Length != 1' \
   'candidate.SizeBytes != expected.SizeBytes' \
   'candidate.Sha256Hex' \
   'candidate.AssetApiUri'; do
   grep -Fq "$marker" "$policy"
 done
+
+grep -Fq 'duplicate_asset_id: REJECT' "$contract"
 
 echo 'R42_7_EXACT_IMMUTABLE_ASSET_POLICY=PASS'
 
@@ -93,6 +96,7 @@ for test_name in \
   'DraftOrPrereleaseIsRejected' \
   'ReleaseTagDriftIsRejected' \
   'ExtraReleaseAssetIsRejected' \
+  'DuplicateAssetIdIsRejected' \
   'AssetDigestDriftIsRejected' \
   'AssetSizeDriftIsRejected' \
   'AssetApiUriDriftIsRejected' \
