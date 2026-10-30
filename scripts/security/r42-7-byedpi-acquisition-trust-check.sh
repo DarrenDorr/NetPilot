@@ -28,17 +28,22 @@ rm -f /tmp/netpilot-r42-7-parent.txt
 
 echo 'R42_7_PARENT_R42_6_GUARD=PASS'
 
-# Exact tag-only GitHub API plan; mutable latest discovery must not appear.
+# Exact tag-only GitHub API plan; mutable latest discovery and public arbitrary endpoint helpers must not appear.
 for marker in \
   'releases/tags/' \
   'RequiredRepositoryOwner' \
   'RequiredRepositoryName' \
-  'GetReleaseByTagApiUri' \
-  'GetAssetApiUri'; do
+  'private static Uri GetReleaseByTagApiUri' \
+  'private static Uri GetAssetApiUri'; do
   grep -Fq "$marker" "$policy"
 done
 if grep -Fq '/releases/latest' "$policy"; then
   echo 'R42.7 violation: mutable latest release discovery entered ByeDPI acquisition policy.' >&2
+  exit 1
+fi
+if grep -Fq 'public static Uri GetReleaseByTagApiUri' "$policy" \
+  || grep -Fq 'public static Uri GetAssetApiUri' "$policy"; then
+  echo 'R42.7 violation: arbitrary endpoint helper escaped the narrow policy surface.' >&2
   exit 1
 fi
 
