@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  NETPILOT_R42_3_SHA: ac216f949e7853e74bc854836975b782d1ba4639
+  NETPILOT_R42_3_SHA: ec8e6dad28c39387c632e24b05adecaaf16aa8c6
 
 jobs:
   managed-boundary:
