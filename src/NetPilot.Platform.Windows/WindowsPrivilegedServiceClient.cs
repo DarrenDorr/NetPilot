@@ -57,6 +57,24 @@ public sealed class WindowsPrivilegedServiceClient : IPrivilegedServiceClient
             IpcProtocol.EngineInstallTimeoutMilliseconds,
             cancellationToken);
 
+    public Task<IpcResponse> GetByeDpiStatusAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(
+            IpcRequest.CreateByeDpiGetStatus(),
+            IpcProtocol.RequestTimeoutMilliseconds,
+            cancellationToken);
+
+    public Task<IpcResponse> StartByeDpiAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(
+            IpcRequest.CreateByeDpiStart(),
+            IpcProtocol.RequestTimeoutMilliseconds,
+            cancellationToken);
+
+    public Task<IpcResponse> StopByeDpiAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(
+            IpcRequest.CreateByeDpiStop(),
+            IpcProtocol.RequestTimeoutMilliseconds,
+            cancellationToken);
+
     private static async Task<IpcResponse> SendAsync(
         IpcRequest request,
         int timeoutMilliseconds,
