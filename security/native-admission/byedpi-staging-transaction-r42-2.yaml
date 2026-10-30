@@ -1,0 +1,110 @@
+schema_version: 1
+review_id: BYEDPI-STAGING-TRANSACTION-R42-2
+review_date: 2026-10-30
+base_gate: R42_1_EXACT_PACKAGE_VERIFICATION_PASS_BLOCK
+
+decision:
+  protected_staging_transaction: IMPLEMENTED_ISOLATED
+  safe_zip_extraction_reused: true
+  exact_manifest_reverification: true
+  windows_acl_reverification: true
+  interruption_journal: IMPLEMENTED
+  deterministic_recovery: IMPLEMENTED
+  same_volume_promotion: NOT_IMPLEMENTED
+  rollback_slot_activation: NOT_IMPLEMENTED
+  production_service_or_ipc_wiring: NOT_IMPLEMENTED
+  runtime_network_acquisition: NOT_IMPLEMENTED
+  native_execution: NOT_IMPLEMENTED
+  production_admission: BLOCK
+
+production_boundary:
+  platform: windows-x64
+  authority: LocalSystem-only
+  staging_root_template: '%ProgramFiles%/NetPilot/Engines/Staging/ByeDPI/<transaction-id>'
+  transaction_id_format: 32-character-lowercase-hex
+  caller_supplied_production_base_path_allowed: false
+  user_supplied_native_path_allowed: false
+  user_supplied_url_allowed: false
+  user_supplied_command_or_arguments_allowed: false
+  process_start_allowed: false
+  network_fetch_allowed: false
+
+transaction:
+  phases:
+    - Created
+    - Extracting
+    - Verified
+  extraction_engine: NetPilot.Updater.SafeZipExtractor
+  exact_tree_verifier: NetPilot.Updater.ByeDpiPackageManifestVerifier
+  protected_acl_verifier: NetPilot.Platform.Windows.WindowsByeDpiProtectedStagingSecurityVerifier
+  transaction_root_acl: LocalSystem+BUILTIN_Administrators-only
+  inherited_unprivileged_mutation_allowed: false
+  reparse_points_allowed: false
+  manifest_hash_algorithm: SHA-256
+
+journal:
+  schema_version: 1
+  root: '%ProgramFiles%/NetPilot/Engines/Staging/ByeDPI/Journal'
+  max_bytes: 8192
+  atomic_write: temp-file-plus-same-directory-move
+  fields:
+    - schemaVersion
+    - transactionId
+    - manifestSha256
+    - version
+    - phase
+    - updatedUtc
+  stores_absolute_path: false
+  stores_url: false
+  stores_command_line: false
+  stores_pid: false
+  unknown_fields: reject
+  duplicate_fields: reject
+  unknown_phase: reject
+
+recovery:
+  Created: remove-exact-transaction-tree-and-journal
+  Extracting: remove-exact-transaction-tree-and-journal
+  Verified: preserve-for-future-promotion-gate
+  orphan_valid_transaction_directory: remove
+  unknown_root_file_or_directory: fail-closed
+  malformed_journal: fail-closed
+  reparse_point: fail-closed
+  interrupted_atomic_journal_temp: remove-only-if-strict-generated-name
+  recursive_delete_follows_reparse_points: false
+
+synthetic_tests:
+  native_binary_executed: false
+  synthetic_non_executable_ciadiapi_fixture: true
+  successful_stage_and_verify: required
+  verified_journal_preservation: required
+  extracting_journal_recovery: required
+  manifest_hash_failure_cleanup: required
+  archive_traversal_failure_cleanup: required
+
+production_invariants:
+  normal_service_no_admit: true
+  service_registration_added: false
+  ipc_operation_added: false
+  positive_executable_catalog_entry_added: false
+  positive_package_catalog_entry_added: false
+  installer_byedpi_payload_added: false
+  runtime_network_fetcher_added: false
+  transparent_windows_routing_authorized: false
+  windivert_authorized: false
+  production_admission: BLOCK
+
+implementation:
+  transaction: src/NetPilot.Platform.Windows/WindowsByeDpiProtectedStagingTransaction.cs
+  tests: tests/NetPilot.Platform.Windows.Tests/WindowsByeDpiProtectedStagingTransactionTests.cs
+  parent_manifest_verifier: src/NetPilot.Updater/ByeDpiPackageManifestVerifier.cs
+  parent_acl_verifier: src/NetPilot.Platform.Windows/WindowsByeDpiProtectedStagingSecurityVerifier.cs
+  guard: scripts/security/r42-2-byedpi-staging-transaction-check.sh
+
+next_gates:
+  - run Windows hosted LocalSystem synthetic transaction evidence against the exact R42.2 checkpoint
+  - prove recovery after an actually terminated transaction host, not only a synthetic Extracting journal
+  - implement and test same-volume atomic promotion into immutable Managed/ByeDPI layout
+  - implement rollback slot and interrupted promotion recovery
+  - bind the final package manifest to release provenance and code-signing policy
+  - keep native execution blocked until final HIGH_ASSURANCE production admission review
