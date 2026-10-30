@@ -77,6 +77,10 @@ public static class ByeDpiAcquisitionTrustPolicy
         {
             throw Invalid("ByeDPI release metadata contains a null asset entry.");
         }
+        if (metadata.Assets.Select(static asset => asset.AssetId).Distinct().Count() != metadata.Assets.Count)
+        {
+            throw Invalid("ByeDPI release metadata contains duplicate GitHub asset ids.");
+        }
 
         var plans = new List<ByeDpiAcquisitionAssetPlan>(expectedAssets.Length);
         long totalBytes = 0;
