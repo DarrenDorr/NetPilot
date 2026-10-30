@@ -338,7 +338,7 @@ jobs:
               Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($ownedRoot, [StringComparison]::OrdinalIgnoreCase) }
           )
           if ($residual.Count -ne 0) {
-            'RESIDUAL_CIADPI=False' | Add-Content -LiteralPath evidence\r34-boundary.txt
+            'RESIDUAL_CIADPI=True' | Add-Content -LiteralPath evidence\r34-boundary.txt
             $failed = $true
           } else {
             'RESIDUAL_CIADPI=False' | Add-Content -LiteralPath evidence\r34-boundary.txt
