@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main, feature/byedpi-typed-argv-r33 ]
+    branches: [ main ]
 
 permissions:
   contents: read
@@ -23,12 +23,6 @@ jobs:
 
       - name: Проверка runtime admission composition
         run: bash scripts/runtime-admission-policy-check.sh
-
-      - name: R34 lab boundary policy when present
-        run: |
-          if [ -f scripts/security/r34-lab-boundary-check.sh ]; then
-            bash scripts/security/r34-lab-boundary-check.sh
-          fi
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
@@ -69,14 +63,6 @@ jobs:
       - name: Restore UAC lab IPC client
         run: dotnet restore tools/NetPilot.WindowsIpcLabClient/NetPilot.WindowsIpcLabClient.csproj
 
-      - name: Restore R34 lab host when present
-        shell: pwsh
-        run: |
-          if (Test-Path 'tools\NetPilot.ByeDpiR34Lab\NetPilot.ByeDpiR34Lab.csproj') {
-            dotnet restore tools\NetPilot.ByeDpiR34Lab\NetPilot.ByeDpiR34Lab.csproj
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-
       - name: Build Windows security tests
         run: dotnet build tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj --configuration Release --no-restore
 
@@ -85,14 +71,6 @@ jobs:
 
       - name: Build UAC lab IPC client without execution
         run: dotnet build tools/NetPilot.WindowsIpcLabClient/NetPilot.WindowsIpcLabClient.csproj --configuration Release --no-restore
-
-      - name: Build R34 lab host without native execution when present
-        shell: pwsh
-        run: |
-          if (Test-Path 'tools\NetPilot.ByeDpiR34Lab\NetPilot.ByeDpiR34Lab.csproj') {
-            dotnet build tools\NetPilot.ByeDpiR34Lab\NetPilot.ByeDpiR34Lab.csproj --configuration Release --no-restore
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
 
       - name: Windows unit and local pipe security tests
         run: dotnet test tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj --configuration Release --no-build
@@ -120,7 +98,6 @@ jobs:
         shell: pwsh
         run: |
           Write-Host 'Hosted Windows CI validates build, unit/local-pipe tests, lab-client compilation and installer artifact creation only.'
-          Write-Host 'R34 lab host is compiled but ByeDPI native execution is NOT performed in this CI job.'
           Write-Host 'The lab IPC client is NOT executed on the hosted runner because no real installed LocalSystem service/UAC/SID binding exists here.'
           Write-Host 'Hosted CI MUST NOT be treated as evidence of real standard-user UAC, installer elevation, LocalSystem service lifecycle or cross-user SID binding.'
           Write-Host 'Those checks belong to the isolated windows-uac-security workflow.'
