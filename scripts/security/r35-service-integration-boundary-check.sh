@@ -4,9 +4,12 @@ set -euo pipefail
 program='src/NetPilot.Service/Program.cs'
 worker='src/NetPilot.Service/PrivilegedIpcWorker.cs'
 session='src/NetPilot.Platform.Windows/WindowsByeDpiRuntimeSession.cs'
+protocol='src/NetPilot.Ipc/IpcProtocol.cs'
+validator='src/NetPilot.Ipc/IpcRequestValidator.cs'
+ownership='src/NetPilot.Security/UserResourceOwnership.cs'
 argv_catalog='src/NetPilot.Engine.Abstractions/EngineArgumentPlanContracts.cs'
 
-for file in "$program" "$worker" "$session" "$argv_catalog"; do
+for file in "$program" "$worker" "$session" "$protocol" "$validator" "$ownership" "$argv_catalog"; do
   test -f "$file"
 done
 
@@ -20,15 +23,40 @@ if grep -Fq 'SystemZapretProcessLauncher' "$program"; then
   exit 1
 fi
 
-# R35 pre-admission scaffold must not yet expose ByeDPI commands over authenticated IPC.
-if grep -Fq 'ByeDpi' "$worker"; then
-  echo 'R35 boundary violation: ByeDPI IPC dispatch was exposed before R34 runtime evidence/admission review.' >&2
+# R34 PASS allows a typed authenticated IPC surface, but not arbitrary payload.
+grep -Fq 'ByeDpiGetStatus' "$protocol"
+grep -Fq 'ByeDpiStart' "$protocol"
+grep -Fq 'ByeDpiStop' "$protocol"
+grep -Fq 'CreateByeDpiGetStatus()' "$protocol"
+grep -Fq 'CreateByeDpiStart()' "$protocol"
+grep -Fq 'CreateByeDpiStop()' "$protocol"
+grep -Fq 'IpcCommand.ByeDpiGetStatus => ValidateNoPayload(request)' "$validator"
+grep -Fq 'IpcCommand.ByeDpiStart => ValidateNoPayload(request)' "$validator"
+grep -Fq 'IpcCommand.ByeDpiStop => ValidateNoPayload(request)' "$validator"
+grep -Fq 'case IpcCommand.ByeDpiGetStatus:' "$worker"
+grep -Fq 'case IpcCommand.ByeDpiStart:' "$worker"
+grep -Fq 'case IpcCommand.ByeDpiStop:' "$worker"
+
+# IPC must never expose native process identity or listener details in the ByeDPI DTO.
+if grep -Eq 'record IpcByeDpiStatus\([^)]*(ProcessId|Port|Path|Sid|Owner)' "$protocol"; then
+  echo 'R35 boundary violation: ByeDPI IPC status exposes privileged runtime details.' >&2
   exit 1
 fi
+
+# Cross-engine lease must be resource-scoped; legacy no-resource operations are Zapret-only.
+grep -Fq 'LegacyZapretResourceId = "zapret"' "$ownership"
+grep -Fq 'TryAcquire(clientSid, ByeDpiResourceId)' "$worker"
+grep -Fq 'Clear(ByeDpiResourceId)' "$worker"
 
 # The service integration wrapper itself must never own process creation.
 if grep -Eq 'Process\.Start|System\.Diagnostics' "$session"; then
   echo 'R35 boundary violation: service runtime session gained a process-creation surface.' >&2
+  exit 1
+fi
+
+# No raw runtime material may enter the plan provider contract.
+if grep -Eq 'CreatePlan\([^)]*(string|path|argv|url|environment|port|address)' "$session"; then
+  echo 'R35 boundary violation: ByeDPI plan provider accepts runtime-controlled material.' >&2
   exit 1
 fi
 
