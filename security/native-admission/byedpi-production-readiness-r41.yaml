@@ -1,0 +1,295 @@
+schema_version: 1
+review_id: byedpi-production-readiness-r41
+reviewed_at: 2026-10-30
+candidate:
+  component_set: byedpi-v0.17.3-netpilot-fork-candidate
+  upstream_release: v0.17.3
+  upstream_commit: 7efde1b1296eaaa187b70e951894dde17527489c
+  windows_x64_sha256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+  patchset: 0001-0007
+  external_release_recheck:
+    date: 2026-10-30
+    latest_published_release: v0.17.3
+    license: MIT
+
+decision:
+  readiness: NOT_READY
+  production_admission: BLOCK
+  may_execute_in_production: false
+  may_integrate_in_production: false
+  may_add_positive_catalog_entry: false
+  lab_execution_only: true
+  reason: >-
+    R34-R40 establish a strong scoped Windows x64 loopback explicit-proxy lifecycle,
+    but product/release requirements remain open. Runtime evidence must not be
+    converted into production admission while traffic integration, UDP/resource
+    behavior, package lifecycle, release trust, licensing notices and high-assurance
+    review are incomplete.
+
+proven_runtime_scope:
+  platform: windows-x64
+  listener: loopback-only
+  proxy_mode: explicit
+  protocol_runtime_evidence: tcp-socks5-to-local-http
+  native_owner: LocalSystem-service
+  ipc: authenticated-windows-named-pipe-v4
+  multi_user_ownership: sid-plus-engine-resource
+  raw_native_arguments_from_ui_or_ipc: false
+  production_catalogs_populated: false
+
+passed_gates:
+  - id: exact-source-and-patch-provenance
+    status: PASS
+    evidence:
+      - security/native-admission/byedpi-v0.17.3-fork-candidate.yaml
+      - docs/BYEDPI-FULL-PATCHSET-COMPILE-R28.4.md
+    claim: exact v0.17.3 source plus curated patchset 0001-0007 is pinned and reproducibly built
+
+  - id: targeted-memory-and-windows-hardening
+    status: PASS_SCOPED
+    evidence:
+      - docs/BYEDPI-KAVL-SANITIZER-R28.4.md
+      - docs/BYEDPI-WINDOWS-HANDLE-HARDENING-R28.4.md
+      - docs/BYEDPI-WINDOWS-AUX-SOCKET-HARDENING-R28.4.md
+    claim: targeted reviewed defects have dedicated compile/static/sanitizer evidence
+
+  - id: typed-argv-boundary
+    status: PASS
+    evidence:
+      - docs/BYEDPI-TYPED-ARGV-R33.md
+    claim: current NetPilot path cannot express raw user CLI/path/url/script values for the R34-R40 plan
+
+  - id: service-owned-functional-runtime
+    status: PASS
+    evidence:
+      - docs/BYEDPI-SERVICE-OWNED-FUNCTIONAL-R34.md
+    claim: exact candidate completed repeated loopback SOCKS5-to-HTTP functional cycles under the audited launch chain
+
+  - id: authenticated-ipc-and-engine-aware-lease
+    status: PASS
+    evidence:
+      - docs/BYEDPI-SERVICE-INTEGRATION-R35.md
+    claim: typed ByeDPI IPC v4 and global SID-plus-engine ownership are validated without opening production launch
+
+  - id: installed-localsystem-boundary
+    status: PASS
+    evidence:
+      - docs/BYEDPI-LOCALSYSTEM-SERVICE-LAB-R36.md
+    claim: installed lab-only LocalSystem service path is validated through authenticated IPC
+
+  - id: crash-containment
+    status: PASS
+    evidence:
+      - docs/BYEDPI-CRASH-CONTAINMENT-R37.md
+    claim: Windows Job Object kill-on-close prevents orphan service-owned native processes after host failure
+
+  - id: real-second-sid-isolation
+    status: PASS
+    evidence:
+      - docs/BYEDPI-MULTIUSER-LEASE-R38.md
+    claim: a distinct authenticated SID cannot steal or stop another SID's live engine lease
+
+  - id: service-restart-reconciliation
+    status: PASS
+    evidence:
+      - docs/BYEDPI-RESTART-RECONCILIATION-R39.md
+    claim: service crash removes old process before a restarted service exposes Stopped and permits a fresh lease
+
+  - id: repeated-lifecycle-state-drift
+    status: PASS
+    evidence:
+      - docs/BYEDPI-LIFECYCLE-SOAK-R40.md
+      - security/native-admission/evidence/byedpi-r40/lifecycle-soak.txt
+    claim: 8 graceful cycles, 4 crash/restart cycles and 4 SID handoffs completed without observed process/listener/lease/profile/enrollment drift
+
+blocking_gates:
+  - id: windows-product-traffic-integration
+    status: BLOCK
+    severity: critical
+    evidence:
+      - src/NetPilot.Engine.Abstractions/EngineBackendCapabilityCatalog.cs
+      - security/native-admission/byedpi-v0.17.3-fork-candidate.yaml
+    finding: >-
+      ByeDPI on Windows is declared only as ExplicitProxyTcp/ExplicitProxyUdp.
+      NetPilot has no admitted transparent-routing component and the candidate policy
+      explicitly requires separate admission for system-wide Windows routing.
+    required_before_admit: >-
+      Choose and separately review an end-user traffic integration model. Do not
+      mutate system proxy or add WinDivert/routing implicitly as part of ByeDPI admission.
+
+  - id: udp-runtime-and-dns-semantics
+    status: BLOCK
+    severity: high
+    finding: >-
+      R34-R40 runtime evidence exercises TCP SOCKS5 to local HTTP only while the
+      Windows capability declaration also advertises ExplicitProxyUdp.
+    required_before_admit: >-
+      Either narrow the first production capability/profile to a TCP-only scope or
+      add dedicated UDP/DNS functional, malformed-input, cleanup and multi-user tests.
+
+  - id: connection-and-resource-budgets
+    status: BLOCK
+    severity: high
+    evidence:
+      - security/native-admission/byedpi-v0.17.3-fork-candidate.yaml
+      - src/NetPilot.Engine.Abstractions/ByeDpiR34LabContract.cs
+    finding: >-
+      R34 launch metadata contains placeholder framework budgets that ByeDPI does not
+      consume. Connection/UDP state, memory, handle and concurrency limits are not yet
+      measured and enforced as production policy.
+    required_before_admit: >-
+      Run bounded concurrency/resource stress, establish limits, and add enforceable
+      typed policy or an explicit documented reason why a particular resource is bounded elsewhere.
+
+  - id: hung-start-readiness-timeout
+    status: BLOCK
+    severity: high
+    finding: >-
+      Successful lifecycle and crash cleanup are proven, but production readiness has
+      no dedicated evidence for a process that stays alive without becoming ready, a
+      stuck proxy, or a stop timeout/escalation path.
+    required_before_admit: >-
+      Add fixed readiness timeout, health confirmation, stop timeout and fail-closed
+      escalation evidence without exposing PID/path/raw command surfaces to IPC.
+
+  - id: remaining-upstream-warning-and-reliability-review
+    status: BLOCK
+    severity: high
+    evidence:
+      - security/native-admission/byedpi-v0.17.3-fork-candidate.yaml
+    finding: >-
+      Broad upstream numeric-conversion warnings remain review debt and curated
+      reliability backports are still REVIEW_NOT_APPLIED/REVIEW_OR_REIMPLEMENT_NOT_APPLIED.
+    required_before_admit: >-
+      Classify remaining warnings and each selected reliability backport, then either
+      apply with regression evidence or record a high-assurance rejection rationale.
+
+  - id: production-package-provisioning
+    status: BLOCK
+    severity: critical
+    evidence:
+      - installer/NetPilot.iss
+      - src/NetPilot.Service/Program.cs
+    finding: >-
+      The production installer does not ship an immutable ByeDPI package and the
+      normal service has no admitted ByeDPI package/plan provider.
+    required_before_admit: >-
+      Design a candidate-specific immutable production package manifest, protected
+      install transaction, verification handoff and rollback behavior before any
+      positive runtime catalog entry exists.
+
+  - id: byedpi-update-and-rollback-channel
+    status: BLOCK
+    severity: high
+    finding: >-
+      Existing updater code is Zapret-specific. There is no ByeDPI release source,
+      admission catalog, transactional updater, downgrade/rollback policy or safe
+      update behavior while another SID owns an active session.
+    required_before_admit: >-
+      Implement and independently review a pinned/admitted ByeDPI package lifecycle,
+      or explicitly choose installer-bundled immutable versions with no runtime network updater.
+
+  - id: third-party-license-notices
+    status: BLOCK
+    severity: high
+    evidence:
+      - docs/THIRD-PARTY-NOTICES.md
+      - installer/NetPilot.iss
+    finding: >-
+      THIRD-PARTY-NOTICES does not currently list ByeDPI and the installer does not
+      package ByeDPI's MIT license/copyright notice because ByeDPI is not yet shipped.
+    required_before_admit: >-
+      Add exact component/fork/patch attribution and ship the applicable original MIT
+      license/copyright notice with any distribution that contains the ByeDPI binary.
+
+  - id: netpilot-release-code-signing
+    status: BLOCK
+    severity: high
+    evidence:
+      - scripts/build-installer.ps1
+    finding: >-
+      The build verifies the downloaded Inno Setup publisher signature but does not
+      sign NetPilot application/service/native package/installer outputs with a NetPilot
+      release identity.
+    required_before_admit: >-
+      Define production code-signing key custody, sign release artifacts, verify
+      signatures in release CI, and document certificate rotation/revocation response.
+
+  - id: product-ux-and-safe-controls
+    status: BLOCK
+    severity: high
+    evidence:
+      - src/NetPilot.App/ViewModels/MainWindowViewModel.cs
+      - src/NetPilot.Service/Program.cs
+    finding: >-
+      Typed ByeDPI IPC exists below the GUI boundary, but the production product has
+      not yet defined explicit user controls/status/recovery for ByeDPI or how they
+      interact with profile selection and multi-user ownership.
+    required_before_admit: >-
+      Add a reviewed UX contract with explicit start/stop/status, ownership-safe error
+      messages, no raw tuning surface, and recovery guidance before wiring a launcher.
+
+  - id: production-observability-and-support
+    status: BLOCK
+    severity: medium
+    finding: >-
+      Lab evidence is strong, but a production support contract for engine health,
+      bounded local logs, privacy/redaction, failure reason codes and support export is
+      not yet defined for ByeDPI.
+    required_before_admit: >-
+      Define privacy-preserving local diagnostics and a support bundle that never
+      exports user traffic, credentials, raw payloads, secret material or owner SID.
+
+  - id: release-metadata-consistency
+    status: BLOCK
+    severity: medium
+    evidence:
+      - installer/NetPilot.iss
+      - docs/THIRD-PARTY-NOTICES.md
+      - scripts/build-installer.ps1
+    finding: >-
+      Release metadata has drift: installer ProjectUrl points to a different repository
+      path, THIRD-PARTY-NOTICES names Inno Setup 7.1.0 while the build script pins 7.1.1,
+      and no single release manifest currently binds product/native/tool versions.
+    required_before_admit: >-
+      Establish one canonical release manifest and make installer URLs, third-party
+      notices, tool versions, hashes and generated support metadata derive from it.
+
+  - id: high-assurance-admission-review
+    status: BLOCK
+    severity: critical
+    evidence:
+      - security/native-admission/byedpi-v0.17.3-fork-candidate.yaml
+    finding: >-
+      Candidate policy still requires advisory review and HIGH_ASSURANCE human review
+      before ADMIT. R34-R40 runtime PASS does not supersede that requirement.
+    required_before_admit: >-
+      Complete an independent high-assurance review of the exact final production
+      package, plan, installer/updater path and release evidence after all other blockers close.
+
+recommended_scope_if_review_resumes:
+  first_candidate_scope: windows-x64-loopback-explicit-proxy-tcp-only
+  exclude_until_separately_admitted:
+    - explicit-proxy-udp
+    - dns-proxying-or-dns-interception
+    - system-proxy-mutation
+    - transparent-routing
+    - windivert
+    - user-supplied-native-options
+    - user-supplied-paths-files-or-raw-payloads
+    - automatic-upstream-runtime-update
+
+next_work_order:
+  - R41.1: close release metadata and third-party notice drift without enabling native execution
+  - R41.2: choose immutable package distribution/update model and implement fail-closed install/rollback verification
+  - R41.3: add readiness/hang timeout plus bounded connection/resource stress; decide TCP-only versus separate UDP/DNS gate
+  - R41.4: define Windows traffic-integration and production UX contract without implicit system mutation
+  - R41.5: add release code signing and privacy-preserving production diagnostics/support contract
+  - R41.6: run final exact-package high-assurance review and only then decide whether a positive production admission entry is justified
+
+invariants:
+  production_service_must_remain_no_admit: true
+  production_catalogs_must_remain_empty_during_r41: true
+  candidate_status_must_remain_review: true
+  candidate_release_gate_must_remain_block: true
+  no_positive_admission_entry_in_r41: true

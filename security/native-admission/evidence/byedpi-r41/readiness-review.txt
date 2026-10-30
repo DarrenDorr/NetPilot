@@ -1,0 +1,35 @@
+NetPilot R41 — ByeDPI production admission readiness review evidence
+
+Review decision: NOT_READY / PRODUCTION_ADMISSION=BLOCK
+Exact review checkpoint: eb46e5f9da52099b7c3b713e2defab424aa029bd
+Preflight workflow: R41 ByeDPI Readiness Review Preflight Once
+Preflight run ID: 41016464830
+Preflight conclusion: success
+Native execution in R41: false
+
+Validated fail-closed properties:
+- candidate admission_status remains REVIEW
+- candidate release_gate remains BLOCK
+- candidate may_execute remains false
+- candidate may_integrate remains false
+- production NetPilot.Service uses NoAdmittedWindowsVerifiedEngineProcessLauncher
+- production NetPilot.Service uses NoAdmittedWindowsByeDpiRuntimePlanProvider
+- production executable identity catalog remains empty
+- production package layout catalog remains empty
+- production typed argument plan catalog remains empty
+- production installer contains no ByeDPI/ciadpi payload
+- R41 matrix retains all current critical/high blocker classes
+- NetPilot solution build PASS
+- NetPilot.Core.Tests PASS
+
+Expected/observed guard markers:
+R41_BYEDPI_PRODUCTION_READINESS=BLOCK_CONFIRMED
+R41_PRODUCTION_SERVICE_NO_ADMIT=PASS
+R41_PRODUCTION_CATALOGS_EMPTY=PASS
+RESULT=R41_READINESS_REVIEW_PASS_BLOCK
+R41_NATIVE_EXECUTION_TESTED=False
+PRODUCTION_ADMISSION=BLOCK
+RESULT=R41_PREFLIGHT_PASS_BLOCK
+
+Scope:
+R41 validates that the readiness review is fail-closed and that R34-R40 laboratory evidence has not silently promoted ByeDPI into the normal product runtime. It does not authorize production execution or integration.
