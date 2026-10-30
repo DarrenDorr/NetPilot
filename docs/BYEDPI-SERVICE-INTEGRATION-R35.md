@@ -1,12 +1,31 @@
-# R35 — ByeDPI service integration scaffold
+# R35 — ByeDPI service integration and authenticated IPC
 
 ## Status
 
-**IMPLEMENTED SCAFFOLD / PRODUCTION ADMISSION BLOCK / IPC NOT YET EXPOSED**
+**SERVICE + IPC SCAFFOLD PASS / PRODUCTION NATIVE EXECUTION BLOCK**
 
-Base checkpoint: R34 `42a7f467bf822f76f0a67a3b31d3c7b8174f3648`.
+R34 exact runtime-tested checkpoint: `42a7f467bf822f76f0a67a3b31d3c7b8174f3648`.
 
-R35 deliberately starts before the manual R34 functional runtime workflow is accepted as PASS. It prepares the LocalSystem service composition without authorizing ByeDPI execution.
+R35 validated IPC checkpoint: `f3b7be600ca90332ac2b5c1b46877ba97a9a2bd1`.
+
+R34 functional runtime evidence is PASS in its scoped hosted service-owned-controller boundary. R35 now connects that architecture to the authenticated service protocol while deliberately keeping normal production native execution disabled.
+
+## R34 prerequisite — PASS
+
+Pinned runtime run `41004146617` proved the exact ByeDPI candidate through:
+
+`immutable package -> protected ACL/owner -> typed argv -> audited launcher -> service-owned controller -> SOCKS5 -> local HTTP`
+
+Confirmed:
+
+- two SOCKS5 -> local HTTP cycles PASS;
+- stop/restart cleanup PASS;
+- crash reconciliation PASS;
+- final controller state `Stopped`;
+- system proxy unchanged;
+- WinDivert unchanged/not requested;
+- no residual `ciadpi.exe` or proxy listener;
+- production admission remained BLOCK.
 
 ## What R35 adds
 
@@ -14,43 +33,70 @@ R35 deliberately starts before the manual R34 functional runtime workflow is acc
 - `NoAdmittedWindowsByeDpiRuntimePlanProvider` — production default that always rejects plan creation.
 - `WindowsByeDpiRuntimeSession` — service-facing status/start/stop wrapper over the bounded `WindowsByeDpiServiceOwnedProcessController`.
 - Production DI registration in `NetPilot.Service`.
-- Regression tests proving status/stop remain safe while start fails closed.
-- `scripts/security/r35-service-integration-boundary-check.sh`.
+- IPC protocol v4 / pipe `NetPilot.Service.v4`.
+- Typed authenticated commands:
+  - `ByeDpiGetStatus`;
+  - `ByeDpiStart`;
+  - `ByeDpiStop`.
+- `IpcByeDpiStatus` exposes only `Running/Stopped`; it does not expose PID, listener port, path, owner SID or other privileged runtime details.
+- All ByeDPI IPC commands are no-payload commands. GUI/client cannot supply raw CLI, path, URL, environment, bind address, arbitrary port or engine strategy text.
+- Global machine engine lease is now bound to `(Windows SID + engine resource id)`.
+- Legacy Zapret lease methods are explicitly pinned to resource `zapret`; new ByeDPI operations use resource `byedpi`.
+- Resource-scoped reconciliation prevents a stopped ByeDPI session from clearing a live Zapret lease and vice versa.
+- Regression tests keep unrelated Zapret test clients fail-closed for the new ByeDPI methods.
+- `scripts/security/r35-service-integration-boundary-check.sh` enforces the new boundary.
 
 ## Two independent production execution locks
 
-R35 intentionally keeps two independent blockers in the production service composition:
+R35 intentionally keeps two independent blockers in the normal service composition:
 
 1. `IWindowsVerifiedEngineProcessLauncher` resolves to `NoAdmittedWindowsVerifiedEngineProcessLauncher`.
 2. `IWindowsByeDpiRuntimePlanProvider` resolves to `NoAdmittedWindowsByeDpiRuntimePlanProvider`.
 
-Therefore an accidental call to the R35 runtime session cannot create a native process even if one of the two boundaries is incorrectly reached.
+The ordinary installed NetPilot service therefore cannot create a ByeDPI native process even though authenticated IPC commands now exist.
 
-## IPC boundary
+`ByeDpiStart` additionally passes through the normal `OperationPolicy.EngineStart` gate and global engine lease before the runtime session can be reached.
 
-R35 scaffold does **not** add ByeDPI IPC commands yet. `PrivilegedIpcWorker` remains unchanged for ByeDPI.
+## R35 validation — PASS
 
-The authenticated IPC start/stop/status surface is a later R35 sub-gate after:
+Pinned preflight run `41005023173` on checkpoint `f3b7be600ca90332ac2b5c1b46877ba97a9a2bd1`:
 
-- manual R34 functional runtime PASS;
-- evidence review;
-- explicit decision to admit the exact lab-tested runtime chain for a scoped service integration test.
+- security policy: PASS;
+- runtime admission composition: PASS;
+- R35 service integration boundary: PASS;
+- Linux full solution restore/build: PASS;
+- Core/IPC tests: PASS;
+- Windows service + GUI restore/build: PASS;
+- Windows platform tests: PASS;
+- ByeDPI native execution: NOT PERFORMED;
+- production runtime admission: BLOCK.
 
-When IPC is added, it must reuse the existing authenticated Windows SID model and global engine lease. It must not accept raw command line, paths, URLs, environment values, bind addresses or arbitrary ports from the GUI/client.
+An earlier preflight run `41004809863` correctly failed because an existing Zapret test fake had not implemented the newly extended `IPrivilegedServiceClient`. The fake was updated with explicit fail-closed ByeDPI methods; the complete follow-up run above then passed. No security gate was weakened to fix the failure.
 
-## What this does not prove
+## What R35 still does not prove
 
-R35 scaffold does not prove:
+R35 does not yet prove:
 
-- R34 runtime PASS;
-- execution under installed LocalSystem `NetPilot.Service`;
-- authenticated IPC control of a real ByeDPI process;
-- multi-user engine ownership with a real native process;
-- reboot/crash recovery of an admitted service runtime;
-- transparent routing;
+- execution of the exact ByeDPI candidate inside the actually installed LocalSystem `NetPilot.Service` process tree;
+- real authenticated IPC start/stop/status controlling that native process;
+- multi-user SID/lease behavior while a real ByeDPI process is running;
+- restart/reboot recovery of an admitted installed-service runtime;
+- system-wide transparent routing;
 - WinDivert safety;
 - production engine admission.
 
-## Promotion rule
+## Next gate
 
-Do not replace either no-admit production registration until the corresponding evidence gate has passed and the exact binary/package/plan identities are pinned in an explicit admission decision.
+The next scoped gate should be an isolated **installed LocalSystem service lab composition** that uses the exact R34-tested binary/package/typed plan while remaining separate from normal production DI and normal installer release behavior.
+
+That lab must prove at minimum:
+
+1. authenticated standard-user IPC reaches the LocalSystem service;
+2. only the owning SID can stop the active engine session;
+3. a second SID cannot steal the global lease;
+4. service stop/crash/restart leaves no orphan process/listener;
+5. no raw engine material crosses IPC;
+6. production no-admit composition remains unchanged outside the lab;
+7. no system proxy or WinDivert mutation occurs.
+
+Only after that evidence should a separate explicit admission decision consider replacing either no-admit production registration.
