@@ -78,7 +78,7 @@ for blocker in \
   netpilot-release-code-signing \
   product-ux-and-safe-controls \
   high-assurance-admission-review; do
-  grep -Fq "- id: $blocker" "$matrix"
+  grep -Fq -- "- id: $blocker" "$matrix"
 done
 
 echo 'R41_BYEDPI_PRODUCTION_READINESS=BLOCK_CONFIRMED'
