@@ -5,6 +5,7 @@ public sealed record ByeDpiAcquisitionAssetMetadata(
     string Name,
     long SizeBytes,
     string Sha256Hex,
+    string State,
     Uri AssetApiUri);
 
 public sealed record ByeDpiAcquisitionReleaseMetadata(
@@ -29,6 +30,9 @@ public sealed record ByeDpiAcquisitionAssetPlan(
 public sealed record ByeDpiAcquisitionPlan(
     Uri ReleaseMetadataApiUri,
     IReadOnlyList<ByeDpiAcquisitionAssetPlan> Assets,
+    string GithubApiVersion,
+    string ReleaseMetadataAccept,
+    string ReleaseAssetAccept,
     int MaxReleaseMetadataBytes,
     int NetworkTimeoutSeconds,
     int MaxRedirects,
@@ -43,6 +47,9 @@ public sealed record ByeDpiAcquisitionPlan(
 /// </summary>
 public static class ByeDpiAcquisitionTrustPolicy
 {
+    public const string GithubApiVersion = "2026-03-10";
+    public const string ReleaseMetadataAccept = "application/vnd.github+json";
+    public const string ReleaseAssetAccept = "application/octet-stream";
     public const int MaxReleaseMetadataBytes = 256 * 1024;
     public const int NetworkTimeoutSeconds = 20;
     public const int MaxRedirects = 1;
@@ -56,7 +63,6 @@ public static class ByeDpiAcquisitionTrustPolicy
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(metadata);
 
-        // Reuse the strict R42.6 validator before trusting any descriptor field.
         _ = ByeDpiImmutableReleaseDocument.Serialize(descriptor);
 
         ValidateAntiDowngrade(descriptor.Version, currentInstalledVersion);
@@ -117,6 +123,9 @@ public static class ByeDpiAcquisitionTrustPolicy
         return new ByeDpiAcquisitionPlan(
             GetReleaseByTagApiUri(descriptor.ReleaseTag),
             plans.AsReadOnly(),
+            GithubApiVersion,
+            ReleaseMetadataAccept,
+            ReleaseAssetAccept,
             MaxReleaseMetadataBytes,
             NetworkTimeoutSeconds,
             MaxRedirects,
@@ -150,6 +159,7 @@ public static class ByeDpiAcquisitionTrustPolicy
     /// <summary>
     /// A future transport may follow exactly one GitHub release-asset redirect.
     /// Signed query parameters are allowed; origin/userinfo/custom ports/fragments are not.
+    /// A direct 200 asset response is also allowed by the future transport and requires no redirect validation call.
     /// </summary>
     public static void ValidateReleaseAssetRedirect(Uri uri, int redirectNumber)
     {
@@ -202,6 +212,10 @@ public static class ByeDpiAcquisitionTrustPolicy
         if (candidate.AssetId <= 0)
         {
             throw Invalid("ByeDPI release asset id must be positive.");
+        }
+        if (!string.Equals(candidate.State, "uploaded", StringComparison.Ordinal))
+        {
+            throw Invalid("ByeDPI release asset must be in the exact uploaded state.");
         }
 
         if (!string.Equals(candidate.Name, expected.Name, StringComparison.Ordinal)
