@@ -16,6 +16,9 @@ public sealed class ByeDpiAcquisitionTrustPolicyTests
             "https://api.github.com/repos/DarrenDorr/NetPilot/releases/tags/byedpi-v0.17.3",
             plan.ReleaseMetadataApiUri.AbsoluteUri);
         Assert.Equal(3, plan.Assets.Count);
+        Assert.Equal("2026-03-10", plan.GithubApiVersion);
+        Assert.Equal("application/vnd.github+json", plan.ReleaseMetadataAccept);
+        Assert.Equal("application/octet-stream", plan.ReleaseAssetAccept);
         Assert.Equal(ByeDpiAcquisitionTrustPolicy.MaxRedirects, plan.MaxRedirects);
         Assert.Equal(ByeDpiAcquisitionTrustPolicy.NetworkTimeoutSeconds, plan.NetworkTimeoutSeconds);
         Assert.Equal(
@@ -70,6 +73,7 @@ public sealed class ByeDpiAcquisitionTrustPolicyTests
             "unexpected.txt",
             1,
             new string('d', 64),
+            "uploaded",
             AssetApiUri(2000)));
 
         Assert.Throws<UpdateSecurityException>(() =>
@@ -87,6 +91,18 @@ public sealed class ByeDpiAcquisitionTrustPolicyTests
             AssetId = assets[0].AssetId,
             AssetApiUri = AssetApiUri(assets[0].AssetId)
         };
+
+        Assert.Throws<UpdateSecurityException>(() =>
+            ByeDpiAcquisitionTrustPolicy.CreatePlan(descriptor, metadata with { Assets = assets }));
+    }
+
+    [Fact]
+    public void NonUploadedAssetIsRejected()
+    {
+        var descriptor = CreateDescriptor();
+        var metadata = CreateMetadata(descriptor);
+        var assets = metadata.Assets.ToArray();
+        assets[0] = assets[0] with { State = "new" };
 
         Assert.Throws<UpdateSecurityException>(() =>
             ByeDpiAcquisitionTrustPolicy.CreatePlan(descriptor, metadata with { Assets = assets }));
@@ -232,6 +248,7 @@ public sealed class ByeDpiAcquisitionTrustPolicyTests
                     asset.Name,
                     asset.SizeBytes,
                     asset.Sha256Hex,
+                    "uploaded",
                     AssetApiUri(assetId));
             })
             .ToArray();
