@@ -1,0 +1,189 @@
+name: R42.2 LocalSystem Staging Recovery Lab Once
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/r42-2-localsystem-staging-lab-once.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: netpilot-r42-2-localsystem-staging-lab
+  cancel-in-progress: false
+
+env:
+  NETPILOT_R42_2_SHA: fba8a822a5af6baf4f7d1f20980dac2c9950da8d
+
+jobs:
+  localsystem-staging-recovery:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact R42.2 checkpoint
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.NETPILOT_R42_2_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Assert clean hosted boundary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -ne $env:NETPILOT_R42_2_SHA) { throw 'R42.2 checkpoint drift.' }
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) { throw 'Unexpected ciadpi process before R42.2 LocalSystem lab.' }
+
+          $productRoot = Join-Path $env:ProgramFiles 'NetPilot'
+          if (Test-Path -LiteralPath $productRoot) { throw 'R42.2 LocalSystem lab refuses a pre-existing Program Files\NetPilot tree.' }
+
+          New-Item -ItemType Directory -Force -Path evidence | Out-Null
+          'PREEXISTING_PRODUCT_ROOT=False' | Set-Content -LiteralPath evidence\boundary.txt
+          "NETPILOT_R42_2_SHA=$env:NETPILOT_R42_2_SHA" | Add-Content -LiteralPath evidence\boundary.txt
+          'NATIVE_EXECUTION_TESTED=False' | Add-Content -LiteralPath evidence\boundary.txt
+          'PRODUCTION_ADMISSION=BLOCK' | Add-Content -LiteralPath evidence\boundary.txt
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build isolated synthetic lab host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish tools\NetPilot.ByeDpiR42StagingLab\NetPilot.ByeDpiR42StagingLab.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            --output .labpublish
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $published = Resolve-Path '.labpublish\NetPilot.ByeDpiR42StagingLab.exe'
+          $tempExe = "C:\Windows\Temp\NetPilotR422Lab-$env:GITHUB_RUN_ID.exe"
+          Copy-Item -LiteralPath $published -Destination $tempExe -Force
+          "LAB_EXE_SHA256=$((Get-FileHash -Algorithm SHA256 -LiteralPath $tempExe).Hash.ToLowerInvariant())" | Add-Content -LiteralPath evidence\boundary.txt
+
+      - name: Execute production staging API as LocalSystem
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $taskName = "NetPilot-R42-2-$env:GITHUB_RUN_ID"
+          $labExe = "C:\Windows\Temp\NetPilotR422Lab-$env:GITHUB_RUN_ID.exe"
+          $resultPath = "C:\Windows\Temp\NetPilotR422Result-$env:GITHUB_RUN_ID.txt"
+          $start = (Get-Date).AddMinutes(5).ToString('HH:mm')
+          $taskCommand = "$labExe $resultPath"
+
+          & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC ONCE /ST $start /RU SYSTEM /RL HIGHEST /F | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to create LocalSystem scheduled task.' }
+          & schtasks.exe /Run /TN $taskName | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to start LocalSystem scheduled task.' }
+
+          $content = $null
+          foreach ($attempt in 1..120) {
+            if (Test-Path -LiteralPath $resultPath) {
+              $content = Get-Content -LiteralPath $resultPath -Raw
+              if ($content -match 'RESULT=') { break }
+            }
+            Start-Sleep -Seconds 1
+          }
+
+          if ([string]::IsNullOrWhiteSpace($content) -or $content -notmatch 'RESULT=') {
+            $info = Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction SilentlyContinue
+            if ($null -ne $info) { $info | Format-List * | Out-String | Write-Host }
+            throw 'LocalSystem lab did not produce a terminal evidence record.'
+          }
+
+          $content | Write-Host
+          Copy-Item -LiteralPath $resultPath -Destination evidence\localsystem-result.txt -Force
+
+          foreach ($marker in @(
+            'IDENTITY_LOCALSYSTEM=PASS',
+            'STAGE_FIXED_PROGRAM_FILES_BOUNDARY=PASS',
+            'MANIFEST_REVERIFY=PASS',
+            'JOURNAL_PATH_FREE=PASS',
+            'RECOVERY_VERIFIED_PRESERVED=PASS',
+            'RECOVERY_INCOMPLETE=PASS',
+            'RECOVERY_ORPHAN=PASS',
+            'NATIVE_EXECUTION_TESTED=False',
+            'SERVICE_IPC_WIRING=ABSENT',
+            'PRODUCTION_ADMISSION=BLOCK',
+            'RESULT=R42_2_LOCALSYSTEM_STAGING_RECOVERY_PASS_BLOCK'
+          )) {
+            if (-not $content.Contains($marker, [StringComparison]::Ordinal)) {
+              throw "Missing required R42.2 LocalSystem evidence marker: $marker"
+            }
+          }
+
+          $info = Get-ScheduledTaskInfo -TaskName $taskName
+          if ($info.LastTaskResult -ne 0) { throw "LocalSystem lab task exit code was $($info.LastTaskResult)." }
+
+      - name: Verify real Program Files staging evidence and synthetic payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) { throw 'R42.2 LocalSystem lab unexpectedly launched ciadpi.' }
+
+          $stagingBase = Join-Path $env:ProgramFiles 'NetPilot\Engines\Staging\ByeDPI'
+          $journalRoot = Join-Path $stagingBase 'Journal'
+          if (-not (Test-Path -LiteralPath $stagingBase -PathType Container)) { throw 'Protected ByeDPI staging base is missing.' }
+          if (-not (Test-Path -LiteralPath $journalRoot -PathType Container)) { throw 'Protected ByeDPI journal root is missing.' }
+
+          $transactions = @(Get-ChildItem -LiteralPath $stagingBase -Directory | Where-Object { $_.Name -ne 'Journal' })
+          if ($transactions.Count -ne 1) { throw "Expected exactly one preserved verified transaction, found $($transactions.Count)." }
+          if ($transactions[0].Name -notmatch '^[0-9a-f]{32}$') { throw 'Preserved transaction id is not canonical lowercase hex.' }
+
+          $syntheticExe = Join-Path $transactions[0].FullName 'bin\ciadpi.exe'
+          if (-not (Test-Path -LiteralPath $syntheticExe -PathType Leaf)) { throw 'Synthetic ciadpi.exe marker file is missing.' }
+          $bytes = [IO.File]::ReadAllBytes($syntheticExe)
+          if ($bytes.Length -ge 2 -and $bytes[0] -eq 0x4D -and $bytes[1] -eq 0x5A) { throw 'R42.2 lab payload unexpectedly looks like a PE executable.' }
+
+          & icacls.exe $stagingBase | Tee-Object -FilePath evidence\acl-staging.txt | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to capture staging ACL evidence.' }
+          & icacls.exe $journalRoot | Tee-Object -FilePath evidence\acl-journal.txt | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to capture journal ACL evidence.' }
+          & icacls.exe $transactions[0].FullName | Tee-Object -FilePath evidence\acl-transaction.txt | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to capture transaction ACL evidence.' }
+
+          'SYNTHETIC_PAYLOAD_NOT_PE=PASS' | Add-Content -LiteralPath evidence\boundary.txt
+          'CIADPI_PROCESS_ABSENT=PASS' | Add-Content -LiteralPath evidence\boundary.txt
+          'RESULT=R42_2_LOCALSYSTEM_HOSTED_EVIDENCE_PASS_BLOCK' | Add-Content -LiteralPath evidence\boundary.txt
+
+      - name: Cleanup hosted lab state
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $taskName = "NetPilot-R42-2-$env:GITHUB_RUN_ID"
+          & schtasks.exe /End /TN $taskName 2>$null | Out-Null
+          & schtasks.exe /Delete /TN $taskName /F 2>$null | Out-Null
+
+          Remove-Item -LiteralPath "C:\Windows\Temp\NetPilotR422Lab-$env:GITHUB_RUN_ID.exe" -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath "C:\Windows\Temp\NetPilotR422Result-$env:GITHUB_RUN_ID.txt" -Force -ErrorAction SilentlyContinue
+
+          $productRoot = Join-Path $env:ProgramFiles 'NetPilot'
+          $boundary = 'evidence\boundary.txt'
+          if ((Test-Path -LiteralPath $boundary) -and (Test-Path -LiteralPath $productRoot)) {
+            $marker = Join-Path $productRoot '.r42-2-lab-owned'
+            if (Test-Path -LiteralPath $marker) {
+              Remove-Item -LiteralPath $productRoot -Recurse -Force
+            } else {
+              Write-Error 'Refusing to delete Program Files\NetPilot because the R42.2 ownership marker is missing.'
+            }
+          }
+
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) {
+            Write-Error 'ciadpi process exists after R42.2 LocalSystem lab cleanup.'
+          }
+
+      - name: Upload R42.2 LocalSystem evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r42-2-localsystem-staging-evidence
+          path: evidence
+          if-no-files-found: error
+          retention-days: 3
