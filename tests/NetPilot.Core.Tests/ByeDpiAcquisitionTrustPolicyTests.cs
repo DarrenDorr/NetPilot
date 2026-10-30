@@ -70,7 +70,7 @@ public sealed class ByeDpiAcquisitionTrustPolicyTests
             "unexpected.txt",
             1,
             new string('d', 64),
-            ByeDpiAcquisitionTrustPolicy.GetAssetApiUri(2000)));
+            AssetApiUri(2000)));
 
         Assert.Throws<UpdateSecurityException>(() =>
             ByeDpiAcquisitionTrustPolicy.CreatePlan(descriptor, metadata with { Assets = assets }));
@@ -85,7 +85,7 @@ public sealed class ByeDpiAcquisitionTrustPolicyTests
         assets[1] = assets[1] with
         {
             AssetId = assets[0].AssetId,
-            AssetApiUri = ByeDpiAcquisitionTrustPolicy.GetAssetApiUri(assets[0].AssetId)
+            AssetApiUri = AssetApiUri(assets[0].AssetId)
         };
 
         Assert.Throws<UpdateSecurityException>(() =>
@@ -232,7 +232,7 @@ public sealed class ByeDpiAcquisitionTrustPolicyTests
                     asset.Name,
                     asset.SizeBytes,
                     asset.Sha256Hex,
-                    ByeDpiAcquisitionTrustPolicy.GetAssetApiUri(assetId));
+                    AssetApiUri(assetId));
             })
             .ToArray();
 
@@ -244,4 +244,7 @@ public sealed class ByeDpiAcquisitionTrustPolicyTests
             Immutable: true,
             assets);
     }
+
+    private static Uri AssetApiUri(long assetId) =>
+        new($"https://api.github.com/repos/DarrenDorr/NetPilot/releases/assets/{assetId}");
 }
