@@ -1,0 +1,101 @@
+schema_version: 1
+milestone: R42.7
+engine: byedpi
+platform: windows-x64
+scope: read_only_acquisition_trust_policy
+parent_checkpoint: 7f7fb76382d3ed69629a3f28a9d33b1f080c14dd
+
+immutable_parent:
+  repository: DarrenDorr/NetPilot
+  version: 0.17.3
+  tag: byedpi-v0.17.3
+  release_descriptor: R42.6
+
+metadata_policy:
+  discovery_mode: EXACT_TAG_ONLY
+  mutable_latest_endpoint: FORBIDDEN
+  release_state:
+    draft: REJECT
+    prerelease: REJECT
+    immutable_false: REJECT
+  exact_asset_count: 3
+  extra_assets: REJECT
+  duplicate_expected_asset: REJECT
+  duplicate_asset_id: REJECT
+  asset_state: UPLOADED_ONLY
+  asset_name_drift: REJECT
+  asset_size_drift: REJECT
+  asset_sha256_drift: REJECT
+  asset_api_uri_drift: REJECT
+
+transport_contract:
+  github_api_version: '2026-03-10'
+  release_metadata_accept: application/vnd.github+json
+  release_asset_accept: application/octet-stream
+  direct_asset_response_200: ALLOW
+  release_asset_redirect_302: ALLOW_AFTER_POLICY_VALIDATION
+  other_redirects: REJECT
+
+origin_policy:
+  release_metadata_api_origin: https://api.github.com
+  release_metadata_path: /repos/DarrenDorr/NetPilot/releases/tags/byedpi-v0.17.3
+  asset_api_origin: https://api.github.com
+  asset_api_path_prefix: /repos/DarrenDorr/NetPilot/releases/assets/
+  release_asset_redirect_origin: https://release-assets.githubusercontent.com
+  automatic_redirects: FORBIDDEN
+  max_redirects: 1
+  redirect_custom_port: REJECT
+  redirect_userinfo: REJECT
+  redirect_fragment: REJECT
+
+resource_limits:
+  max_release_metadata_bytes: 262144
+  network_timeout_seconds: 20
+  max_total_asset_bytes: 67108864
+  content_length_policy: FUTURE_TRANSPORT_MUST_MATCH_DESCRIPTOR
+  streamed_byte_count_policy: FUTURE_TRANSPORT_MUST_MATCH_DESCRIPTOR
+
+anti_downgrade:
+  installed_version_format: CANONICAL_MAJOR_MINOR_PATCH
+  target_older_than_installed: REJECT
+  target_equal_to_installed: ALLOW_FOR_REPAIR_ACQUISITION
+  target_newer_than_installed: ALLOW_FOR_UPGRADE_ACQUISITION
+  caller_selected_arbitrary_version: NOT_SUPPORTED
+
+hash_policy:
+  algorithm: SHA-256
+  expected_hash_source: IMMUTABLE_R42_6_DESCRIPTOR
+  post_download_hash_verification: REQUIRED_BEFORE_STAGING
+  provenance_asset_hash_verification: REQUIRED
+  manifest_asset_hash_verification: REQUIRED
+  payload_asset_hash_verification: REQUIRED
+
+boundaries:
+  github_release_parser: NOT_IMPLEMENTED_FOR_BYEDPI
+  product_downloader: NOT_IMPLEMENTED
+  network_acquisition: NOT_IMPLEMENTED
+  filesystem_write: NOT_IMPLEMENTED
+  service_or_ipc_wiring: NOT_IMPLEMENTED
+  installer_integration: NOT_IMPLEMENTED
+  native_execution: NOT_IMPLEMENTED
+  production_admission: BLOCK
+
+next_gate:
+  milestone: R42.8
+  scope: narrow_exact_tag_metadata_parser_and_transport_contract
+  requirement: preserve_r42_7_policy_and_keep_native_execution_blocked
+
+evidence_required:
+  - parent_r42_6_guard
+  - exact_tag_endpoint_generation
+  - exact_three_asset_selection
+  - unique_asset_ids
+  - uploaded_asset_state
+  - pinned_github_api_contract
+  - immutable_release_state_checks
+  - origin_and_single_redirect_policy
+  - resource_limit_policy
+  - anti_downgrade_tests
+  - no_network_or_filesystem_primitives
+  - full_solution_build
+  - security_guard
