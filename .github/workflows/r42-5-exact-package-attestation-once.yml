@@ -1,0 +1,178 @@
+name: R42.5 Exact ByeDPI Package Attestation Once
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/r42-5-exact-package-attestation-once.yml'
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+env:
+  NETPILOT_R42_5_SHA: dc28fc4f0b635c34c63bbaed99ea7658d8a9c827
+  BYEDPI_SOURCE_SHA: 7efde1b1296eaaa187b70e951894dde17527489c
+  BYEDPI_SOURCE_TREE: 8d13f6f5939190cd27ee68696247073a00b3e7dc
+  BYEDPI_WINDOWS_SHA256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+  BYEDPI_LICENSE_BLOB: 342905d38be83e9d540deae14987896826a74858
+  BYEDPI_LICENSE_SHA256: 18c854c6c25dffefe4b522cf1bdf5d15278a25ca785948258bddb94393f575eb
+
+jobs:
+  exact-package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact NetPilot R42.5 checkpoint
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.NETPILOT_R42_5_SHA }}
+          path: netpilot
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Checkout exact reviewed ByeDPI source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: hufrea/byedpi
+          ref: ${{ env.BYEDPI_SOURCE_SHA }}
+          path: byedpi
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify exact source tree, LICENSE and reviewed patchset
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C netpilot rev-parse HEAD)" = "$NETPILOT_R42_5_SHA"
+          test "$(git -C byedpi rev-parse HEAD)" = "$BYEDPI_SOURCE_SHA"
+          test "$(git -C byedpi rev-parse 'HEAD^{tree}')" = "$BYEDPI_SOURCE_TREE"
+          test "$(git -C byedpi rev-parse 'HEAD:LICENSE')" = "$BYEDPI_LICENSE_BLOB"
+          test "$(sha256sum byedpi/LICENSE | awk '{print $1}')" = "$BYEDPI_LICENSE_SHA256"
+          test "$(wc -c < byedpi/LICENSE)" -eq 1063
+
+          cat > expected-patches.sha256 <<'EOF'
+          3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068  netpilot/security/native-admission/patches/byedpi-r28/0001-loopback-only-listener.patch
+          6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7  netpilot/security/native-admission/patches/byedpi-r28/0002-kavl-iterator-no-before-array-sentinel.patch
+          5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738  netpilot/security/native-admission/patches/byedpi-r28/0003-pid-file-fail-safe-write.patch
+          fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a  netpilot/security/native-admission/patches/byedpi-r28/0004-kavl-empty-erase-guard.patch
+          7c8f4eee9ff2624346cb886027df66378773d0af04f5f84f54c30815104b4356  netpilot/security/native-admission/patches/byedpi-r28/0005-windows-socket-handle-narrowing-guard.patch
+          136b9fdf34b68a55f0f1a6ebf16e8b61c9b88e6d15eeb923594bdd7bf0fa2a3e  netpilot/security/native-admission/patches/byedpi-r28/0006-windows-wait-result-range.patch
+          778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25  netpilot/security/native-admission/patches/byedpi-r28/0007-windows-aux-socket-probes.patch
+          EOF
+          sha256sum --check --strict expected-patches.sha256
+
+          for patch in \
+            0001-loopback-only-listener.patch \
+            0002-kavl-iterator-no-before-array-sentinel.patch \
+            0003-pid-file-fail-safe-write.patch \
+            0004-kavl-empty-erase-guard.patch \
+            0005-windows-socket-handle-narrowing-guard.patch \
+            0006-windows-wait-result-range.patch \
+            0007-windows-aux-socket-probes.patch; do
+            git -C byedpi apply --check "../netpilot/security/native-admission/patches/byedpi-r28/$patch"
+            git -C byedpi apply "../netpilot/security/native-admission/patches/byedpi-r28/$patch"
+          done
+
+          grep -Fq 'Listening IP, loopback only; default 127.0.0.1' byedpi/main.c
+          grep -Fq 'netpilot_is_loopback_addr' byedpi/main.c
+          echo 'R42_5_EXACT_SOURCE_PATCHSET=PASS'
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install Windows cross compiler and record toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mingw-w64 file
+          mkdir -p evidence
+          x86_64-w64-mingw32-gcc --version | tee evidence/compiler-version.txt
+          x86_64-w64-mingw32-ld --version | tee evidence/linker-version.txt
+          dpkg-query -W -f='${Package}=${Version}\n' 'gcc-mingw-w64-x86-64*' 'binutils-mingw-w64-x86-64*' 2>/dev/null | sort | tee evidence/toolchain-packages.txt || true
+
+      - name: Build exact reviewed Windows candidate without execution
+        shell: bash
+        working-directory: byedpi
+        run: |
+          set -euo pipefail
+          make clean >/dev/null
+          make windows CC=x86_64-w64-mingw32-gcc WIN_LDFLAGS='-Wl,--no-insert-timestamp -lws2_32 -lmswsock'
+          test -f ciadpi.exe
+          file ciadpi.exe | tee ../evidence/binary-file-type.txt
+          actual="$(sha256sum ciadpi.exe | awk '{print $1}')"
+          echo "BYEDPI_WINDOWS_SHA256_ACTUAL=$actual" | tee ../evidence/binary-sha256.txt
+          test "$actual" = "$BYEDPI_WINDOWS_SHA256"
+          echo 'R42_5_REVIEWED_BINARY_REBUILD=PASS' | tee -a ../evidence/binary-sha256.txt
+          echo 'NATIVE_EXECUTION_TESTED=False' | tee -a ../evidence/binary-sha256.txt
+          echo 'PRODUCTION_ADMISSION=BLOCK' | tee -a ../evidence/binary-sha256.txt
+
+      - name: Build deterministic package twice and require byte-identical outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir package-a package-b
+          dotnet run --project netpilot/tools/NetPilot.ByeDpiR42PackageBuilder/NetPilot.ByeDpiR42PackageBuilder.csproj --configuration Release -- byedpi/ciadpi.exe byedpi/LICENSE package-a | tee evidence/package-builder-a.txt
+          dotnet run --project netpilot/tools/NetPilot.ByeDpiR42PackageBuilder/NetPilot.ByeDpiR42PackageBuilder.csproj --configuration Release -- byedpi/ciadpi.exe byedpi/LICENSE package-b | tee evidence/package-builder-b.txt
+
+          for name in \
+            NetPilot-ByeDPI-0.17.3-x64.zip \
+            NetPilot-ByeDPI-0.17.3-x64.manifest.json \
+            NetPilot-ByeDPI-0.17.3-x64.provenance.json; do
+            cmp --silent "package-a/$name" "package-b/$name"
+          done
+
+          sha256sum package-a/* | sort | tee evidence/package-output-sha256.txt
+          unzip -Z1 package-a/NetPilot-ByeDPI-0.17.3-x64.zip | tee evidence/package-entries.txt
+          test "$(unzip -Z1 package-a/NetPilot-ByeDPI-0.17.3-x64.zip | wc -l)" -eq 2
+          unzip -Z1 package-a/NetPilot-ByeDPI-0.17.3-x64.zip | grep -Fxq 'LICENSE'
+          unzip -Z1 package-a/NetPilot-ByeDPI-0.17.3-x64.zip | grep -Fxq 'bin/ciadpi.exe'
+          echo 'R42_5_DETERMINISTIC_REBUILD=PASS' | tee evidence/determinism.txt
+          echo 'NATIVE_EXECUTION_TESTED=False' | tee -a evidence/determinism.txt
+          echo 'PRODUCTION_ADMISSION=BLOCK' | tee -a evidence/determinism.txt
+
+      - name: Run R42.5 security guard
+        shell: bash
+        working-directory: netpilot
+        run: |
+          set -euo pipefail
+          bash scripts/security/r42-5-byedpi-provenance-package-check.sh | tee ../evidence/security-guard.txt
+
+      - name: Generate GitHub build provenance attestation
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: 'package-a/*'
+
+      - name: Capture attestation evidence
+        shell: bash
+        env:
+          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          printf 'ATTESTATION_URL=%s\n' "$ATTESTATION_URL" | tee evidence/attestation.txt
+          printf 'NETPILOT_R42_5_SHA=%s\n' "$NETPILOT_R42_5_SHA" | tee -a evidence/attestation.txt
+          echo 'R42_5_ARTIFACT_ATTESTATION=PASS' | tee -a evidence/attestation.txt
+          echo 'RELEASE_PUBLICATION=NOT_IMPLEMENTED' | tee -a evidence/attestation.txt
+          echo 'PRODUCT_DOWNLOADER=NOT_IMPLEMENTED' | tee -a evidence/attestation.txt
+          echo 'NATIVE_EXECUTION_TESTED=False' | tee -a evidence/attestation.txt
+          echo 'PRODUCTION_ADMISSION=BLOCK' | tee -a evidence/attestation.txt
+          if [ -n "$BUNDLE_PATH" ] && [ -f "$BUNDLE_PATH" ]; then
+            cp "$BUNDLE_PATH" evidence/attestation-bundle.jsonl
+          fi
+
+      - name: Upload exact R42.5 package and text evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: r42-5-exact-byedpi-package-evidence
+          path: |
+            package-a/*
+            evidence/*
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
