@@ -9,9 +9,17 @@ namespace NetPilot.Security;
 /// </summary>
 public sealed class UserResourceOwnership
 {
+    private const string LegacyZapretResourceId = "zapret";
+
     private readonly object _sync = new();
     private string? _ownerSid;
     private string? _resourceId;
+
+    /// <summary>
+    /// Compatibility surface for the already-reviewed Zapret IPC path. Parameterless
+    /// resource selection is intentionally pinned to Zapret and must not be used by new engines.
+    /// </summary>
+    public bool TryAcquire(string userSid) => TryAcquire(userSid, LegacyZapretResourceId);
 
     public bool TryAcquire(string userSid, string resourceId)
     {
@@ -31,6 +39,11 @@ public sealed class UserResourceOwnership
                 && string.Equals(_resourceId, resourceId, StringComparison.Ordinal);
         }
     }
+
+    /// <summary>
+    /// Compatibility surface for the already-reviewed Zapret IPC path.
+    /// </summary>
+    public bool IsOwnedBy(string userSid) => IsOwnedBy(userSid, LegacyZapretResourceId);
 
     public bool IsOwnedBy(string userSid, string resourceId)
     {
@@ -77,6 +90,12 @@ public sealed class UserResourceOwnership
             }
         }
     }
+
+    /// <summary>
+    /// Compatibility release for the existing Zapret path only. A Zapret status/stop
+    /// operation can never clear a ByeDPI lease through this overload.
+    /// </summary>
+    public void Clear() => Clear(LegacyZapretResourceId);
 
     /// <summary>
     /// Releases only the specified engine resource. A stopped ByeDPI session therefore
