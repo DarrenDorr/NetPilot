@@ -1,0 +1,414 @@
+name: R34 ByeDPI Service-Owned Functional Lab
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: netpilot-r34-byedpi-service-owned-functional
+  cancel-in-progress: false
+
+env:
+  NETPILOT_R34_SHA: 42a7f467bf822f76f0a67a3b31d3c7b8174f3648
+  BYEDPI_SOURCE_SHA: 7efde1b1296eaaa187b70e951894dde17527489c
+  BYEDPI_SOURCE_TREE: 8d13f6f5939190cd27ee68696247073a00b3e7dc
+  BYEDPI_WINDOWS_SHA256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+  R34_PACKAGE_VERSION: 0.17.3-netpilot-r34-lab
+
+jobs:
+  build-exact-candidate:
+    name: Build exact reviewed ByeDPI candidate without execution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout exact NetPilot R34 checkpoint
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.NETPILOT_R34_SHA }}
+          path: netpilot
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Checkout exact ByeDPI v0.17.3 source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: hufrea/byedpi
+          ref: ${{ env.BYEDPI_SOURCE_SHA }}
+          path: byedpi
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify exact source and apply reviewed patchset
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C netpilot rev-parse HEAD)" = "$NETPILOT_R34_SHA"
+          test "$(git -C byedpi rev-parse HEAD)" = "$BYEDPI_SOURCE_SHA"
+          test "$(git -C byedpi rev-parse 'HEAD^{tree}')" = "$BYEDPI_SOURCE_TREE"
+
+          patch_dir="$PWD/canonical-byedpi-patches"
+          mkdir -p "$patch_dir"
+
+          declare -A blob_sha=(
+            [0001-loopback-only-listener.patch]=fa9ba3349792d66f40d925bc612310e8d18aae8a
+            [0002-kavl-iterator-no-before-array-sentinel.patch]=6f51d66597847ee49e373922e4905c80b8ee2f47
+            [0003-pid-file-fail-safe-write.patch]=d56d0f8659a49c48c923b6af85a523a952e77e0c
+            [0004-kavl-empty-erase-guard.patch]=9b196b289efd9a2ea1118c5504f4a811aa0becd2
+            [0005-windows-socket-handle-narrowing-guard.patch]=d5cde98057a0ded600468b1f1c69d2e55c3b4d6e
+            [0006-windows-wait-result-range.patch]=0815be26534c291848a8b16bdedb07a6ab1e485f
+            [0007-windows-aux-socket-probes.patch]=e7b590a7d0594be0629bac221cb120c165dab8cd
+          )
+
+          declare -A patch_sha256=(
+            [0001-loopback-only-listener.patch]=3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068
+            [0002-kavl-iterator-no-before-array-sentinel.patch]=6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7
+            [0003-pid-file-fail-safe-write.patch]=5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738
+            [0004-kavl-empty-erase-guard.patch]=fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a
+            [0005-windows-socket-handle-narrowing-guard.patch]=7c8f4eee9ff2624346cb886027df66378773d0af04f5f84f54c30815104b4356
+            [0006-windows-wait-result-range.patch]=136b9fdf34b68a55f0f1a6ebf16e8b61c9b88e6d15eeb923594bdd7bf0fa2a3e
+            [0007-windows-aux-socket-probes.patch]=778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25
+          )
+
+          for patch in \
+            0001-loopback-only-listener.patch \
+            0002-kavl-iterator-no-before-array-sentinel.patch \
+            0003-pid-file-fail-safe-write.patch \
+            0004-kavl-empty-erase-guard.patch \
+            0005-windows-socket-handle-narrowing-guard.patch \
+            0006-windows-wait-result-range.patch \
+            0007-windows-aux-socket-probes.patch
+          do
+            actual_blob="$(git -C netpilot rev-parse "HEAD:security/native-admission/patches/byedpi-r28/$patch")"
+            test "$actual_blob" = "${blob_sha[$patch]}"
+            git -C netpilot show "HEAD:security/native-admission/patches/byedpi-r28/$patch" > "$patch_dir/$patch"
+            actual_sha="$(sha256sum "$patch_dir/$patch" | awk '{print $1}')"
+            test "$actual_sha" = "${patch_sha256[$patch]}"
+            git -C byedpi apply --check "$patch_dir/$patch"
+            git -C byedpi apply "$patch_dir/$patch"
+          done
+
+          grep -Fq 'Listening IP, loopback only; default 127.0.0.1' byedpi/main.c
+          grep -Fq 'netpilot_is_loopback_addr' byedpi/main.c
+          grep -Fq 'get_addr("127.0.0.1", &params.laddr)' byedpi/main.c
+
+      - name: Install Windows cross-compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mingw-w64 file
+
+      - name: Build deterministic Windows x64 candidate and require exact SHA-256
+        shell: bash
+        working-directory: byedpi
+        run: |
+          set -euo pipefail
+          make clean >/dev/null
+          make windows CC=x86_64-w64-mingw32-gcc WIN_LDFLAGS='-Wl,--no-insert-timestamp -lws2_32 -lmswsock'
+          test -f ciadpi.exe
+          file ciadpi.exe
+          actual="$(sha256sum ciadpi.exe | awk '{print $1}')"
+          echo "BYEDPI_WINDOWS_SHA256_ACTUAL=$actual"
+          test "$actual" = "$BYEDPI_WINDOWS_SHA256"
+
+      - name: Transfer exact candidate to isolated Windows job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: r34-byedpi-candidate-transfer
+          path: byedpi/ciadpi.exe
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  execute-service-owned-functional-lab:
+    name: Execute verified service-owned SOCKS HTTP lab
+    needs: build-exact-candidate
+    runs-on: windows-2025
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout exact NetPilot R34 checkpoint
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.NETPILOT_R34_SHA }}
+          path: netpilot
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Download exact candidate transfer artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: r34-byedpi-candidate-transfer
+          path: candidate
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Verify checkpoint, candidate and elevated hosted boundary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C netpilot rev-parse HEAD).Trim() -ne $env:NETPILOT_R34_SHA) {
+            throw 'NetPilot R34 checkpoint drift.'
+          }
+
+          $candidate = Resolve-Path 'candidate\ciadpi.exe'
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $candidate).Hash.ToLowerInvariant()
+          Write-Host "BYEDPI_WINDOWS_SHA256_ACTUAL=$actual"
+          if ($actual -ne $env:BYEDPI_WINDOWS_SHA256) {
+            throw 'Candidate hash drift before R34 staging.'
+          }
+
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            throw 'R34 hosted lab requires an elevated Windows runner for protected Program Files staging.'
+          }
+
+          New-Item -ItemType Directory -Force -Path evidence | Out-Null
+          "NETPILOT_R34_SHA=$env:NETPILOT_R34_SHA" | Set-Content -LiteralPath evidence\r34-boundary.txt
+          "BYEDPI_WINDOWS_SHA256=$actual" | Add-Content -LiteralPath evidence\r34-boundary.txt
+          'RUNNER_ADMIN=True' | Add-Content -LiteralPath evidence\r34-boundary.txt
+
+      - name: Capture proxy and WinDivert baseline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Get-ProxySnapshot {
+            $internet = Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -ErrorAction SilentlyContinue
+            $winHttp = ((& netsh winhttp show proxy) -join "`n").Trim()
+            [ordered]@{
+              ProxyEnable = if ($null -eq $internet) { $null } else { $internet.ProxyEnable }
+              ProxyServer = if ($null -eq $internet) { $null } else { $internet.ProxyServer }
+              AutoConfigURL = if ($null -eq $internet) { $null } else { $internet.AutoConfigURL }
+              WinHttp = $winHttp
+            } | ConvertTo-Json -Compress
+          }
+
+          function Get-WinDivertSnapshot {
+            $drivers = @(
+              Get-CimInstance Win32_SystemDriver | Where-Object {
+                $_.Name -match 'WinDivert' -or $_.PathName -match 'WinDivert'
+              } | Sort-Object Name | Select-Object Name, State, StartMode, PathName
+            )
+            $services = @(
+              Get-Service | Where-Object { $_.Name -match 'WinDivert' } |
+                Sort-Object Name | Select-Object Name, Status, StartType
+            )
+            [ordered]@{ Drivers = $drivers; Services = $services } | ConvertTo-Json -Compress -Depth 5
+          }
+
+          Get-ProxySnapshot | Set-Content -LiteralPath evidence\proxy-before.txt
+          Get-WinDivertSnapshot | Set-Content -LiteralPath evidence\windivert-before.txt
+
+      - name: Stage exact candidate under protected managed engine root
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:ProgramFiles 'NetPilot'
+          if (Test-Path -LiteralPath $root) {
+            throw "Refusing to reuse pre-existing hosted NetPilot root: $root"
+          }
+
+          $engineRoot = Join-Path $root "Engines\Managed\byedpi\$env:R34_PACKAGE_VERSION\x64"
+          $bin = Join-Path $engineRoot 'bin'
+          New-Item -ItemType Directory -Force -Path $bin | Out-Null
+          Set-Content -LiteralPath (Join-Path $root '.r34-hosted-owned') -Value $env:NETPILOT_R34_SHA -NoNewline
+          Copy-Item -LiteralPath 'candidate\ciadpi.exe' -Destination (Join-Path $bin 'ciadpi.exe')
+
+          & icacls.exe $root /inheritance:r | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to protect NetPilot root inheritance.' }
+          & icacls.exe $root /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to set protected NetPilot root ACL.' }
+          & icacls.exe $root /setowner '*S-1-5-32-544' /T /C | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to set privileged owner on R34 tree.' }
+          & icacls.exe $root /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' /T /C | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to normalize R34 tree ACL.' }
+
+          $staged = Join-Path $bin 'ciadpi.exe'
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $staged).Hash.ToLowerInvariant()
+          if ($actual -ne $env:BYEDPI_WINDOWS_SHA256) {
+            throw 'Staged candidate hash drift.'
+          }
+
+          "STAGED_PATH=$staged" | Add-Content -LiteralPath evidence\r34-boundary.txt
+          "STAGED_SHA256=$actual" | Add-Content -LiteralPath evidence\r34-boundary.txt
+          'PROTECTED_PROGRAM_FILES_TREE=True' | Add-Content -LiteralPath evidence\r34-boundary.txt
+
+      - name: Build R34 lab host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet restore netpilot\tools\NetPilot.ByeDpiR34Lab\NetPilot.ByeDpiR34Lab.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build netpilot\tools\NetPilot.ByeDpiR34Lab\NetPilot.ByeDpiR34Lab.csproj --configuration Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Execute R34 service-owned synthetic functional lab
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $log = Join-Path $PWD 'evidence\r34-runtime.txt'
+          & dotnet run --project netpilot\tools\NetPilot.ByeDpiR34Lab\NetPilot.ByeDpiR34Lab.csproj --configuration Release --no-build 2>&1 |
+            Tee-Object -FilePath $log
+          $exit = $LASTEXITCODE
+          if ($exit -ne 0) {
+            throw "R34 lab host failed with exit code $exit."
+          }
+
+          $content = Get-Content -LiteralPath $log -Raw
+          foreach ($marker in @(
+            'TYPED_ARGV=PASS',
+            'ROUND1_SOCKS_HTTP=PASS',
+            'ROUND1_CLEANUP=PASS',
+            'ROUND2_SOCKS_HTTP=PASS',
+            'ROUND2_CLEANUP=PASS',
+            'CRASH_RECONCILE=PASS',
+            'FINAL_STATE=STOPPED',
+            'SYSTEM_PROXY_MUTATION=NOT_REQUESTED',
+            'WINDIVERT=NOT_REQUESTED',
+            'PRODUCTION_ADMISSION=BLOCK',
+            'RESULT=BYEDPI_SERVICE_OWNED_FUNCTIONAL_R34_PASS'
+          )) {
+            if (-not $content.Contains($marker, [StringComparison]::Ordinal)) {
+              throw "Missing required R34 evidence marker: $marker"
+            }
+          }
+
+      - name: Verify no proxy, WinDivert, process or listener residue
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Get-ProxySnapshot {
+            $internet = Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -ErrorAction SilentlyContinue
+            $winHttp = ((& netsh winhttp show proxy) -join "`n").Trim()
+            [ordered]@{
+              ProxyEnable = if ($null -eq $internet) { $null } else { $internet.ProxyEnable }
+              ProxyServer = if ($null -eq $internet) { $null } else { $internet.ProxyServer }
+              AutoConfigURL = if ($null -eq $internet) { $null } else { $internet.AutoConfigURL }
+              WinHttp = $winHttp
+            } | ConvertTo-Json -Compress
+          }
+
+          function Get-WinDivertSnapshot {
+            $drivers = @(
+              Get-CimInstance Win32_SystemDriver | Where-Object {
+                $_.Name -match 'WinDivert' -or $_.PathName -match 'WinDivert'
+              } | Sort-Object Name | Select-Object Name, State, StartMode, PathName
+            )
+            $services = @(
+              Get-Service | Where-Object { $_.Name -match 'WinDivert' } |
+                Sort-Object Name | Select-Object Name, Status, StartType
+            )
+            [ordered]@{ Drivers = $drivers; Services = $services } | ConvertTo-Json -Compress -Depth 5
+          }
+
+          $failed = $false
+          $proxyAfter = Get-ProxySnapshot
+          $proxyAfter | Set-Content -LiteralPath evidence\proxy-after.txt
+          $proxyBefore = Get-Content -LiteralPath evidence\proxy-before.txt -Raw
+          if ($proxyBefore.Trim() -ne $proxyAfter.Trim()) {
+            'PROXY_UNCHANGED=False' | Add-Content -LiteralPath evidence\r34-boundary.txt
+            $failed = $true
+          } else {
+            'PROXY_UNCHANGED=True' | Add-Content -LiteralPath evidence\r34-boundary.txt
+          }
+
+          $windivertAfter = Get-WinDivertSnapshot
+          $windivertAfter | Set-Content -LiteralPath evidence\windivert-after.txt
+          $windivertBefore = Get-Content -LiteralPath evidence\windivert-before.txt -Raw
+          if ($windivertBefore.Trim() -ne $windivertAfter.Trim()) {
+            'WINDIVERT_UNCHANGED=False' | Add-Content -LiteralPath evidence\r34-boundary.txt
+            $failed = $true
+          } else {
+            'WINDIVERT_UNCHANGED=True' | Add-Content -LiteralPath evidence\r34-boundary.txt
+          }
+
+          $ownedRoot = Join-Path $env:ProgramFiles 'NetPilot'
+          $residual = @(
+            Get-CimInstance Win32_Process -Filter "Name='ciadpi.exe'" -ErrorAction SilentlyContinue |
+              Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($ownedRoot, [StringComparison]::OrdinalIgnoreCase) }
+          )
+          if ($residual.Count -ne 0) {
+            'RESIDUAL_CIADPI=False' | Add-Content -LiteralPath evidence\r34-boundary.txt
+            $failed = $true
+          } else {
+            'RESIDUAL_CIADPI=False' | Add-Content -LiteralPath evidence\r34-boundary.txt
+          }
+
+          if (Test-Path -LiteralPath evidence\r34-runtime.txt) {
+            $runtime = Get-Content -LiteralPath evidence\r34-runtime.txt -Raw
+            $portMatch = [regex]::Match($runtime, '(?m)^PROXY_PORT=(\d+)\s*$')
+            if ($portMatch.Success) {
+              $port = [int]$portMatch.Groups[1].Value
+              $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue)
+              if ($listeners.Count -ne 0) {
+                'RESIDUAL_PROXY_LISTENER=True' | Add-Content -LiteralPath evidence\r34-boundary.txt
+                $failed = $true
+              } else {
+                'RESIDUAL_PROXY_LISTENER=False' | Add-Content -LiteralPath evidence\r34-boundary.txt
+              }
+            } else {
+              'RESIDUAL_PROXY_LISTENER=UNKNOWN' | Add-Content -LiteralPath evidence\r34-boundary.txt
+              $failed = $true
+            }
+          } else {
+            'RESIDUAL_PROXY_LISTENER=UNKNOWN' | Add-Content -LiteralPath evidence\r34-boundary.txt
+            $failed = $true
+          }
+
+          if ($failed) {
+            throw 'R34 post-run isolation verification failed.'
+          }
+
+          'POST_RUN_ISOLATION=PASS' | Add-Content -LiteralPath evidence\r34-boundary.txt
+
+      - name: Cleanup only the workflow-owned Program Files tree
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $root = Join-Path $env:ProgramFiles 'NetPilot'
+          $marker = Join-Path $root '.r34-hosted-owned'
+          if (Test-Path -LiteralPath $marker) {
+            $value = (Get-Content -LiteralPath $marker -Raw -ErrorAction SilentlyContinue).Trim()
+            if ($value -eq $env:NETPILOT_R34_SHA) {
+              Get-CimInstance Win32_Process -Filter "Name='ciadpi.exe'" -ErrorAction SilentlyContinue |
+                Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) } |
+                ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+              Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction Stop
+              'WORKFLOW_OWNED_TREE_CLEANUP=PASS' | Add-Content -LiteralPath evidence\r34-boundary.txt
+            } else {
+              'WORKFLOW_OWNED_TREE_CLEANUP=REFUSED_MARKER_MISMATCH' | Add-Content -LiteralPath evidence\r34-boundary.txt
+              throw 'Refusing R34 cleanup because ownership marker mismatched.'
+            }
+          } else {
+            'WORKFLOW_OWNED_TREE_CLEANUP=NO_OWNED_TREE' | Add-Content -LiteralPath evidence\r34-boundary.txt
+          }
+
+      - name: Show text evidence
+        if: always()
+        shell: pwsh
+        run: |
+          Get-ChildItem -LiteralPath evidence -File -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object {
+            Write-Host "===== $($_.Name) ====="
+            Get-Content -LiteralPath $_.FullName -ErrorAction SilentlyContinue
+          }
+
+      - name: Upload text-only R34 evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: r34-byedpi-service-owned-functional-evidence
+          path: evidence/*.txt
+          if-no-files-found: warn
+          retention-days: 30
+          compression-level: 9
