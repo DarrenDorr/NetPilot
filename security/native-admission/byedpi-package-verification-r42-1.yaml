@@ -1,0 +1,91 @@
+schema_version: 1
+review_id: BYEDPI-PACKAGE-VERIFICATION-R42-1
+review_date: 2026-10-30
+base_gate: R42_PACKAGE_LIFECYCLE_DESIGN_PASS_BLOCK
+
+decision:
+  exact_package_manifest_verifier: IMPLEMENTED
+  staging_tree_read_only_verifier: IMPLEMENTED
+  windows_protected_staging_acl_verifier: IMPLEMENTED
+  synthetic_windows_lab: IMPLEMENTED
+  production_package_mutator: NOT_IMPLEMENTED
+  production_network_acquisition: NOT_IMPLEMENTED
+  production_service_or_ipc_wiring: NOT_IMPLEMENTED
+  native_execution: NOT_IMPLEMENTED
+  production_admission: BLOCK
+
+manifest_identity:
+  engine_id: byedpi
+  architecture: x64
+  version_format: major.minor.patch
+  executable_relative_path: bin/ciadpi.exe
+  license_relative_path: LICENSE
+  max_manifest_files: 64
+  hash_algorithm: SHA-256
+  case_collision_policy: reject
+  windows_reserved_device_names: reject
+  path_traversal: reject
+  absolute_paths: reject
+  alternate_data_stream_syntax: reject
+  backslash_manifest_paths: reject
+  unknown_files: reject
+  missing_files: reject
+  size_mismatch: reject
+  hash_mismatch: reject
+  reparse_points: reject
+
+staging_tree_verification:
+  behavior: read_only
+  recursive_enumeration_follows_reparse_points: false
+  file_handles_allow_write_or_delete_during_hash: false
+  executable_launch: false
+  filesystem_mutation: false
+  canonical_manifest_digest: SHA-256
+
+windows_protected_staging:
+  root_template: '%ProgramFiles%/NetPilot/Engines/Staging/ByeDPI/<transaction-id>'
+  transaction_id_format: 32-character-lowercase-hex
+  caller_supplied_base_path_allowed: false
+  owner_allowed:
+    - LocalSystem
+    - BUILTIN/Administrators
+    - TrustedInstaller
+  unprivileged_mutation_ace_allowed: false
+  reparse_points_allowed: false
+  acl_verification_behavior: read_only
+  acl_mutation_by_product_verifier: false
+
+synthetic_lab:
+  native_binary_used: false
+  fixture_ciadiapi_is_pe_executable: false
+  preexisting_program_files_netpilot_tree_policy: refuse
+  exact_manifest_positive_case: required
+  byte_or_hash_drift_negative_case: required
+  extra_file_negative_case: required
+  user_writable_acl_negative_case: required
+  cleanup_scope: workflow_owned_tree_only
+
+production_invariants:
+  normal_service_no_admit: true
+  service_registration_added: false
+  ipc_operation_added: false
+  positive_executable_catalog_entry_added: false
+  positive_package_catalog_entry_added: false
+  installer_byedpi_payload_added: false
+  runtime_network_fetcher_added: false
+  transparent_windows_routing_authorized: false
+  windivert_authorized: false
+  production_admission: BLOCK
+
+implementation:
+  exact_manifest_verifier: src/NetPilot.Updater/ByeDpiPackageManifestVerifier.cs
+  windows_acl_verifier: src/NetPilot.Platform.Windows/WindowsByeDpiProtectedStagingSecurityVerifier.cs
+  core_tests: tests/NetPilot.Core.Tests/ByeDpiPackageManifestVerifierTests.cs
+  hosted_windows_lab: tools/NetPilot.ByeDpiR42_1StagingLab
+
+next_gates:
+  - bind release-specific signed/high-assurance manifest provenance to exact package manifest
+  - implement protected staging creation/extraction transaction without service or IPC wiring
+  - implement interruption journal and deterministic cleanup/recovery with synthetic packages
+  - prove same-volume atomic promotion and rollback on Windows
+  - keep native execution blocked until the final HIGH_ASSURANCE admission review
