@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  NETPILOT_R42_SHA: 4a27e3877d968bdf0706f871532fa77e398db100
+  NETPILOT_R42_SHA: 1bffd091f9ac49a59e7145d48e8658df7d6eb608
 
 jobs:
   package-lifecycle-policy:
