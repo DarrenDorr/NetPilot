@@ -22,10 +22,19 @@ metadata_policy:
   extra_assets: REJECT
   duplicate_expected_asset: REJECT
   duplicate_asset_id: REJECT
+  asset_state: UPLOADED_ONLY
   asset_name_drift: REJECT
   asset_size_drift: REJECT
   asset_sha256_drift: REJECT
   asset_api_uri_drift: REJECT
+
+transport_contract:
+  github_api_version: '2026-03-10'
+  release_metadata_accept: application/vnd.github+json
+  release_asset_accept: application/octet-stream
+  direct_asset_response_200: ALLOW
+  release_asset_redirect_302: ALLOW_AFTER_POLICY_VALIDATION
+  other_redirects: REJECT
 
 origin_policy:
   release_metadata_api_origin: https://api.github.com
@@ -81,6 +90,8 @@ evidence_required:
   - exact_tag_endpoint_generation
   - exact_three_asset_selection
   - unique_asset_ids
+  - uploaded_asset_state
+  - pinned_github_api_contract
   - immutable_release_state_checks
   - origin_and_single_redirect_policy
   - resource_limit_policy
