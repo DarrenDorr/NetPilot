@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, feature/byedpi-functional-lab-r34 ]
 
 permissions:
   contents: read
@@ -23,6 +23,12 @@ jobs:
 
       - name: Проверка runtime admission composition
         run: bash scripts/runtime-admission-policy-check.sh
+
+      - name: R35 service integration boundary when present
+        run: |
+          if [ -f scripts/security/r35-service-integration-boundary-check.sh ]; then
+            bash scripts/security/r35-service-integration-boundary-check.sh
+          fi
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
