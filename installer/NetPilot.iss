@@ -18,7 +18,7 @@
 #define ServiceName "NetPilot.Service"
 #define ServiceDisplayName "NetPilot Service"
 #define PublisherName "NetPilot Project"
-#define ProjectUrl "https://github.com/raybalado989-lang/NetPilot"
+#define ProjectUrl "https://github.com/DarrenDorr/NetPilot"
 
 [Setup]
 AppId={{6E9D5D5C-2D0A-4E10-96B0-C56A80FDE214}
@@ -237,7 +237,6 @@ begin
 
     Sleep(250);
   end;
-
   Result := False;
 end;
 
