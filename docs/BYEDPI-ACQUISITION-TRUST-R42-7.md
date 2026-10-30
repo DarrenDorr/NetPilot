@@ -14,7 +14,7 @@ Policy принимает только:
 - типизированные release metadata от будущего узкого parser boundary;
 - необязательную текущую установленную canonical version для anti-downgrade проверки.
 
-Результат — read-only `ByeDpiAcquisitionPlan` с exact tag endpoint, exact asset API endpoints, exact sizes/SHA-256 и фиксированными network/resource limits.
+Результат — read-only `ByeDpiAcquisitionPlan` с exact tag endpoint, exact asset API endpoints, exact sizes/SHA-256, pinned GitHub API contract и фиксированными network/resource limits.
 
 ## Release discovery
 
@@ -22,7 +22,17 @@ Policy принимает только:
 
 `https://api.github.com/repos/DarrenDorr/NetPilot/releases/tags/byedpi-v0.17.3`
 
-Mutable `releases/latest` запрещён. Caller-selected arbitrary URL или arbitrary version не являются частью API policy.
+Mutable `releases/latest` запрещён. Caller-selected arbitrary URL или arbitrary version не являются частью API policy. Внутренние helpers построения release/asset endpoint не являются публичным API policy.
+
+## GitHub API contract
+
+Будущий transport обязан использовать закреплённый контракт:
+
+- `X-GitHub-Api-Version: 2026-03-10`;
+- metadata Accept: `application/vnd.github+json`;
+- release asset Accept: `application/octet-stream`.
+
+Asset endpoint может вернуть binary response `200` напрямую либо `302` на GitHub release-assets origin. Automatic redirect запрещён; `302` должен быть проверен policy вручную.
 
 ## Release state
 
@@ -45,12 +55,13 @@ Future parser обязан представить типизированные �
 Для каждого asset должны одновременно совпасть:
 
 - canonical name;
+- GitHub state ровно `uploaded`;
 - exact byte size;
-- exact lowercase SHA-256;
+- exact lowercase SHA-256 из GitHub digest, сопоставленный с R42.6 descriptor;
 - положительный, уникальный внутри релиза GitHub asset id;
 - exact API URI `https://api.github.com/repos/DarrenDorr/NetPilot/releases/assets/<id>`.
 
-Extra asset, missing asset, duplicate expected asset, duplicate GitHub asset id или любое identity drift блокируют acquisition plan.
+Extra asset, missing asset, duplicate expected asset, duplicate GitHub asset id, non-uploaded state или любое identity drift блокируют acquisition plan.
 
 ## Redirect policy
 
@@ -60,7 +71,7 @@ Automatic redirects должны быть отключены в будущем t
 
 `https://release-assets.githubusercontent.com/...`
 
-Запрещены custom port, userinfo, fragment, другой origin и второй redirect hop. Signed query parameters GitHub storage разрешены.
+Запрещены custom port, userinfo, fragment, другой origin и второй redirect hop. Signed query parameters GitHub storage разрешены. Прямой `200` от GitHub asset endpoint также допустим и redirect validation в таком случае не вызывается.
 
 ## Resource limits
 
@@ -88,7 +99,7 @@ Policy не предоставляет arbitrary version selector.
 R42.7 не реализует:
 
 - ByeDPI GitHub JSON parser;
-- `HttpClient` или другой network transport;
+- network transport;
 - скачивание bytes;
 - запись package на filesystem;
 - staging/promotion;
@@ -107,4 +118,4 @@ R42.7 не реализует:
 
 ## Следующий gate
 
-R42.8 должен добавить узкий exact-tag metadata parser и transport contract/fixture validation. Даже на R42.8 native execution и production admission должны оставаться закрытыми. Реальный product downloader допускается только после отдельного review его origin, redirect, byte-count, hash-verification, temporary-file и cleanup semantics.
+R42.8 должен добавить узкий exact-tag metadata parser и transport contract/fixture validation. Даже на R42.8 native execution и production admission должны оставаться закрытыми. Реальный product downloader допускается только после отдельного review его origin, API-version/header contract, 200/302 handling, redirect, byte-count, hash-verification, temporary-file и cleanup semantics.
