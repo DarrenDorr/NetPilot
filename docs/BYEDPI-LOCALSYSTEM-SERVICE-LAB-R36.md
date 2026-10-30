@@ -2,9 +2,12 @@
 
 ## Status
 
-**IMPLEMENTATION PREPARED / COMPILE PREFLIGHT PENDING / PRODUCTION ADMISSION BLOCK**
+**COMPILE/SECURITY PREFLIGHT PASS / INSTALLED LOCALSYSTEM RUNTIME IN PROGRESS / PRODUCTION ADMISSION BLOCK**
 
 Base: R35 authenticated IPC/service scaffold.
+
+Exact R36 implementation checkpoint under runtime test:
+`aa2711ae1bce1425306aad3cd606295c7b750c90`.
 
 R36 is deliberately implemented as separate lab-only executables. It does not add a runtime switch, environment variable or hidden admission path to the production `NetPilot.Service`.
 
@@ -37,13 +40,33 @@ Normal `NetPilot.Service` remains composed with:
 - `NoAdmittedWindowsVerifiedEngineProcessLauncher`;
 - `NoAdmittedWindowsByeDpiRuntimePlanProvider`.
 
-The production installer must not package, install or register either R36 lab executable.
+The production installer does not package, install or register either R36 lab executable. Production native engine catalogs remain empty.
 
-Production native engine catalogs remain empty.
+## Compile/security preflight — PASS
 
-## Planned hosted runtime evidence
+Pinned one-shot run `41005736327` on exact checkpoint `aa2711ae1bce1425306aad3cd606295c7b750c90`:
 
-After compile/security preflight, a dedicated pinned Windows workflow may:
+- security policy: PASS;
+- runtime admission policy: PASS;
+- R35 service-integration boundary: PASS;
+- R36 lab-isolation boundary: PASS;
+- Linux solution restore/build: PASS;
+- Windows R36 lab-service restore/build: PASS;
+- Windows R36 IPC-client restore/build: PASS;
+- Windows platform tests: PASS;
+- native ByeDPI execution: NOT PERFORMED;
+- Windows service registration: NOT PERFORMED.
+
+The one-shot preflight workflow was removed from `main` after PASS.
+
+## Installed LocalSystem runtime gate
+
+Permanent manual workflow:
+`.github/workflows/byedpi-localsystem-service-r36.yml`
+
+Pinned runtime run currently under evidence collection: `41006065721`.
+
+The workflow is designed to:
 
 1. rebuild the exact R34 candidate and require its exact SHA-256;
 2. publish R36 service/client;
@@ -52,11 +75,12 @@ After compile/security preflight, a dedicated pinned Windows workflow may:
 5. prepare one-time enrollment session state;
 6. register `NetPilot.R36.Lab` as LocalSystem and start it;
 7. run the interactive IPC client and prove real LocalSystem service-controlled SOCKS/HTTP traffic;
-8. start ByeDPI again via IPC, stop the Windows service and prove no residual `ciadpi.exe`/listener;
-9. restart the service and prove typed status is `Stopped`;
-10. verify system proxy and WinDivert state unchanged;
-11. delete only workflow-owned service/tree and upload text evidence.
+8. prove `ciadpi.exe` is a direct child of the service and runs as SYSTEM;
+9. start ByeDPI again via IPC, stop the Windows service and prove no residual `ciadpi.exe`/listener;
+10. restart the service and prove typed status is `Stopped`;
+11. verify system proxy and WinDivert state unchanged;
+12. delete only workflow-owned service/tree and upload text evidence.
 
 ## Not yet proven
 
-R36 does not become PASS until the pinned hosted runtime workflow succeeds and evidence is reviewed. The current design also does not yet prove abrupt service-process termination cleanup or a second interactive SID; those remain explicit later evidence gates unless added safely to R36.x.
+R36 does not become runtime PASS until the pinned hosted workflow succeeds and its text evidence is reviewed. The current R36 design also does not yet prove abrupt service-process termination cleanup or a second interactive SID; those remain explicit later evidence gates unless added safely in R36.x.
