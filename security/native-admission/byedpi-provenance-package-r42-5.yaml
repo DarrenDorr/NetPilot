@@ -1,0 +1,72 @@
+schema_version: 1
+milestone: R42.5
+engine: byedpi
+platform: windows-x64
+scope: deterministic_reviewed_package_and_build_provenance
+parent_checkpoint: 7c723a48924e79bbc5427d3f543f5d9a20f0e402
+
+reviewed_source:
+  repository: hufrea/byedpi
+  commit: 7efde1b1296eaaa187b70e951894dde17527489c
+  tree: 8d13f6f5939190cd27ee68696247073a00b3e7dc
+  license_blob: 342905d38be83e9d540deae14987896826a74858
+  license_size_bytes: 1063
+  license_sha256: 18c854c6c25dffefe4b522cf1bdf5d15278a25ca785948258bddb94393f575eb
+
+reviewed_patchset:
+  - name: 0001-loopback-only-listener.patch
+    sha256: 3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068
+  - name: 0002-kavl-iterator-no-before-array-sentinel.patch
+    sha256: 6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7
+  - name: 0003-pid-file-fail-safe-write.patch
+    sha256: 5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738
+  - name: 0004-kavl-empty-erase-guard.patch
+    sha256: fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a
+  - name: 0005-windows-socket-handle-narrowing-guard.patch
+    sha256: 7c8f4eee9ff2624346cb886027df66378773d0af04f5f84f54c30815104b4356
+  - name: 0006-windows-wait-result-range.patch
+    sha256: 136b9fdf34b68a55f0f1a6ebf16e8b61c9b88e6d15eeb923594bdd7bf0fa2a3e
+  - name: 0007-windows-aux-socket-probes.patch
+    sha256: 778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25
+
+build_identity:
+  package_version: 0.17.3
+  compiler: x86_64-w64-mingw32-gcc
+  linker_flags: -Wl,--no-insert-timestamp -lws2_32 -lmswsock
+  expected_windows_binary_sha256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+
+package_contract:
+  payload_zip: NetPilot-ByeDPI-0.17.3-x64.zip
+  manifest_document: NetPilot-ByeDPI-0.17.3-x64.manifest.json
+  provenance_document: NetPilot-ByeDPI-0.17.3-x64.provenance.json
+  payload_entries:
+    - LICENSE
+    - bin/ciadpi.exe
+  deterministic_zip_timestamp_utc: 1980-01-01T00:00:00Z
+  manifest_schema_version: 1
+  manifest_unknown_fields: REJECT
+  manifest_duplicate_fields: REJECT
+  manifest_digest_drift: REJECT
+
+provenance:
+  github_artifact_attestation: REQUIRED_FOR_R42_5_CI_EVIDENCE
+  attestation_is_not_security_review: true
+  immutable_release_before_future_product_acquisition: REQUIRED
+  release_publication: NOT_IMPLEMENTED
+
+boundaries:
+  product_downloader: NOT_IMPLEMENTED
+  service_or_ipc_wiring: NOT_IMPLEMENTED
+  installer_integration: NOT_IMPLEMENTED
+  native_execution: NOT_IMPLEMENTED
+  production_admission: BLOCK
+
+evidence_required:
+  - exact_source_commit_and_tree
+  - exact_reviewed_patch_hashes
+  - deterministic_binary_sha256
+  - strict_manifest_roundtrip_tests
+  - deterministic_package_rebuild
+  - artifact_attestation
+  - full_solution_build
+  - security_guard
