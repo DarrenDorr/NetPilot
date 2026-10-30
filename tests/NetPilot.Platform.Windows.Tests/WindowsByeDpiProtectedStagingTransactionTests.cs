@@ -117,7 +117,7 @@ public sealed class WindowsByeDpiProtectedStagingTransactionTests : IDisposable
         {
             var entry = archive.CreateEntry("../escape.bin", CompressionLevel.NoCompression);
             await using var stream = entry.Open();
-            await stream.WriteAsync([1, 2, 3]);
+            await stream.WriteAsync(new byte[] { 1, 2, 3 });
         }
         zip.Position = 0;
 
