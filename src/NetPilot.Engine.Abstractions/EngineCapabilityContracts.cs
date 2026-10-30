@@ -75,8 +75,9 @@ public interface IEngineBackendCapabilityProvider
 }
 
 /// <summary>
-/// Центральные минимальные требования встроенных полноценных профилей.
-/// Proxy-only режим не должен молча выдавать себя за transparent профиль.
+/// Центральные минимальные требования доверенных профилей.
+/// Пользовательские профили остаются transparent-only. Отдельный R34 lab profile
+/// честно требует только explicit proxy TCP и не публикуется через продуктовый каталог.
 /// </summary>
 public static class BuiltInEngineProfileCapabilityPolicy
 {
@@ -96,6 +97,11 @@ public static class BuiltInEngineProfileCapabilityPolicy
                 | EngineTrafficCapability.TransparentUdp;
         }
 
+        if (profileId == EngineLabProfileCatalog.ByeDpiLoopbackR34Id)
+        {
+            return EngineTrafficCapability.ExplicitProxyTcp;
+        }
+
         throw new EngineProfileRuntimeException(
             "UnknownProfile",
             "Для профиля отсутствует доверенная capability-политика Net.Pilot.");
@@ -107,9 +113,8 @@ public static class BuiltInEngineProfileCapabilityPolicy
         capabilities.Supports(GetRequiredCapabilities(profileId));
 
     /// <summary>
-    /// Возвращает только те встроенные полнофункциональные профили, которые
-    /// покрываются конкретной доверенной backend declaration.
-    /// Метод не выполняет admission и не разрешает запуск native-компонента.
+    /// Возвращает только пользовательские встроенные профили, которые покрываются
+    /// конкретной доверенной backend declaration. Lab-only ids намеренно сюда не входят.
     /// </summary>
     public static IReadOnlyList<EngineProfileDescriptor> GetSupportedProfiles(
         EngineBackendCapabilityDeclaration declaration)
