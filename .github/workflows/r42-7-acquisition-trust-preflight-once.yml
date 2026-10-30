@@ -1,6 +1,16 @@
 name: R42.7 ByeDPI Acquisition Trust Preflight Once
 
 on:
+  push:
+    branches:
+      - feature/byedpi-acquisition-trust-r42-7
+    paths:
+      - 'src/NetPilot.Updater/ByeDpiAcquisitionTrustPolicy.cs'
+      - 'tests/NetPilot.Core.Tests/ByeDpiAcquisitionTrustPolicyTests.cs'
+      - 'security/native-admission/byedpi-acquisition-trust-r42-7.yaml'
+      - 'scripts/security/r42-7-byedpi-acquisition-trust-check.sh'
+      - 'docs/BYEDPI-ACQUISITION-TRUST-R42-7.md'
+      - '.github/workflows/r42-7-acquisition-trust-preflight-once.yml'
   pull_request:
     branches:
       - feature/byedpi-immutable-distribution-r42-6
@@ -19,7 +29,7 @@ jobs:
   managed-preflight:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout exact PR head
+      - name: Checkout exact branch or PR head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
