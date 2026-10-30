@@ -1,0 +1,34 @@
+NetPilot R38 — real second-SID ByeDPI lease isolation evidence
+
+Workflow: R38 Real Second-SID Lease Runtime Once
+Run ID: 41009587630
+Product checkpoint: 61ebea0833ce845c174510274554ad1c67dce2b0
+Hosted OS: Windows Server 2025
+ByeDPI candidate SHA256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+Package version: 0.17.3-netpilot-r34-lab
+Service: NetPilot.R38.Lab
+Loopback port: 39036
+
+PRODUCTION_ADMISSION=BLOCK
+PROTECTED_PROGRAM_FILES_TREE=True
+LOCALSYSTEM_SERVICE_RUNNING=True
+PRIMARY_OWNER_ENGINE_RUNNING=PASS
+SECOND_SID_DISTINCT=True
+SECOND_USER_AUTHENTICATED_IPC=PASS
+SECOND_USER_START_DENIED=PASS
+SECOND_USER_STOP_DENIED=PASS
+LEASE_PRESERVED=PASS
+SECOND_USER_CLEANUP=PASS
+PRIMARY_OWNER_STOP_AFTER_DENIAL=PASS
+R38_OWNER_STOP_CLEANUP=PASS
+WORKFLOW_OWNED_STATE_CLEANUP=PASS
+RESULT=R38_REAL_SECOND_SID_LEASE_PASS
+
+Evidence artifact:
+- name: r38-byedpi-real-second-sid-lease-evidence
+- artifact id: 12955959862
+- archive digest: sha256:fed546422e177eae8f46612951c070e202538eaff6c0a3ea805778ea78c98b61
+- retention: 14 days from 2026-10-30
+
+Scope:
+This evidence proves real second-Windows-SID authenticated IPC lease isolation for the lab-only ByeDPI composition. It does not authorize production native admission, production package rollout, transparent routing, or any WinDivert integration.
