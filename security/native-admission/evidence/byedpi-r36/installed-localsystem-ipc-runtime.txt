@@ -1,0 +1,53 @@
+R36 ByeDPI installed LocalSystem service + authenticated IPC runtime evidence
+
+validated_product_checkpoint=aa2711ae1bce1425306aad3cd606295c7b750c90
+original_runtime_run_id=41006065721
+original_runtime_result=FAIL_BEFORE_SERVICE_START_DUE_TO_SC_EXE_ARGUMENT_FORMAT
+retry_runtime_run_id=41007056260
+retry_runtime_result=PASS
+retry_artifact_id=12956356229
+retry_artifact_name=r36-byedpi-installed-localsystem-retry-evidence
+retry_artifact_zip_sha256=6d7279ca0190871dc4255ad0ed64ca90963aecc2e078f31a4aa795751129e24b
+source_candidate_artifact_id=12955721317
+source_candidate_artifact_digest=sha256:179080c9a2f6f7d3a2aa38c9868fa339d5c3478bb0d9a0baa1c9ad9fcde2c6bb
+byedpi_windows_sha256=866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+client_session_id=2
+production_admission=BLOCK
+
+boundary:
+  protected_program_files_tree=true
+  service_start_name=LocalSystem
+  localsystem_service_running=true
+  staged_sha256_matches=true
+
+functional_ipc:
+  enrollment=PASS
+  authenticated_ipc=PASS
+  ipc_start=PASS
+  socks5_local_http=PASS
+  ipc_stop_cleanup=PASS
+  result=BYEDPI_LOCALSYSTEM_IPC_R36_PASS
+
+service_ownership_and_lifecycle:
+  authenticated_ipc=PASS
+  start_for_service_stop=PASS
+  engine_parent_is_service=true
+  engine_owner_system=true
+  service_stop_engine_cleanup=PASS
+  service_restart_typed_status=Stopped
+  restart_status_result=R36_STATUS_PASS
+
+post_run_isolation:
+  proxy_unchanged=true
+  windivert_unchanged=true
+  residual_ciadpi=false
+  residual_proxy_listener=false
+  post_run_isolation=PASS
+  workflow_owned_tree_cleanup=PASS
+  result=BYEDPI_INSTALLED_LOCALSYSTEM_R36_PASS
+
+Scope note:
+- This proves the exact R34-tested ByeDPI candidate can be controlled by an installed isolated LocalSystem lab service through authenticated IPC v4, including graceful Windows service-stop cleanup and restart-to-Stopped state.
+- It does NOT grant production runtime admission.
+- It does NOT yet prove abrupt service-process termination recovery or a second independent interactive Windows SID.
+- It does NOT prove transparent routing or WinDivert safety.
