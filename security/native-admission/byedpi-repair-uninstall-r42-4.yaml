@@ -1,0 +1,38 @@
+schema_version: 1
+milestone: R42.4
+engine: byedpi
+platform: windows-x64
+scope: managed_package_repair_and_uninstall
+parent_checkpoint: ec8e6dad28c39387c632e24b05adecaaf16aa8c6
+
+repair:
+  source: typed_verified_r42_2_r42_3_staging_only
+  exact_current_version_only: true
+  canonical_manifest_digest_must_match: true
+  same_volume_atomic_swap: true
+  protected_backup: true
+  crash_recovery: required
+
+uninstall:
+  target_parameter: absent
+  whole_managed_byedpi_root_atomic_move: true
+  service_owned_tombstone: true
+  crash_recovery: required
+  active_engine_lease: BLOCK
+
+boundaries:
+  public_raw_path_input: FORBIDDEN
+  public_url_input: FORBIDDEN
+  arbitrary_command_or_argv: FORBIDDEN
+  service_or_ipc_wiring: NOT_IMPLEMENTED
+  runtime_network_acquisition: NOT_IMPLEMENTED
+  installer_integration: NOT_IMPLEMENTED
+  native_execution: NOT_IMPLEMENTED
+  production_admission: BLOCK
+
+evidence_required:
+  - full_solution_build
+  - windows_synthetic_repair_uninstall_tests
+  - crash_point_recovery_tests
+  - security_guard
+  - localsystem_program_files_lab_before_next_gate
