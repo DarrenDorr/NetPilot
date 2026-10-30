@@ -1,0 +1,49 @@
+NetPilot R39 — real service restart / ownership reconciliation evidence
+
+Workflow: R39 Real Service Restart Reconciliation Once
+Run ID: 41013877749
+Product checkpoint: 99b0ef2feb4a9276a1b06420a5df53f95fc599b8
+Hosted OS: Windows Server 2025
+ByeDPI candidate SHA256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+Package version: 0.17.3-netpilot-r34-lab
+Service: NetPilot.R39.Lab
+Loopback port: 39036
+Primary session ID: 2
+
+PRODUCTION_ADMISSION=BLOCK
+PROTECTED_PROGRAM_FILES_TREE=True
+LOCALSYSTEM_SERVICE_RUNNING=True
+ORIGINAL_OWNER_ENGINE_RUNNING=PASS
+ABRUPT_SERVICE_TERMINATION=PASS
+OLD_ENGINE_KILLED_ON_SERVICE_CLOSE=PASS
+OLD_LISTENER_CLEANUP=PASS
+SERVICE_RESTART=PASS
+POST_RESTART_STATUS_STOPPED=PASS
+SECOND_SID_DISTINCT=True
+SECOND_USER_FRESH_START=PASS
+OLD_OWNER_DENIED_AFTER_RESTART=PASS
+FRESH_LEASE_PRESERVED=PASS
+SECOND_USER_FRESH_STOP=PASS
+FINAL_ENGINE_CLEANUP=PASS
+SECOND_USER_CLEANUP=PASS
+WORKFLOW_OWNED_STATE_CLEANUP=PASS
+RESULT=R39_RESTART_RECONCILIATION_PASS
+
+Additional authenticated IPC markers:
+R39_AUTHENTICATED_IPC=PASS
+R39_SESSION_NONZERO=True
+R39_POST_RESTART_STATUS_STOPPED=PASS
+R39_POST_RESTART_NO_LISTENER=PASS
+R39_OLD_OWNER_START_DENIED=PASS
+R39_OLD_OWNER_STOP_DENIED=PASS
+R39_FRESH_LEASE_PRESERVED=PASS
+
+Evidence artifact:
+- name: r39-byedpi-restart-reconciliation-evidence
+- artifact id: 12958394667
+- ZIP digest: sha256:228a40bebfb42962ee270ac2b3322b1781a84e4c42e79b7e143f1281a9e94962
+- size: 1701 bytes
+- expires: 2026-11-13T06:26:31Z
+
+Scope:
+This evidence proves the lab-only explicit loopback-proxy restart/reconciliation semantics: an abrupt LocalSystem service termination kills the old service-owned ByeDPI process/listener; after restart authenticated IPC reports Stopped; a distinct second SID can acquire a new session; the former owner cannot start or stop that new session; the new owner can cleanly stop it. Production native admission remains BLOCK. This does not authorize production native execution, transparent routing, WinDivert integration, arbitrary native arguments, or release rollout.
