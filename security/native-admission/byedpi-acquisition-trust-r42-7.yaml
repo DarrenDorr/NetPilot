@@ -21,6 +21,7 @@ metadata_policy:
   exact_asset_count: 3
   extra_assets: REJECT
   duplicate_expected_asset: REJECT
+  duplicate_asset_id: REJECT
   asset_name_drift: REJECT
   asset_size_drift: REJECT
   asset_sha256_drift: REJECT
@@ -79,6 +80,7 @@ evidence_required:
   - parent_r42_6_guard
   - exact_tag_endpoint_generation
   - exact_three_asset_selection
+  - unique_asset_ids
   - immutable_release_state_checks
   - origin_and_single_redirect_policy
   - resource_limit_policy
