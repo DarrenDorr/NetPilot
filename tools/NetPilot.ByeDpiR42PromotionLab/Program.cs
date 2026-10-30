@@ -54,11 +54,10 @@ internal static class Program
             }
             evidence.Add("LAB_OWNERSHIP_MARKER=PASS");
 
-            var manifestV1 = CreateManifest("0.17.2", "previous");
-            var stagedV1 = await StageAsync(manifestV1);
+            var packageV1 = await StageAsync("0.17.2", "previous");
             var sourceV1 = await WindowsByeDpiPromotionSourceVerifier.VerifyAsync(
-                stagedV1,
-                manifestV1);
+                packageV1.Staged,
+                packageV1.Manifest);
             var install = await WindowsByeDpiAtomicPackagePromoter.PromoteAsync(
                 sourceV1,
                 ByeDpiPackageLifecycleOperation.Install,
@@ -66,7 +65,7 @@ internal static class Program
 
             if (!string.Equals(install.CurrentVersion, "0.17.2", StringComparison.Ordinal)
                 || install.RetainedPreviousVersion is not null
-                || install.VerifiedFileCount != manifestV1.Files.Count
+                || install.VerifiedFileCount != packageV1.Manifest.Files.Count
                 || install.VerifiedSecurityObjectCount <= 0)
             {
                 throw new InvalidOperationException("R42.3 install evidence is incomplete.");
@@ -75,11 +74,10 @@ internal static class Program
             evidence.Add("INSTALL_ATOMIC_PROMOTION=PASS");
             evidence.Add("INSTALL_POST_MOVE_REVERIFY=PASS");
 
-            var manifestV2 = CreateManifest("0.17.3", "current");
-            var stagedV2 = await StageAsync(manifestV2);
+            var packageV2 = await StageAsync("0.17.3", "current");
             var sourceV2 = await WindowsByeDpiPromotionSourceVerifier.VerifyAsync(
-                stagedV2,
-                manifestV2);
+                packageV2.Staged,
+                packageV2.Manifest);
             var upgrade = await WindowsByeDpiAtomicPackagePromoter.PromoteAsync(
                 sourceV2,
                 ByeDpiPackageLifecycleOperation.Upgrade,
@@ -89,7 +87,7 @@ internal static class Program
                 || !string.Equals(upgrade.RetainedPreviousVersion, "0.17.2", StringComparison.Ordinal)
                 || !Directory.Exists(install.ManagedPackageRoot)
                 || !Directory.Exists(upgrade.ManagedPackageRoot)
-                || upgrade.VerifiedFileCount != manifestV2.Files.Count
+                || upgrade.VerifiedFileCount != packageV2.Manifest.Files.Count
                 || upgrade.VerifiedSecurityObjectCount <= 0)
             {
                 throw new InvalidOperationException("R42.3 upgrade/retained previous evidence is incomplete.");
@@ -181,15 +179,17 @@ internal static class Program
         }
     }
 
-    private static async Task<WindowsByeDpiStagingTransactionResult> StageAsync(
-        ByeDpiPackageManifest manifest)
+    private static async Task<StagedSyntheticPackage> StageAsync(
+        string version,
+        string label)
     {
-        var files = CreateFiles(manifest.Version, manifest.CanonicalManifestSha256[..8]);
-        manifest = CreateManifestFromFiles(manifest.Version, files);
+        var files = CreateFiles(version, label);
+        var manifest = CreateManifestFromFiles(version, files);
         await using var zip = CreateZip(files);
-        return await WindowsByeDpiProtectedStagingTransaction.StageAndVerifyAsync(
+        var staged = await WindowsByeDpiProtectedStagingTransaction.StageAndVerifyAsync(
             zip,
             manifest);
+        return new StagedSyntheticPackage(staged, manifest);
     }
 
     private static void AssertSyntheticNonPe(string managedRoot)
@@ -212,12 +212,6 @@ internal static class Program
             Directory.CreateDirectory(directory);
         }
         await File.WriteAllLinesAsync(outputPath, lines, Encoding.UTF8);
-    }
-
-    private static ByeDpiPackageManifest CreateManifest(string version, string label)
-    {
-        var files = CreateFiles(version, label);
-        return CreateManifestFromFiles(version, files);
     }
 
     private static ByeDpiPackageManifest CreateManifestFromFiles(
@@ -258,4 +252,8 @@ internal static class Program
         stream.Position = 0;
         return stream;
     }
+
+    private sealed record StagedSyntheticPackage(
+        WindowsByeDpiStagingTransactionResult Staged,
+        ByeDpiPackageManifest Manifest);
 }
