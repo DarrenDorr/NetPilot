@@ -124,7 +124,7 @@ public static class WindowsByeDpiProtectedStagingSecurityVerifier
     {
         if (string.IsNullOrWhiteSpace(value)
             || value.Length > 240
-            || value.StartsWith('/', StringComparison.Ordinal)
+            || value[0] == '/'
             || value.Contains('\\')
             || value.Contains(':')
             || value.Contains('\0'))
