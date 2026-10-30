@@ -3,10 +3,11 @@ namespace NetPilot.Engine.Abstractions;
 /// <summary>
 /// Неисполняемая metadata будущего launch plan.
 ///
-/// Объект связывает только trusted runtime prerequisites с одним встроенным
-/// EngineProfileId. Здесь намеренно отсутствуют executable/path, ArgumentList,
-/// command line, URL, environment, process/service/driver или network controls.
-/// Наличие metadata не является runtime admission и не разрешает запуск native-кода.
+/// Объект связывает только trusted runtime prerequisites с одним доверенным
+/// EngineProfileId. Пользовательские ids приходят из BuiltInEngineProfileCatalog;
+/// изолированные lab-only ids — из EngineLabProfileCatalog. Здесь намеренно отсутствуют
+/// executable/path, ArgumentList, command line, URL, environment, process/service/driver
+/// или network controls. Наличие metadata не является runtime admission.
 /// </summary>
 public sealed class EngineLaunchPlanMetadata
 {
@@ -16,11 +17,15 @@ public sealed class EngineLaunchPlanMetadata
     {
         ArgumentNullException.ThrowIfNull(runtimePrerequisites);
 
-        if (profileId.IsEmpty || !BuiltInEngineProfileCatalog.IsBuiltIn(profileId))
+        var trustedProfile =
+            BuiltInEngineProfileCatalog.IsBuiltIn(profileId)
+            || EngineLabProfileCatalog.IsTrustedLabProfile(profileId);
+
+        if (profileId.IsEmpty || !trustedProfile)
         {
             throw new EngineProfileRuntimeException(
                 "UnknownProfile",
-                "Launch-plan metadata разрешает только встроенный профиль Net.Pilot.");
+                "Launch-plan metadata разрешает только доверенный product или lab-only профиль Net.Pilot.");
         }
 
         if (!BuiltInEngineProfileCapabilityPolicy.IsSupported(
@@ -56,10 +61,10 @@ public interface IEngineLaunchPlanMetadataProvider
 }
 
 /// <summary>
-/// Создаёт launch metadata только из полного trusted prerequisite set и встроенного
-/// профиля, который действительно поддерживается backend capabilities.
+/// Production catalog создаёт metadata только из полного trusted prerequisite set
+/// и пользовательского встроенного профиля. Lab-only ids намеренно не добавляются.
 ///
-/// В R28.12 prerequisite catalog пуст, поэтому готовых launch-plan metadata нет.
+/// В R28.12 prerequisite catalog пуст, поэтому готовых production launch-plan metadata нет.
 /// </summary>
 public static class BuiltInEngineLaunchPlanMetadataCatalog
 {
