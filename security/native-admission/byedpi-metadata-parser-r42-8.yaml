@@ -1,0 +1,91 @@
+schema_version: 1
+milestone: R42.8
+engine: byedpi
+platform: windows-x64
+scope: exact_tag_metadata_parser_and_pure_transport_response_contract
+parent_checkpoint: cf6fbd7bf15325f8538553454a59d3e60b134565
+
+parser_boundary:
+  input: RAW_GITHUB_EXACT_TAG_JSON_BYTES
+  max_metadata_bytes: 262144
+  max_json_depth: 16
+  max_assets_in_metadata: 16
+  trailing_commas: REJECT
+  comments: REJECT
+  duplicate_properties: REJECT_ALL
+  unknown_properties: TOLERATE_WITHOUT_SEMANTIC_EFFECT
+  required_root_fields:
+    - id
+    - tag_name
+    - draft
+    - prerelease
+    - immutable
+    - assets
+  required_asset_fields:
+    - id
+    - name
+    - state
+    - size
+    - digest
+    - url
+  positive_release_id: REQUIRED
+  positive_asset_id: REQUIRED
+  positive_asset_size: REQUIRED
+  asset_url: CANONICAL_HTTPS_ONLY
+  digest_format: sha256_colon_64_lowercase_hex_only
+  output: ByeDpiAcquisitionReleaseMetadata
+
+policy_composition:
+  parser_is_not_trust_decision: true
+  r42_7_policy_evaluation_after_parse: REQUIRED
+  exact_three_assets_enforced_by_r42_7: true
+  uploaded_state_enforced_by_r42_7: true
+  exact_name_size_sha256_api_uri_enforced_by_r42_7: true
+  immutable_release_enforced_by_r42_7: true
+  anti_downgrade_enforced_by_r42_7: true
+
+transport_response_contract:
+  metadata_response:
+    allowed_status: 200
+    redirect: REJECT
+    content_length_absent: ALLOW_WITH_FUTURE_BOUNDED_STREAMING
+    content_length_above_262144: REJECT
+  asset_api_response:
+    direct_200: ALLOW
+    single_302: ALLOW_AFTER_R42_7_REDIRECT_VALIDATION
+    other_status: REJECT
+    location_on_200: REJECT
+    content_length_if_present: MUST_EQUAL_IMMUTABLE_DESCRIPTOR_SIZE
+    content_length_absent: ALLOW_WITH_FUTURE_EXACT_STREAM_COUNT
+  redirected_asset_response:
+    allowed_status: 200
+    further_redirect: REJECT
+    location_on_200: REJECT
+    content_length_if_present: MUST_EQUAL_IMMUTABLE_DESCRIPTOR_SIZE
+
+boundaries:
+  http_transport: NOT_IMPLEMENTED
+  product_downloader: NOT_IMPLEMENTED
+  network_acquisition: NOT_IMPLEMENTED
+  filesystem_write: NOT_IMPLEMENTED
+  staging_invocation: NOT_IMPLEMENTED
+  service_or_ipc_wiring: NOT_IMPLEMENTED
+  installer_integration: NOT_IMPLEMENTED
+  native_execution: NOT_IMPLEMENTED
+  production_admission: BLOCK
+
+next_gate:
+  milestone: R42.9
+  scope: isolated_bounded_http_transport_with_fake_handler_and_no_product_wiring
+  requirement: preserve_r42_8_parser_response_contract_and_keep_native_execution_blocked
+
+evidence_required:
+  - parent_r42_7_guard
+  - strict_parser_fixture_tests
+  - duplicate_property_tests
+  - sha256_digest_tests
+  - parser_to_r42_7_policy_composition
+  - pure_response_contract_tests
+  - no_network_filesystem_process_primitives
+  - full_solution_build
+  - security_guard
