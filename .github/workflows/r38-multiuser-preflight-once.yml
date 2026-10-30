@@ -1,0 +1,87 @@
+name: R38 Multi-User Lease Preflight Once
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/r38-multiuser-preflight-once.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: netpilot-r38-multiuser-preflight-once
+  cancel-in-progress: false
+
+env:
+  NETPILOT_R38_SHA: 61ebea0833ce845c174510274554ad1c67dce2b0
+
+jobs:
+  linux-boundary:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.NETPILOT_R38_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify checkpoint
+        run: test "$(git rev-parse HEAD)" = "$NETPILOT_R38_SHA"
+      - name: Security gates
+        run: |
+          bash scripts/security-policy-check.sh
+          bash scripts/runtime-admission-policy-check.sh
+          bash scripts/security/r35-service-integration-boundary-check.sh
+          bash scripts/security/r36-localsystem-lab-boundary-check.sh
+          bash scripts/security/r37-crash-containment-boundary-check.sh
+          bash scripts/security/r38-multiuser-lease-boundary-check.sh
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore and build solution
+        run: |
+          dotnet restore NetPilot.sln
+          dotnet build NetPilot.sln --configuration Release --no-restore
+
+  windows-lab-build:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.NETPILOT_R38_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify checkpoint
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne $env:NETPILOT_R38_SHA) { throw 'R38 checkpoint drift.' }
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore lab projects
+        shell: pwsh
+        run: |
+          dotnet restore tools\NetPilot.ByeDpiR36ServiceLab\NetPilot.ByeDpiR36ServiceLab.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet restore tools\NetPilot.ByeDpiR36LabClient\NetPilot.ByeDpiR36LabClient.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet restore tools\NetPilot.ByeDpiR38LeaseClient\NetPilot.ByeDpiR38LeaseClient.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet restore tests\NetPilot.Platform.Windows.Tests\NetPilot.Platform.Windows.Tests.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build hardened lab service and clients
+        shell: pwsh
+        run: |
+          dotnet build tools\NetPilot.ByeDpiR36ServiceLab\NetPilot.ByeDpiR36ServiceLab.csproj --configuration Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build tools\NetPilot.ByeDpiR36LabClient\NetPilot.ByeDpiR36LabClient.csproj --configuration Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build tools\NetPilot.ByeDpiR38LeaseClient\NetPilot.ByeDpiR38LeaseClient.csproj --configuration Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Windows platform tests
+        run: dotnet test tests\NetPilot.Platform.Windows.Tests\NetPilot.Platform.Windows.Tests.csproj --configuration Release --no-restore
+      - name: Evidence boundary
+        shell: pwsh
+        run: |
+          Write-Host 'R38 preflight creates no second user, starts no native engine and registers no Windows service.'
+          Write-Host 'Production admission remains BLOCK.'
