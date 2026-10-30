@@ -1,0 +1,60 @@
+schema_version: 1
+manifest_status: development_source_of_truth
+updated_at: 2026-10-30
+
+product:
+  name: NetPilot
+  publisher: NetPilot Project
+  repository_url: https://github.com/DarrenDorr/NetPilot
+  support_url: https://github.com/DarrenDorr/NetPilot/issues
+  updates_url: https://github.com/DarrenDorr/NetPilot/releases
+  default_package_version: 0.1.0-alpha
+  default_file_version: 0.1.0.0
+  windows_architecture: x64
+
+build_tools:
+  inno_setup:
+    version: 7.1.1
+    architecture: x64
+    immutable_release_url: https://github.com/jrsoftware/issrc/releases/download/is-7_1_1/innosetup-7.1.1-x64.exe
+    sha256: 8a5a6711c3766a6e5fb74f280ba0e3551e719ce94538d901fdbd1f8f9920b3f0
+    expected_authenticode_publisher: Pyrsys B.V.
+    distribution_role: build_tool_only
+
+third_party_components:
+  byedpi:
+    upstream_repository: https://github.com/hufrea/byedpi
+    reviewed_version: v0.17.3
+    reviewed_upstream_commit: 7efde1b1296eaaa187b70e951894dde17527489c
+    reviewed_windows_x64_sha256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+    reviewed_patchset: 0001-0007
+    license: MIT
+    copyright: Copyright (c) 2024 hufrea
+    license_notice_path: third_party/licenses/ByeDPI-MIT.txt
+    production_distribution: not_shipped
+    production_admission: BLOCK
+    may_execute_in_production: false
+    may_integrate_in_production: false
+  windivert:
+    upstream_repository: https://github.com/basil00/WinDivert
+    production_distribution: not_authorized_by_byedpi_r41_1
+    production_admission: separate_review_required
+
+release_trust:
+  netpilot_output_code_signing:
+    status: NOT_IMPLEMENTED
+    release_gate: BLOCK_FOR_NATIVE_PRODUCTION_ROLLOUT
+  third_party_build_tool_signature_verification:
+    inno_setup: REQUIRED_AND_IMPLEMENTED
+
+native_admission_invariants:
+  byedpi_positive_catalog_entry: false
+  byedpi_installer_payload: false
+  byedpi_runtime_network_updater: false
+  transparent_windows_routing_authorized: false
+  windivert_authorized_by_byedpi: false
+
+notes:
+  - This manifest synchronizes release metadata only; it is not an admission record.
+  - Exact release outputs must later bind their own hashes/signatures to a release-specific manifest.
+  - Historical documents may describe older tool versions; current build and installer metadata must match this manifest.
