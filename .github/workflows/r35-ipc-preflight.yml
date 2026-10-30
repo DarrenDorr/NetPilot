@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  NETPILOT_R35_SHA: 32e6780b7d87ef598d86af252e32c5cfa6e138c1
+  NETPILOT_R35_SHA: f3b7be600ca90332ac2b5c1b46877ba97a9a2bd1
 
 jobs:
   linux-contract:
