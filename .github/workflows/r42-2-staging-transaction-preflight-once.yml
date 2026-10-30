@@ -1,0 +1,93 @@
+name: R42.2 Staging Transaction Preflight Once
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/r42-2-staging-transaction-preflight-once.yml'
+
+permissions:
+  contents: read
+
+env:
+  NETPILOT_R42_2_SHA: 351e96b73ee0e4f66d608a177808a84b26031d22
+
+jobs:
+  managed-boundary:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact R42.2 checkpoint
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.NETPILOT_R42_2_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify fail-closed package boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$NETPILOT_R42_2_SHA"
+          bash scripts/security/r42-2-byedpi-staging-transaction-check.sh
+          bash scripts/security-policy-check.sh
+          bash scripts/runtime-admission-policy-check.sh
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore and build solution
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet restore NetPilot.sln
+          dotnet build NetPilot.sln --configuration Release --no-restore
+          echo 'R42_2_SOLUTION_BUILD=PASS'
+          echo 'R42_2_NATIVE_EXECUTION_TESTED=False'
+          echo 'R42_2_PRODUCTION_ADMISSION=BLOCK'
+
+  windows-synthetic-tests:
+    runs-on: windows-2025
+    steps:
+      - name: Checkout exact R42.2 checkpoint
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.NETPILOT_R42_2_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Assert no product/native residue before tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -ne $env:NETPILOT_R42_2_SHA) { throw 'R42.2 checkpoint drift.' }
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) { throw 'Unexpected ciadpi process before R42.2.' }
+          $productRoot = Join-Path $env:ProgramFiles 'NetPilot'
+          if (Test-Path -LiteralPath $productRoot) { throw 'R42.2 synthetic tests refuse a pre-existing Program Files\NetPilot tree.' }
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build Windows transaction tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet build tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run R42.2 synthetic transaction tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet test tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj --configuration Release --no-build --filter "FullyQualifiedName~WindowsByeDpiProtectedStagingTransactionTests"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) { throw 'R42.2 unexpectedly launched ciadpi.' }
+          $productRoot = Join-Path $env:ProgramFiles 'NetPilot'
+          if (Test-Path -LiteralPath $productRoot) { throw 'R42.2 unit tests unexpectedly mutated Program Files\NetPilot.' }
+          Write-Host 'R42_2_WINDOWS_SYNTHETIC_TESTS=PASS'
+          Write-Host 'R42_2_NATIVE_EXECUTION_TESTED=False'
+          Write-Host 'R42_2_PRODUCTION_ADMISSION=BLOCK'
+          Write-Host 'RESULT=R42_2_PREFLIGHT_PASS_BLOCK'
