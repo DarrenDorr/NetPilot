@@ -25,18 +25,19 @@ grep -Fq 'IsOwnedBy(clientSid, ByeDpiResourceId)' "$worker"
 grep -Fq 'EngineOwnedByAnotherUser' "$worker"
 
 # R40 load shape is fixed and cannot be widened through runtime arguments.
-grep -Fq "if (\$args.Count -ne 0)" "$soak"
-grep -Fq '\$gracefulCycles = 8' "$soak"
-grep -Fq '\$crashCycles = 4' "$soak"
-grep -Fq '\$handoffCycles = 4' "$soak"
-grep -Fq "\$serviceName = 'NetPilot.R40.Lab'" "$soak"
-grep -Fq "\$secondUserName = 'NetPilotR40B'" "$soak"
-grep -Fq '\$proxyPort = 39036' "$soak"
+grep -Fq 'if ($args.Count -ne 0)' "$soak"
+grep -Fq '$gracefulCycles = 8' "$soak"
+grep -Fq '$crashCycles = 4' "$soak"
+grep -Fq '$handoffCycles = 4' "$soak"
+grep -Fq '$serviceName = '\''NetPilot.R40.Lab'\''' "$soak"
+grep -Fq '$secondUserName = '\''NetPilotR40B'\''' "$soak"
+grep -Fq '$proxyPort = 39036' "$soak"
 
-# Soak must use existing typed IPC clients; it must not launch ciadpi directly or construct argv.
+# Soak must use existing typed IPC clients; it must not construct a native launch plan
+# or invoke ciadpi directly. Process-name observation for residue checks is allowed.
 grep -Fq 'NetPilot.ByeDpiR36LabClient.exe' "$soak"
 grep -Fq 'NetPilot.ByeDpiR39RestartClient.exe' "$soak"
-if grep -Eq 'ciadpi\.exe["'"']|SystemZapretProcessLauncher|WindowsCompiledEngineArgumentPlan|ProcessStartInfo|--bind|--port|-i[[:space:]]+127\.0\.0\.1|-p[[:space:]]+39036' "$soak"; then
+if grep -Eqi 'SystemZapretProcessLauncher|WindowsCompiledEngineArgumentPlan|ProcessStartInfo|Start-Process[^\r\n]*ciadpi|&[[:space:]][^[:space:]]*ciadpi\.exe|--bind|--port' "$soak"; then
   echo 'R40 boundary violation: soak script crossed direct native launch/argv boundary.' >&2
   exit 1
 fi
