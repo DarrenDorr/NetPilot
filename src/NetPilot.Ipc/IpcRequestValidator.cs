@@ -36,6 +36,9 @@ public static class IpcRequestValidator
             IpcCommand.ZapretStop => ValidateNoPayload(request),
             IpcCommand.ZapretInstallLatest => ValidateNoPayload(request),
             IpcCommand.ZapretStartStrategy => ValidateStrategyStart(request),
+            IpcCommand.ByeDpiGetStatus => ValidateNoPayload(request),
+            IpcCommand.ByeDpiStart => ValidateNoPayload(request),
+            IpcCommand.ByeDpiStop => ValidateNoPayload(request),
             _ => IpcValidationResult.Invalid(
                 "UnknownCommand",
                 "Указана неизвестная IPC-команда.")
@@ -139,4 +142,7 @@ public interface IPrivilegedServiceClient
         CancellationToken cancellationToken = default);
     Task<IpcResponse> StopZapretAsync(CancellationToken cancellationToken = default);
     Task<IpcResponse> InstallLatestZapretAsync(CancellationToken cancellationToken = default);
+    Task<IpcResponse> GetByeDpiStatusAsync(CancellationToken cancellationToken = default);
+    Task<IpcResponse> StartByeDpiAsync(CancellationToken cancellationToken = default);
+    Task<IpcResponse> StopByeDpiAsync(CancellationToken cancellationToken = default);
 }

@@ -6,8 +6,8 @@ namespace NetPilot.Ipc;
 
 public static class IpcProtocol
 {
-    public const int Version = 3;
-    public const string WindowsPipeName = "NetPilot.Service.v3";
+    public const int Version = 4;
+    public const string WindowsPipeName = "NetPilot.Service.v4";
     public const int MaxMessageBytes = 64 * 1024;
     public const int ConnectTimeoutMilliseconds = 2_000;
     public const int RequestTimeoutMilliseconds = 5_000;
@@ -42,7 +42,10 @@ public enum IpcCommand
     ZapretGetStatus,
     ZapretStartStrategy,
     ZapretStop,
-    ZapretInstallLatest
+    ZapretInstallLatest,
+    ByeDpiGetStatus,
+    ByeDpiStart,
+    ByeDpiStop
 }
 
 public sealed record IpcRequest(
@@ -79,9 +82,24 @@ public sealed record IpcRequest(
 
     public static IpcRequest CreateZapretInstallLatest() =>
         new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.ZapretInstallLatest);
+
+    public static IpcRequest CreateByeDpiGetStatus() =>
+        new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.ByeDpiGetStatus);
+
+    public static IpcRequest CreateByeDpiStart() =>
+        new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.ByeDpiStart);
+
+    public static IpcRequest CreateByeDpiStop() =>
+        new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.ByeDpiStop);
 }
 
 public enum IpcZapretProcessState
+{
+    Stopped,
+    Running
+}
+
+public enum IpcByeDpiProcessState
 {
     Stopped,
     Running
@@ -94,6 +112,12 @@ public sealed record IpcZapretStrategy(
 public sealed record IpcZapretStatus(
     IpcZapretProcessState State,
     string? StrategyId = null);
+
+/// <summary>
+/// Deliberately minimal ByeDPI status. Process id, listener port and owner SID are not
+/// exposed through user IPC because clients do not need them to control NetPilot safely.
+/// </summary>
+public sealed record IpcByeDpiStatus(IpcByeDpiProcessState State);
 
 public sealed record IpcZapretInstallationStatus(
     bool IsInstalled,
@@ -113,7 +137,8 @@ public sealed record IpcResponse(
     IReadOnlyList<IpcZapretStrategy>? Strategies = null,
     IpcZapretStatus? ZapretStatus = null,
     IpcZapretInstallationStatus? ZapretInstallation = null,
-    IpcZapretInstallResult? ZapretInstall = null);
+    IpcZapretInstallResult? ZapretInstall = null,
+    IpcByeDpiStatus? ByeDpiStatus = null);
 
 public sealed class IpcProtocolException(string code, string message, Exception? innerException = null)
     : Exception(message, innerException)

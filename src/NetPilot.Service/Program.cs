@@ -42,13 +42,17 @@ builder.Services.AddSingleton(serviceProvider =>
         serviceProvider.GetRequiredService<ZapretProcessRunner>()));
 builder.Services.AddSingleton<IZapretUpdateRuntimeGate, WindowsZapretUpdateRuntimeGate>();
 
-// R33: service-owned ByeDPI lifecycle уже существует как bounded controller,
-// но production DI намеренно получает launcher, который физически не создаёт процесс.
-// SystemWindowsVerifiedEngineProcessLauncher предназначен только для отдельного
-// lab/admission composition после explicit gate, а не для обычного Service startup.
+// R35: service-owned ByeDPI lifecycle подключён к Service как отдельная runtime-session,
+// но обе production-границы запуска остаются fail-closed:
+// 1) process launcher не может создать процесс;
+// 2) runtime plan provider не может выдать verified/compiled launch plan.
+// Замена любого из них требует отдельного admission decision после runtime evidence.
 builder.Services.AddSingleton<IWindowsVerifiedEngineProcessLauncher>(
     NoAdmittedWindowsVerifiedEngineProcessLauncher.Instance);
+builder.Services.AddSingleton<IWindowsByeDpiRuntimePlanProvider>(
+    NoAdmittedWindowsByeDpiRuntimePlanProvider.Instance);
 builder.Services.AddSingleton<WindowsByeDpiServiceOwnedProcessController>();
+builder.Services.AddSingleton<WindowsByeDpiRuntimeSession>();
 
 // R17/R20: release identity по-прежнему проходит только через admission-wrapper,
 // но при отсутствии ADMIT LocalSystem-служба даже не получает сетевой GitHub transport.
