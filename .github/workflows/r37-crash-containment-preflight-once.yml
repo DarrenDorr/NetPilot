@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  NETPILOT_R37_SHA: 4bec7f9333419f6275301d5a24b9afd3a4dee54b
+  NETPILOT_R37_SHA: f3717b773cac6316b133ac6a52269db8b26466cf
 
 jobs:
   linux-boundary:
