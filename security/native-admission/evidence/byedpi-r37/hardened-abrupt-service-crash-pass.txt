@@ -1,0 +1,45 @@
+R37 hardened abrupt LocalSystem service crash containment evidence
+
+validated_hardening_checkpoint=f3717b773cac6316b133ac6a52269db8b26466cf
+preflight_run_id=41008630281
+runtime_run_id=41008867818
+runtime_artifact_id=12956593465
+runtime_artifact_name=r37-byedpi-hardened-crash-containment-evidence
+runtime_artifact_zip_sha256=01c914a0ec5b764cc5571143aab866471bd8fa8b5b9928fe2b837367f3ee44e8
+byedpi_windows_sha256=866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+client_session_id=2
+production_admission=BLOCK
+
+preflight:
+  security_policy=PASS
+  runtime_admission_policy=PASS
+  r35_service_integration_boundary=PASS
+  r36_localsystem_lab_boundary=PASS
+  r37_crash_containment_boundary=PASS
+  linux_solution_build=PASS
+  linux_core_tests=PASS
+  windows_tests_build=PASS
+  hardened_r36_service_build=PASS
+  r36_ipc_client_build=PASS
+  windows_kill_on_close_job_test=PASS
+
+runtime:
+  protected_program_files_tree=true
+  localsystem_service_running=true
+  enrollment=PASS
+  authenticated_ipc=PASS
+  ipc_start=PASS
+  engine_parent_is_service=true
+  engine_owner_system=true
+  service_process_abruptly_terminated=true
+  abrupt_crash_residual_ciadpi=false
+  abrupt_crash_residual_listener=false
+  crash_containment=PASS
+  workflow_owned_cleanup=PASS
+  result=R37_HARDENED_CRASH_CONTAINMENT_PASS
+
+Decision:
+- The R37 Job Object hardening remediates the previously confirmed abrupt-service-crash orphan-process/listener defect within the tested LocalSystem + authenticated IPC boundary.
+- JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE remains mandatory at the single audited native Process.Start boundary.
+- Production native engine admission remains BLOCK.
+- This evidence does not prove second-SID lease behavior, reboot recovery, transparent routing or WinDivert safety.

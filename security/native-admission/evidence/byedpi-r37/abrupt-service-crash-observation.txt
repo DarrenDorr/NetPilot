@@ -1,0 +1,34 @@
+R37 ByeDPI abrupt LocalSystem service crash containment observation
+
+validated_product_checkpoint=aa2711ae1bce1425306aad3cd606295c7b750c90
+workflow_run_id=41007700773
+artifact_id=12956536478
+artifact_name=r37-byedpi-abrupt-service-crash-observation
+artifact_zip_sha256=b1a862edef4228148af16b7227ee38918c1ece475dd7bfdf3b95ff8959a40fec
+byedpi_windows_sha256=866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+client_session_id=2
+production_admission=BLOCK
+
+pre_crash:
+  protected_program_files_tree=true
+  localsystem_service_running=true
+  enrollment=PASS
+  authenticated_ipc=PASS
+  ipc_start=PASS
+  engine_parent_is_service=true
+  engine_owner_system=true
+  pre_crash_engine_running=true
+
+abrupt_crash:
+  service_process_abruptly_terminated=true
+  residual_ciadpi=true
+  residual_proxy_listener=true
+  crash_containment=NEEDS_HARDENING
+  result=R37_CRASH_CONTAINMENT_FINDING
+
+Decision:
+- Current service-owned process lifecycle is NOT crash-contained when the LocalSystem service process is terminated abruptly.
+- Graceful Stop-Service cleanup proved in R36 is insufficient for production safety.
+- The next R37 hardening step must add an OS-enforced owner-lifetime containment mechanism while preserving the single audited native process-creation boundary.
+- Preferred design for review: Windows Job Object with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE owned by the managed process wrapper.
+- Production admission remains BLOCK.
