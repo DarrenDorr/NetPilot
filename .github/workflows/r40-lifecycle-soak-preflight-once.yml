@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  NETPILOT_R40_SHA: c232c5a83f9fb8a9f4004b0b2a1899981f84dc24
+  NETPILOT_R40_SHA: e0bd52524f54f6963c8827d9f56da8c185331b45
 
 jobs:
   linux-security:
