@@ -15,36 +15,31 @@ done
 grep -Fq 'NoAdmittedWindowsVerifiedEngineProcessLauncher.Instance' "$prod"
 grep -Fq 'NoAdmittedWindowsByeDpiRuntimePlanProvider.Instance' "$prod"
 
-# Mandatory crash containment remains present.
+# Mandatory crash containment remains present for hosted crash/restart soak stages.
 grep -Fq 'WindowsKillOnCloseJob.Attach(process)' "$launcher"
 grep -Fq 'ProcessContainmentFailed' "$launcher"
 
-# Engine-aware ownership remains present.
+# Engine-aware ownership remains present for hosted second-SID handoff stages.
 grep -Fq 'TryAcquire(clientSid, ByeDpiResourceId)' "$worker"
 grep -Fq 'IsOwnedBy(clientSid, ByeDpiResourceId)' "$worker"
 grep -Fq 'EngineOwnedByAnotherUser' "$worker"
 
-# R40 load shape is fixed and cannot be widened through runtime arguments.
+# The committed soak runner is fixed and cannot be widened through runtime arguments.
 grep -Fq 'if ($args.Count -ne 0)' "$soak"
 grep -Fq '$gracefulCycles = 8' "$soak"
-grep -Fq '$crashCycles = 4' "$soak"
-grep -Fq '$handoffCycles = 4' "$soak"
 grep -Fq '$serviceName = '\''NetPilot.R40.Lab'\''' "$soak"
-grep -Fq '$secondUserName = '\''NetPilotR40B'\''' "$soak"
 grep -Fq '$proxyPort = 39036' "$soak"
-
-# Soak must use existing typed IPC clients; it must not construct a native launch plan
-# or invoke ciadpi directly. Process-name observation for residue checks is allowed.
 grep -Fq 'NetPilot.ByeDpiR36LabClient.exe' "$soak"
-grep -Fq 'NetPilot.ByeDpiR39RestartClient.exe' "$soak"
-if grep -Eqi 'SystemZapretProcessLauncher|WindowsCompiledEngineArgumentPlan|ProcessStartInfo|Start-Process[^\r\n]*ciadpi|&[[:space:]][^[:space:]]*ciadpi\.exe|--bind|--port' "$soak"; then
-  echo 'R40 boundary violation: soak script crossed direct native launch/argv boundary.' >&2
+
+# Committed runner is typed-client-only; direct native launch/argv construction is forbidden.
+if grep -Eqi 'SystemZapretProcessLauncher|WindowsCompiledEngineArgumentPlan|ProcessStartInfo|Start-Process|&[[:space:]][^[:space:]]*ciadpi\.exe|--bind|--port' "$soak"; then
+  echo 'R40 boundary violation: committed soak runner crossed direct native launch/argv boundary.' >&2
   exit 1
 fi
 
 # No proxy/WinDivert/system-network mutation is permitted in this explicit loopback soak.
 if grep -Eqi 'WinDivert|Internet Settings|ProxyEnable|ProxyServer|netsh[[:space:]].*winhttp|Set-NetIP|New-NetFirewall|Set-NetFirewall' "$soak"; then
-  echo 'R40 boundary violation: soak script attempts forbidden system network mutation.' >&2
+  echo 'R40 boundary violation: committed soak runner attempts forbidden system network mutation.' >&2
   exit 1
 fi
 
