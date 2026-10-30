@@ -1,0 +1,356 @@
+name: R40 Real Lifecycle Soak Once
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/r40-lifecycle-soak-runtime-once.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: netpilot-r40-lifecycle-soak-runtime-once
+  cancel-in-progress: false
+
+env:
+  NETPILOT_R40_SHA: e0bd52524f54f6963c8827d9f56da8c185331b45
+  SOURCE_RUN_ID: '41006065721'
+  BYEDPI_WINDOWS_SHA256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+  PACKAGE_VERSION: 0.17.3-netpilot-r34-lab
+  SERVICE_NAME: NetPilot.R40.Lab
+  PROXY_PORT: '39036'
+  SECOND_USER_NAME: NetPilotR40B
+
+jobs:
+  lifecycle-soak:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact R40 checkpoint
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.NETPILOT_R40_SHA }}
+          path: netpilot
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Download exact reviewed ByeDPI candidate
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: r36-byedpi-candidate-transfer
+          path: candidate
+          github-token: ${{ github.token }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Verify exact clean lab boundary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C netpilot rev-parse HEAD).Trim() -ne $env:NETPILOT_R40_SHA) { throw 'R40 checkpoint drift.' }
+          $candidate = Resolve-Path 'candidate\ciadpi.exe'
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $candidate).Hash.ToLowerInvariant()
+          if ($actual -ne $env:BYEDPI_WINDOWS_SHA256) { throw 'R40 candidate hash drift.' }
+
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'R40 requires an administrative hosted Windows runner.' }
+          $sessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId
+          if ($sessionId -le 0) { throw 'R40 primary client is not in an interactive session.' }
+
+          foreach ($service in @('NetPilot.Service','NetPilot.R36.Lab','NetPilot.R37.Lab','NetPilot.R38.Lab','NetPilot.R39.Lab',$env:SERVICE_NAME)) {
+            if (Get-Service -Name $service -ErrorAction SilentlyContinue) { throw "Refusing pre-existing Windows service: $service" }
+          }
+          if (Get-LocalUser -Name $env:SECOND_USER_NAME -ErrorAction SilentlyContinue) { throw 'Refusing pre-existing R40 temporary local user.' }
+          $root = Join-Path $env:ProgramFiles 'NetPilot'
+          if (Test-Path -LiteralPath $root) { throw "Refusing pre-existing NetPilot root: $root" }
+          if (@(Get-Process -Name ciadpi -ErrorAction SilentlyContinue).Count -ne 0) { throw 'Refusing pre-existing ciadpi.exe.' }
+          if (@(Get-NetTCPConnection -State Listen -LocalPort ([int]$env:PROXY_PORT) -ErrorAction SilentlyContinue).Count -ne 0) { throw 'Refusing pre-existing R40 loopback listener.' }
+
+          New-Item -ItemType Directory -Force -Path evidence | Out-Null
+          "NETPILOT_R40_SHA=$env:NETPILOT_R40_SHA" | Set-Content evidence\r40-runtime.txt
+          "BYEDPI_WINDOWS_SHA256=$actual" | Add-Content evidence\r40-runtime.txt
+          "PRIMARY_SESSION_ID=$sessionId" | Add-Content evidence\r40-runtime.txt
+          'PRODUCTION_ADMISSION=BLOCK' | Add-Content evidence\r40-runtime.txt
+          'R40_GRACEFUL_CYCLES=8' | Add-Content evidence\r40-runtime.txt
+          'R40_CRASH_CYCLES=4' | Add-Content evidence\r40-runtime.txt
+          'R40_HANDOFF_CYCLES=4' | Add-Content evidence\r40-runtime.txt
+
+      - name: Publish hardened lab service and typed IPC clients
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish netpilot\tools\NetPilot.ByeDpiR36ServiceLab\NetPilot.ByeDpiR36ServiceLab.csproj --configuration Release --runtime win-x64 --self-contained true --output publish\service
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet publish netpilot\tools\NetPilot.ByeDpiR36LabClient\NetPilot.ByeDpiR36LabClient.csproj --configuration Release --runtime win-x64 --self-contained true --output publish\owner-client
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet publish netpilot\tools\NetPilot.ByeDpiR39RestartClient\NetPilot.ByeDpiR39RestartClient.csproj --configuration Release --runtime win-x64 --self-contained true --output publish\restart-client
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Stage protected service clients and exact engine package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:ProgramFiles 'NetPilot'
+          $serviceDir = Join-Path $root 'Lab\R40Service'
+          $ownerClientDir = Join-Path $root 'Lab\R40OwnerClient'
+          $restartClientDir = Join-Path $root 'Lab\R40RestartClient'
+          $engineBin = Join-Path $root "Engines\Managed\byedpi\$env:PACKAGE_VERSION\x64\bin"
+          $config = Join-Path $root 'Config'
+          $users = Join-Path $root 'Users'
+          New-Item -ItemType Directory -Force -Path $serviceDir,$ownerClientDir,$restartClientDir,$engineBin,$config,$users | Out-Null
+          Set-Content -LiteralPath (Join-Path $root '.r40-hosted-owned') -Value $env:NETPILOT_R40_SHA -NoNewline
+          Copy-Item -Path 'publish\service\*' -Destination $serviceDir -Recurse
+          Copy-Item -Path 'publish\owner-client\*' -Destination $ownerClientDir -Recurse
+          Copy-Item -Path 'publish\restart-client\*' -Destination $restartClientDir -Recurse
+          Copy-Item -LiteralPath 'candidate\ciadpi.exe' -Destination (Join-Path $engineBin 'ciadpi.exe')
+          $sessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId
+          Set-Content -LiteralPath (Join-Path $config 'enrollment.session') -Value $sessionId -NoNewline
+
+          & icacls.exe $root /inheritance:r | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to protect R40 root inheritance.' }
+          & icacls.exe $root /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to set R40 root ACL.' }
+          & icacls.exe $root /setowner '*S-1-5-32-544' /T /C | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to set privileged R40 owner.' }
+          & icacls.exe $root /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' /T /C | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to normalize R40 tree ACL.' }
+
+          $staged = Join-Path $engineBin 'ciadpi.exe'
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $staged).Hash.ToLowerInvariant()
+          if ($actual -ne $env:BYEDPI_WINDOWS_SHA256) { throw 'Staged R40 candidate hash drift.' }
+          'PROTECTED_PROGRAM_FILES_TREE=True' | Add-Content evidence\r40-runtime.txt
+
+      - name: Register and start isolated LocalSystem service
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $serviceExe = Join-Path $env:ProgramFiles 'NetPilot\Lab\R40Service\NetPilot.ByeDpiR36ServiceLab.exe'
+          $binaryPathName = '"' + $serviceExe + '"'
+          New-Service -Name $env:SERVICE_NAME -BinaryPathName $binaryPathName -DisplayName 'NetPilot R40 Lifecycle Soak Lab' -StartupType Manual | Out-Null
+          $svc = Get-CimInstance Win32_Service -Filter "Name='$env:SERVICE_NAME'"
+          if ($null -eq $svc -or $svc.StartName -ne 'LocalSystem') { throw 'R40 service is not LocalSystem.' }
+          Start-Service -Name $env:SERVICE_NAME
+          $deadline = (Get-Date).AddSeconds(20)
+          do {
+            Start-Sleep -Milliseconds 250
+            $status = (Get-Service -Name $env:SERVICE_NAME).Status
+            if ($status -eq 'Running') { break }
+          } while ((Get-Date) -lt $deadline)
+          if ($status -ne 'Running') { throw 'R40 LocalSystem service failed to start.' }
+          'LOCALSYSTEM_SERVICE_RUNNING=True' | Add-Content evidence\r40-runtime.txt
+
+      - name: Run eight graceful authenticated IPC functional cycles
+        shell: pwsh
+        working-directory: netpilot
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\scripts\security\r40-lifecycle-soak.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $grace = Get-Content evidence\r40-graceful-soak.txt -Raw
+          foreach ($marker in @('R40_GRACEFUL_CYCLES=8','R40_GRACEFUL_SOAK=PASS','R40_GRACEFUL_FINAL_RESIDUE_ZERO=True','RESULT=R40_GRACEFUL_SOAK_PASS')) {
+            if (-not $grace.Contains($marker,[StringComparison]::Ordinal)) { throw "Missing graceful soak marker: $marker" }
+          }
+          Copy-Item -LiteralPath evidence\r40-graceful-soak.txt -Destination ..\evidence\r40-graceful-soak.txt -Force
+          'R40_GRACEFUL_SOAK=PASS' | Add-Content ..\evidence\r40-runtime.txt
+
+      - name: Run four abrupt service crash and restart cycles
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:ProgramFiles 'NetPilot'
+          $ownerClient = Join-Path $root 'Lab\R40OwnerClient\NetPilot.ByeDpiR36LabClient.exe'
+          $restartClient = Join-Path $root 'Lab\R40RestartClient\NetPilot.ByeDpiR39RestartClient.exe'
+          $expectedServicePath = [IO.Path]::GetFullPath((Join-Path $root 'Lab\R40Service\NetPilot.ByeDpiR36ServiceLab.exe'))
+
+          for ($cycle = 1; $cycle -le 4; $cycle++) {
+            & $ownerClient --start-for-service-stop 2>&1 | Tee-Object -FilePath "evidence\r40-crash-start-$cycle.txt"
+            if ($LASTEXITCODE -ne 0) { throw "R40 crash cycle $cycle could not start engine." }
+            $start = Get-Content "evidence\r40-crash-start-$cycle.txt" -Raw
+            foreach ($marker in @('AUTHENTICATED_IPC=PASS','IPC_START=PASS','START_FOR_SERVICE_STOP=PASS','RESULT=R36_START_FOR_SERVICE_STOP_PASS')) {
+              if (-not $start.Contains($marker,[StringComparison]::Ordinal)) { throw "R40 crash cycle $cycle missing marker: $marker" }
+            }
+            if (@(Get-Process -Name ciadpi -ErrorAction SilentlyContinue).Count -ne 1) { throw "R40 crash cycle $cycle expected exactly one ciadpi.exe." }
+            if (@(Get-NetTCPConnection -State Listen -LocalPort ([int]$env:PROXY_PORT) -ErrorAction SilentlyContinue).Count -ne 1) { throw "R40 crash cycle $cycle expected exactly one listener." }
+
+            $svc = Get-CimInstance Win32_Service -Filter "Name='$env:SERVICE_NAME'"
+            if ($null -eq $svc -or $svc.State -ne 'Running' -or [int]$svc.ProcessId -le 0) { throw "R40 crash cycle $cycle service PID unavailable." }
+            $servicePid = [int]$svc.ProcessId
+            $actualServicePath = [IO.Path]::GetFullPath((Get-Process -Id $servicePid).Path)
+            if (-not [string]::Equals($actualServicePath,$expectedServicePath,[StringComparison]::OrdinalIgnoreCase)) { throw 'R40 refusing service termination because executable path mismatched.' }
+            Stop-Process -Id $servicePid -Force
+
+            $deadline = (Get-Date).AddSeconds(15)
+            do {
+              Start-Sleep -Milliseconds 200
+              $serviceStopped = (Get-Service -Name $env:SERVICE_NAME).Status -eq 'Stopped'
+              $engineGone = @(Get-Process -Name ciadpi -ErrorAction SilentlyContinue).Count -eq 0
+              $listenerGone = @(Get-NetTCPConnection -State Listen -LocalPort ([int]$env:PROXY_PORT) -ErrorAction SilentlyContinue).Count -eq 0
+              if ($serviceStopped -and $engineGone -and $listenerGone) { break }
+            } while ((Get-Date) -lt $deadline)
+            if (-not $serviceStopped -or -not $engineGone -or -not $listenerGone) { throw "R40 crash cycle $cycle containment cleanup failed." }
+
+            Start-Service -Name $env:SERVICE_NAME
+            $deadline = (Get-Date).AddSeconds(20)
+            do {
+              Start-Sleep -Milliseconds 250
+              $serviceRunning = (Get-Service -Name $env:SERVICE_NAME).Status -eq 'Running'
+              if ($serviceRunning) { break }
+            } while ((Get-Date) -lt $deadline)
+            if (-not $serviceRunning) { throw "R40 crash cycle $cycle service restart failed." }
+
+            & $restartClient --expect-stopped-after-restart 2>&1 | Tee-Object -FilePath "evidence\r40-crash-reconcile-$cycle.txt"
+            if ($LASTEXITCODE -ne 0) { throw "R40 crash cycle $cycle reconcile probe failed." }
+            $reconcile = Get-Content "evidence\r40-crash-reconcile-$cycle.txt" -Raw
+            foreach ($marker in @('R39_AUTHENTICATED_IPC=PASS','R39_POST_RESTART_STATUS_STOPPED=PASS','R39_POST_RESTART_NO_LISTENER=PASS','RESULT=R39_POST_RESTART_STOPPED_PASS')) {
+              if (-not $reconcile.Contains($marker,[StringComparison]::Ordinal)) { throw "R40 crash cycle $cycle missing reconcile marker: $marker" }
+            }
+            "R40_CRASH_RESTART_CYCLE_${cycle}=PASS" | Add-Content evidence\r40-runtime.txt
+          }
+          'R40_CRASH_RESTART_SOAK=PASS' | Add-Content evidence\r40-runtime.txt
+
+      - name: Run four distinct-SID ownership handoff cycles and state checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:ProgramFiles 'NetPilot'
+          $clientDir = Join-Path $root 'Lab\R40RestartClient'
+          $restartClient = Join-Path $clientDir 'NetPilot.ByeDpiR39RestartClient.exe'
+          $scratch = Join-Path $env:ProgramData 'NetPilotR40'
+          New-Item -ItemType Directory -Force -Path $scratch | Out-Null
+
+          $passwordPlain = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(24)) + 'aA1!'
+          $password = ConvertTo-SecureString $passwordPlain -AsPlainText -Force
+          New-LocalUser -Name $env:SECOND_USER_NAME -Password $password -AccountNeverExpires -PasswordNeverExpires | Out-Null
+          $usersGroup = (Get-LocalGroup -SID 'S-1-5-32-545').Name
+          Add-LocalGroupMember -Group $usersGroup -Member $env:SECOND_USER_NAME
+          & icacls.exe $scratch /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)M' | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to prepare R40 second-user scratch ACL.' }
+
+          $primarySid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          $secondSid = (Get-LocalUser -Name $env:SECOND_USER_NAME).SID.Value
+          if ([string]::Equals($primarySid,$secondSid,[StringComparison]::OrdinalIgnoreCase)) { throw 'R40 second SID unexpectedly equals primary SID.' }
+          'R40_SECOND_SID_DISTINCT=True' | Add-Content evidence\r40-runtime.txt
+          $credential = [Management.Automation.PSCredential]::new("$env:COMPUTERNAME\$env:SECOND_USER_NAME",$password)
+
+          for ($cycle = 1; $cycle -le 4; $cycle++) {
+            $startOut = Join-Path $scratch "start-$cycle.out.txt"
+            $startErr = Join-Path $scratch "start-$cycle.err.txt"
+            $p = Start-Process -FilePath $restartClient -ArgumentList '--start-fresh-owner' -WorkingDirectory $clientDir -Credential $credential -LoadUserProfile -Wait -PassThru -RedirectStandardOutput $startOut -RedirectStandardError $startErr
+            $freshStart = if (Test-Path $startOut) { Get-Content $startOut -Raw } else { '' }
+            if (Test-Path $startErr) { $freshStart += [Environment]::NewLine + (Get-Content $startErr -Raw) }
+            $freshStart | Set-Content "evidence\r40-handoff-start-$cycle.txt"
+            if ($p.ExitCode -ne 0) { throw "R40 handoff cycle $cycle second-user Start failed." }
+            foreach ($marker in @('R39_AUTHENTICATED_IPC=PASS','R39_SESSION_NONZERO=True','R39_FRESH_OWNER_START=PASS','R39_FRESH_OWNER_LISTENER=PASS','RESULT=R39_FRESH_OWNER_START_PASS')) {
+              if (-not $freshStart.Contains($marker,[StringComparison]::Ordinal)) { throw "R40 handoff cycle $cycle missing Start marker: $marker" }
+            }
+            if (@(Get-Process -Name ciadpi -ErrorAction SilentlyContinue).Count -ne 1) { throw "R40 handoff cycle $cycle expected exactly one engine process." }
+
+            & $restartClient --expect-nonowner-denied 2>&1 | Tee-Object -FilePath "evidence\r40-handoff-old-owner-$cycle.txt"
+            if ($LASTEXITCODE -ne 0) { throw "R40 handoff cycle $cycle old-owner denial failed." }
+            $oldOwner = Get-Content "evidence\r40-handoff-old-owner-$cycle.txt" -Raw
+            foreach ($marker in @('R39_OLD_OWNER_START_DENIED=PASS','R39_OLD_OWNER_STOP_DENIED=PASS','R39_FRESH_LEASE_PRESERVED=PASS','RESULT=R39_OLD_OWNER_DENIAL_PASS')) {
+              if (-not $oldOwner.Contains($marker,[StringComparison]::Ordinal)) { throw "R40 handoff cycle $cycle missing denial marker: $marker" }
+            }
+            if (@(Get-Process -Name ciadpi -ErrorAction SilentlyContinue).Count -ne 1) { throw "R40 handoff cycle $cycle denial changed engine state." }
+
+            $stopOut = Join-Path $scratch "stop-$cycle.out.txt"
+            $stopErr = Join-Path $scratch "stop-$cycle.err.txt"
+            $p = Start-Process -FilePath $restartClient -ArgumentList '--fresh-owner-stop' -WorkingDirectory $clientDir -Credential $credential -LoadUserProfile -Wait -PassThru -RedirectStandardOutput $stopOut -RedirectStandardError $stopErr
+            $freshStop = if (Test-Path $stopOut) { Get-Content $stopOut -Raw } else { '' }
+            if (Test-Path $stopErr) { $freshStop += [Environment]::NewLine + (Get-Content $stopErr -Raw) }
+            $freshStop | Set-Content "evidence\r40-handoff-stop-$cycle.txt"
+            if ($p.ExitCode -ne 0) { throw "R40 handoff cycle $cycle second-user Stop failed." }
+            foreach ($marker in @('R39_FRESH_OWNER_STOP=PASS','R39_FRESH_OWNER_CLEANUP=PASS','RESULT=R39_FRESH_OWNER_STOP_PASS')) {
+              if (-not $freshStop.Contains($marker,[StringComparison]::Ordinal)) { throw "R40 handoff cycle $cycle missing Stop marker: $marker" }
+            }
+            if (@(Get-Process -Name ciadpi -ErrorAction SilentlyContinue).Count -ne 0) { throw "R40 handoff cycle $cycle left residual engine process." }
+            if (@(Get-NetTCPConnection -State Listen -LocalPort ([int]$env:PROXY_PORT) -ErrorAction SilentlyContinue).Count -ne 0) { throw "R40 handoff cycle $cycle left residual listener." }
+            "R40_SID_HANDOFF_CYCLE_${cycle}=PASS" | Add-Content evidence\r40-runtime.txt
+          }
+          'R40_SID_HANDOFF_SOAK=PASS' | Add-Content evidence\r40-runtime.txt
+
+          $profileNames = @(Get-ChildItem -LiteralPath (Join-Path $root 'Users') -Directory -Force | Select-Object -ExpandProperty Name)
+          if ($profileNames.Count -ne 2 -or $profileNames -notcontains $primarySid -or $profileNames -notcontains $secondSid) { throw 'R40 service-owned SID profile set drifted.' }
+          'R40_PROFILE_SET_EXACT=True' | Add-Content evidence\r40-runtime.txt
+
+          $config = Join-Path $root 'Config'
+          if (Test-Path -LiteralPath (Join-Path $config 'enrollment.nonce')) { throw 'R40 enrollment nonce unexpectedly survived.' }
+          if (Test-Path -LiteralPath (Join-Path $config 'enrollment.session')) { throw 'R40 enrollment session unexpectedly survived.' }
+          'R40_ENROLLMENT_ARTIFACTS_CLEAN=True' | Add-Content evidence\r40-runtime.txt
+
+          if (@(Get-Process -Name ciadpi -ErrorAction SilentlyContinue).Count -ne 0) { throw 'R40 final engine process residue detected.' }
+          if (@(Get-NetTCPConnection -State Listen -LocalPort ([int]$env:PROXY_PORT) -ErrorAction SilentlyContinue).Count -ne 0) { throw 'R40 final listener residue detected.' }
+          'R40_FINAL_ENGINE_RESIDUE_ZERO=True' | Add-Content evidence\r40-runtime.txt
+
+      - name: Normal cleanup and finalize PASS evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Get-LocalUser -Name $env:SECOND_USER_NAME -ErrorAction SilentlyContinue) {
+            Remove-LocalUser -Name $env:SECOND_USER_NAME
+          }
+          Remove-Item -LiteralPath (Join-Path $env:ProgramData 'NetPilotR40') -Recurse -Force -ErrorAction SilentlyContinue
+          'R40_SECOND_USER_CLEANUP=PASS' | Add-Content evidence\r40-runtime.txt
+
+          $service = Get-Service -Name $env:SERVICE_NAME -ErrorAction SilentlyContinue
+          if ($null -ne $service) {
+            if ($service.Status -ne 'Stopped') { Stop-Service -Name $env:SERVICE_NAME -Force }
+            & sc.exe delete $env:SERVICE_NAME | Out-Host
+            if ($LASTEXITCODE -ne 0) { throw 'R40 service deletion failed.' }
+          }
+
+          $root = Join-Path $env:ProgramFiles 'NetPilot'
+          $marker = Join-Path $root '.r40-hosted-owned'
+          if (-not (Test-Path -LiteralPath $marker)) { throw 'R40 ownership marker missing during normal cleanup.' }
+          $value = (Get-Content -LiteralPath $marker -Raw).Trim()
+          if ($value -ne $env:NETPILOT_R40_SHA) { throw 'R40 ownership marker mismatch; refusing tree cleanup.' }
+          Remove-Item -LiteralPath $root -Recurse -Force
+          if (Test-Path -LiteralPath $root) { throw 'R40 protected lab tree survived cleanup.' }
+          if (@(Get-Process -Name ciadpi -ErrorAction SilentlyContinue).Count -ne 0) { throw 'R40 process residue after cleanup.' }
+          if (@(Get-NetTCPConnection -State Listen -LocalPort ([int]$env:PROXY_PORT) -ErrorAction SilentlyContinue).Count -ne 0) { throw 'R40 listener residue after cleanup.' }
+          'WORKFLOW_OWNED_STATE_CLEANUP=PASS' | Add-Content evidence\r40-runtime.txt
+          'RESULT=R40_LIFECYCLE_SOAK_PASS' | Add-Content evidence\r40-runtime.txt
+          Get-Content evidence\r40-runtime.txt | Out-Host
+
+      - name: Upload text-only R40 evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: r40-byedpi-lifecycle-soak-evidence
+          path: evidence/*.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Emergency cleanup only workflow-owned state
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          if (Get-LocalUser -Name $env:SECOND_USER_NAME -ErrorAction SilentlyContinue) {
+            Remove-LocalUser -Name $env:SECOND_USER_NAME -ErrorAction SilentlyContinue
+          }
+          Remove-Item -LiteralPath (Join-Path $env:ProgramData 'NetPilotR40') -Recurse -Force -ErrorAction SilentlyContinue
+          Get-Process -Name ciadpi -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          $service = Get-Service -Name $env:SERVICE_NAME -ErrorAction SilentlyContinue
+          if ($null -ne $service) {
+            if ($service.Status -ne 'Stopped') { Stop-Service -Name $env:SERVICE_NAME -Force -ErrorAction SilentlyContinue }
+            & sc.exe delete $env:SERVICE_NAME | Out-Host
+          }
+          $root = Join-Path $env:ProgramFiles 'NetPilot'
+          $marker = Join-Path $root '.r40-hosted-owned'
+          if (Test-Path -LiteralPath $marker) {
+            $value = (Get-Content -LiteralPath $marker -Raw).Trim()
+            if ($value -eq $env:NETPILOT_R40_SHA) {
+              Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+              Write-Host 'EMERGENCY_WORKFLOW_OWNED_STATE_CLEANUP=PASS'
+            } else {
+              Write-Warning 'R40 ownership marker mismatch; protected tree not removed.'
+            }
+          }
