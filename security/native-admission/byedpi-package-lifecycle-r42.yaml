@@ -1,0 +1,96 @@
+schema_version: 1
+review_id: BYEDPI-PACKAGE-LIFECYCLE-R42
+review_date: 2026-10-30
+base_gate: R41.1_RELEASE_HYGIENE_PASS_BLOCK
+
+decision:
+  package_lifecycle_design: IMPLEMENTED
+  package_mutation_runtime: NOT_IMPLEMENTED
+  package_network_acquisition: NOT_IMPLEMENTED
+  production_admission: BLOCK
+  production_may_execute: false
+  production_may_integrate: false
+
+identity:
+  engine_id: byedpi
+  architecture: x64
+  version_format: numeric_three_part
+  final_root_template: '%ProgramFiles%/NetPilot/Engines/Managed/byedpi/<version>/x64'
+  executable_relative_path: bin/ciadpi.exe
+  mutable_current_alias_allowed: false
+  reparse_points_allowed: false
+
+staging:
+  trust_owner: LocalSystem_or_BuiltinAdministrators_only
+  user_writable: false
+  same_volume_as_final_root_required: true
+  protected_staging_required: true
+  arbitrary_staging_path_from_ipc_allowed: false
+  arbitrary_url_from_ipc_allowed: false
+  safe_extract_required: true
+  exact_package_hash_required: true
+  exact_file_manifest_required: true
+  license_notice_required: true
+
+transaction:
+  single_engine_mutation_lock_required: true
+  active_engine_lease_policy: reject_mutation
+  automatic_stop_of_active_engine_for_update: false
+  atomic_same_volume_promotion_required: true
+  verification_after_promotion_required: true
+  interrupted_transaction_recovery_required: true
+  previous_verified_version_retention: one
+  arbitrary_downgrade_allowed: false
+  repair_version_change_allowed: false
+
+operations:
+  install:
+    current_package_required: false
+    verified_target_required: true
+  upgrade:
+    current_package_required: true
+    target_must_be_strictly_newer: true
+    verified_target_required: true
+  repair:
+    current_package_required: true
+    target_must_equal_current: true
+    verified_target_required: true
+  rollback:
+    current_package_required: true
+    target_must_equal_retained_previous: true
+    verified_target_required: true
+  uninstall:
+    current_package_required: true
+    target_payload_allowed: false
+
+acquisition_future_boundary:
+  source_of_truth: release_specific_signed_or_high_assurance_manifest
+  exact_asset_hash_mandatory: true
+  redirects_must_remain_allowlisted: true
+  runtime_service_accepts_user_url: false
+  direct_runtime_download_during_engine_start: false
+  status: DESIGN_ONLY
+
+production_invariants:
+  normal_service_no_admit: true
+  positive_executable_catalog_empty: true
+  positive_package_layout_catalog_empty: true
+  production_installer_contains_byedpi: false
+  transparent_windows_routing_authorized: false
+  windivert_authorized: false
+
+implementation_scope_r42:
+  pure_policy_type: src/NetPilot.Updater/ByeDpiPackageLifecyclePolicy.cs
+  policy_tests: tests/NetPilot.Core.Tests/ByeDpiPackageLifecyclePolicyTests.cs
+  filesystem_mutator: absent
+  network_fetcher: absent
+  service_registration: absent
+  ipc_operation: absent
+  native_process_launch: absent
+
+next_gates:
+  - implement protected staging/package manifest verification without service or IPC wiring
+  - implement transaction journal and interrupted-operation recovery tests
+  - prove ACL/reparse/same-volume behavior on Windows
+  - separately resolve release signing and final package provenance
+  - only after all production-readiness blockers, perform HIGH_ASSURANCE admission review
