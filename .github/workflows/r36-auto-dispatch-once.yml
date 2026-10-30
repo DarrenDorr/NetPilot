@@ -1,0 +1,30 @@
+name: R36 One-Shot Auto Dispatch
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/r36-auto-dispatch-once.yml'
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dispatch pinned R36 LocalSystem lab
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/byedpi-localsystem-service-r36.yml/dispatches \
+            -d '{"ref":"main"}'
+          echo 'R36_DISPATCH=SUBMITTED'
