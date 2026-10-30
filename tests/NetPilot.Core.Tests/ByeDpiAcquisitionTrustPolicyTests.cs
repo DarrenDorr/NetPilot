@@ -77,6 +77,22 @@ public sealed class ByeDpiAcquisitionTrustPolicyTests
     }
 
     [Fact]
+    public void DuplicateAssetIdIsRejected()
+    {
+        var descriptor = CreateDescriptor();
+        var metadata = CreateMetadata(descriptor);
+        var assets = metadata.Assets.ToArray();
+        assets[1] = assets[1] with
+        {
+            AssetId = assets[0].AssetId,
+            AssetApiUri = ByeDpiAcquisitionTrustPolicy.GetAssetApiUri(assets[0].AssetId)
+        };
+
+        Assert.Throws<UpdateSecurityException>(() =>
+            ByeDpiAcquisitionTrustPolicy.CreatePlan(descriptor, metadata with { Assets = assets }));
+    }
+
+    [Fact]
     public void AssetDigestDriftIsRejected()
     {
         var descriptor = CreateDescriptor();
