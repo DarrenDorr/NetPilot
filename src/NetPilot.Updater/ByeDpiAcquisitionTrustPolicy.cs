@@ -37,7 +37,7 @@ public sealed record ByeDpiAcquisitionPlan(
 /// <summary>
 /// R42.7 trust policy for a future ByeDPI acquisition layer.
 ///
-/// This type deliberately does not contain HttpClient/WebClient, filesystem or process APIs.
+/// This type deliberately contains no network client, filesystem or process APIs.
 /// It accepts typed release metadata from a future narrow parser, validates it against the
 /// immutable R42.6 descriptor, and returns an exact acquisition plan.
 /// </summary>
