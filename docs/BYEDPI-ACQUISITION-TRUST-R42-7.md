@@ -47,10 +47,10 @@ Future parser обязан представить типизированные �
 - canonical name;
 - exact byte size;
 - exact lowercase SHA-256;
-- положительный GitHub asset id;
+- положительный, уникальный внутри релиза GitHub asset id;
 - exact API URI `https://api.github.com/repos/DarrenDorr/NetPilot/releases/assets/<id>`.
 
-Extra asset, missing asset, duplicate expected asset или любое identity drift блокируют acquisition plan.
+Extra asset, missing asset, duplicate expected asset, duplicate GitHub asset id или любое identity drift блокируют acquisition plan.
 
 ## Redirect policy
 
