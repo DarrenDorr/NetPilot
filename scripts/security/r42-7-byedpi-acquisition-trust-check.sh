@@ -57,6 +57,8 @@ for marker in \
   'metadata.Assets.Count != expectedAssets.Length' \
   'Distinct().Count() != metadata.Assets.Count' \
   'matches.Length != 1' \
+  'candidate.State' \
+  '"uploaded"' \
   'candidate.SizeBytes != expected.SizeBytes' \
   'candidate.Sha256Hex' \
   'candidate.AssetApiUri'; do
@@ -64,8 +66,27 @@ for marker in \
 done
 
 grep -Fq 'duplicate_asset_id: REJECT' "$contract"
+grep -Fq 'asset_state: UPLOADED_ONLY' "$contract"
 
 echo 'R42_7_EXACT_IMMUTABLE_ASSET_POLICY=PASS'
+
+# GitHub API contract is pinned before a future transport exists.
+for marker in \
+  'GithubApiVersion = "2026-03-10"' \
+  'ReleaseMetadataAccept = "application/vnd.github+json"' \
+  'ReleaseAssetAccept = "application/octet-stream"'; do
+  grep -Fq "$marker" "$policy"
+done
+for marker in \
+  "github_api_version: '2026-03-10'" \
+  'release_metadata_accept: application/vnd.github+json' \
+  'release_asset_accept: application/octet-stream' \
+  'direct_asset_response_200: ALLOW' \
+  'release_asset_redirect_302: ALLOW_AFTER_POLICY_VALIDATION'; do
+  grep -Fq "$marker" "$contract"
+done
+
+echo 'R42_7_PINNED_GITHUB_API_CONTRACT=PASS'
 
 # Fixed origin, one redirect hop, bounded metadata/time/aggregate size.
 for marker in \
@@ -102,6 +123,7 @@ for test_name in \
   'ReleaseTagDriftIsRejected' \
   'ExtraReleaseAssetIsRejected' \
   'DuplicateAssetIdIsRejected' \
+  'NonUploadedAssetIsRejected' \
   'AssetDigestDriftIsRejected' \
   'AssetSizeDriftIsRejected' \
   'AssetApiUriDriftIsRejected' \
