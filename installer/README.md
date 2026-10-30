@@ -8,11 +8,13 @@
 
 1. публикует `NetPilot.App.Windows` как self-contained `win-x64`;
 2. публикует `NetPilot.Service` как self-contained `win-x64`;
-3. загружает только закреплённый Inno Setup 7.1.0 x64 из официального immutable GitHub release;
+3. загружает только закреплённый Inno Setup 7.1.1 x64 из официального immutable GitHub release;
 4. проверяет SHA-256 установщика Inno Setup;
 5. проверяет валидную Authenticode-подпись и издателя `Pyrsys B.V.`;
 6. устанавливает Inno Setup в локальный каталог `artifacts/tools`;
 7. компилирует `NetPilot-Setup-<version>-x64.exe`.
+
+Текущие release-метаданные и закреплённые build-tool identity хранятся в `release/release-manifest.yaml`. Скрипт сборки остаётся исполняемым источником фактической загрузки/проверки, а R41.1 guard требует согласованности manifest, документации и installer metadata.
 
 Пример:
 
@@ -53,4 +55,6 @@ pwsh -File scripts/build-installer.ps1 -Version 0.1.0-alpha -VersionInfoVersion 
 
 ## Подпись релизного установщика
 
-На этапе R14 собственного code-signing сертификата NetPilot нет. Поэтому собранный alpha-установщик будет корректным, но Windows SmartScreen может предупреждать о неизвестном издателе. Нельзя подменять это самоподписанным сертификатом и выдавать его за доверенную публичную подпись.
+На этапе R41.1 собственного production code-signing сертификата NetPilot всё ещё нет. Поэтому собранный alpha-установщик может вызывать предупреждение Windows SmartScreen о неизвестном издателе. Нельзя подменять это самоподписанным сертификатом и выдавать его за доверенную публичную подпись.
+
+R41.1 только синхронизирует release metadata и licensing hygiene. Он не разрешает production native execution и не добавляет ByeDPI в установщик.
