@@ -1,0 +1,102 @@
+name: R35 ByeDPI Service Integration Preflight
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/r35-service-integration-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: netpilot-r35-service-integration-preflight
+  cancel-in-progress: false
+
+env:
+  NETPILOT_R35_SHA: bfd8acd42760cb53bc1f40b9b1c138dc42123281
+
+jobs:
+  linux-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact R35 checkpoint
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.NETPILOT_R35_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify checkpoint
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$NETPILOT_R35_SHA"
+
+      - name: Security policy
+        run: bash scripts/security-policy-check.sh
+
+      - name: Runtime admission policy
+        run: bash scripts/runtime-admission-policy-check.sh
+
+      - name: R35 service integration boundary
+        run: bash scripts/security/r35-service-integration-boundary-check.sh
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore solution
+        run: dotnet restore NetPilot.sln
+
+      - name: Build solution
+        run: dotnet build NetPilot.sln --configuration Release --no-restore
+
+      - name: Core tests
+        run: dotnet test tests/NetPilot.Core.Tests/NetPilot.Core.Tests.csproj --configuration Release --no-build
+
+  windows-service-tests:
+    runs-on: windows-2025
+    steps:
+      - name: Checkout exact R35 checkpoint
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.NETPILOT_R35_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify checkpoint
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne $env:NETPILOT_R35_SHA) {
+            throw 'R35 checkpoint drift.'
+          }
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore service and Windows tests
+        shell: pwsh
+        run: |
+          dotnet restore src\NetPilot.Service\NetPilot.Service.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet restore tests\NetPilot.Platform.Windows.Tests\NetPilot.Platform.Windows.Tests.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build service
+        run: dotnet build src\NetPilot.Service\NetPilot.Service.csproj --configuration Release --no-restore
+
+      - name: Build Windows tests
+        run: dotnet build tests\NetPilot.Platform.Windows.Tests\NetPilot.Platform.Windows.Tests.csproj --configuration Release --no-restore
+
+      - name: Windows tests including R35 fail-closed session
+        run: dotnet test tests\NetPilot.Platform.Windows.Tests\NetPilot.Platform.Windows.Tests.csproj --configuration Release --no-build
+
+      - name: Evidence boundary
+        shell: pwsh
+        run: |
+          Write-Host 'R35 preflight validates build/tests only.'
+          Write-Host 'ByeDPI native execution: NOT PERFORMED.'
+          Write-Host 'Production admission: BLOCK.'
