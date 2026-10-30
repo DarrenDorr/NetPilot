@@ -1,0 +1,71 @@
+name: R34 ByeDPI Functional Lab Preflight
+
+on:
+  pull_request:
+    branches:
+      - feature/byedpi-typed-argv-r33
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Security policy
+        run: bash scripts/security-policy-check.sh
+
+      - name: R34 lab boundary policy
+        run: bash scripts/security/r34-lab-boundary-check.sh
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore solution
+        run: dotnet restore NetPilot.sln
+
+      - name: Build solution
+        run: dotnet build NetPilot.sln --configuration Release --no-restore
+
+      - name: Core tests including R34 contract
+        run: dotnet test tests/NetPilot.Core.Tests/NetPilot.Core.Tests.csproj --configuration Release --no-build
+
+  windows-lab-host-build:
+    runs-on: windows-2025
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore Windows tests
+        run: dotnet restore tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj
+
+      - name: Build and test Windows process boundary
+        run: dotnet test tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj --configuration Release
+
+      - name: Restore R34 lab host
+        run: dotnet restore tools/NetPilot.ByeDpiR34Lab/NetPilot.ByeDpiR34Lab.csproj
+
+      - name: Build R34 lab host without native execution
+        run: dotnet build tools/NetPilot.ByeDpiR34Lab/NetPilot.ByeDpiR34Lab.csproj --configuration Release --no-restore
+
+      - name: Preflight evidence boundary
+        shell: pwsh
+        run: |
+          Write-Host 'R34 preflight builds the lab host only.'
+          Write-Host 'ByeDPI native execution is NOT performed in this workflow.'
+          Write-Host 'Production admission remains BLOCK.'

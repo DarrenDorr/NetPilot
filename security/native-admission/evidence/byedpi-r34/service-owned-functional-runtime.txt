@@ -1,0 +1,30 @@
+R34 ByeDPI service-owned functional runtime evidence
+
+workflow_run_id=41004146617
+artifact_id=12954517307
+artifact_name=r34-byedpi-service-owned-functional-evidence
+artifact_zip_sha256=6925c6f67619f7bd82f270019cfa83b8b8fb75ac0f2012135f533ddd02e962c5
+netpilot_r34_sha=42a7f467bf822f76f0a67a3b31d3c7b8174f3648
+byedpi_windows_sha256=866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+lab_profile=lab-byedpi-loopback-r34
+production_catalogs=EMPTY
+acl_objects_verified=9
+typed_argv=PASS
+round1_socks_http=PASS
+round1_cleanup=PASS
+round2_socks_http=PASS
+round2_cleanup=PASS
+crash_reconcile=PASS
+final_state=STOPPED
+system_proxy_mutation=NOT_REQUESTED
+windivert=NOT_REQUESTED
+proxy_unchanged=True
+windivert_unchanged=True
+residual_ciadpi=False
+residual_proxy_listener=False
+post_run_isolation=PASS
+workflow_owned_tree_cleanup=PASS
+production_admission=BLOCK
+result=BYEDPI_SERVICE_OWNED_FUNCTIONAL_R34_PASS
+
+Scope note: this is hosted Windows service-owned controller evidence. It is not proof of installed NetPilot.Service LocalSystem IPC composition, multi-user IPC ownership with a real native process, transparent routing, WinDivert safety, or production admission.
