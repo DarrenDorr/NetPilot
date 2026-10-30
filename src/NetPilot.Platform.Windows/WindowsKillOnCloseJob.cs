@@ -23,7 +23,7 @@ public sealed class WindowsProcessContainmentException(
 /// </summary>
 public sealed class WindowsKillOnCloseJob : IDisposable
 {
-    private const uint JobObjectExtendedLimitInformation = 9;
+    private const uint JobObjectExtendedLimitInformationClass = 9;
     private const uint JobObjectLimitKillOnJobClose = 0x00002000;
 
     private SafeJobHandle? _handle;
@@ -64,7 +64,7 @@ public sealed class WindowsKillOnCloseJob : IDisposable
 
             if (!SetInformationJobObject(
                     job,
-                    JobObjectExtendedLimitInformation,
+                    JobObjectExtendedLimitInformationClass,
                     ref information,
                     checked((uint)Marshal.SizeOf<JobObjectExtendedLimitInformation>())))
             {
