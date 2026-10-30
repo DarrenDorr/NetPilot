@@ -2,36 +2,35 @@
 
 ## Status
 
-**COMPILE/SECURITY PREFLIGHT PASS / INSTALLED LOCALSYSTEM RUNTIME IN PROGRESS / PRODUCTION ADMISSION BLOCK**
+**COMPILE/SECURITY PREFLIGHT PASS / INSTALLED LOCALSYSTEM + AUTHENTICATED IPC RUNTIME PASS / PRODUCTION ADMISSION BLOCK**
 
 Base: R35 authenticated IPC/service scaffold.
 
-Exact R36 implementation checkpoint under runtime test:
+Exact product-code checkpoint validated by R36:
 `aa2711ae1bce1425306aad3cd606295c7b750c90`.
 
-R36 is deliberately implemented as separate lab-only executables. It does not add a runtime switch, environment variable or hidden admission path to the production `NetPilot.Service`.
+R36 remains a separate lab-only composition. It does not add a runtime switch, environment variable or hidden admission path to the production `NetPilot.Service`.
 
 ## Lab components
 
 - `tools/NetPilot.ByeDpiR36ServiceLab`
-  - fixed Windows service name `NetPilot.R36.Lab`;
-  - requires Windows x64 and LocalSystem identity;
-  - accepts no command-line arguments;
-  - uses exact R34 contract and fixed loopback proxy port `39036`;
-  - holds immutable verification file handles for the full plan-provider lifetime;
-  - uses the same `PrivilegedIpcWorker` and IPC v4 as the product service;
-  - allows only `EngineStart` and `EngineStop` in this isolated composition;
+  - fixed service `NetPilot.R36.Lab`;
+  - Windows x64 + LocalSystem only;
+  - no command-line arguments;
+  - exact R34 contract, fixed loopback proxy port `39036`;
+  - immutable verification handles held for full provider lifetime;
+  - same `PrivilegedIpcWorker` / IPC v4 as product service;
+  - only EngineStart/EngineStop enabled in lab composition;
   - Zapret remains no-admit.
 
 - `tools/NetPilot.ByeDpiR36LabClient`
-  - runs in an interactive Windows session;
+  - interactive Windows client;
   - uses `WindowsPrivilegedServiceClient` only;
-  - can enroll the current authenticated user through the existing nonce/session flow;
-  - controls ByeDPI only through typed IPC v4;
-  - knows only the fixed lab listener port, never executable path or native argv;
-  - full mode performs `Ping -> Status -> Start -> SOCKS5/local HTTP -> Stop`;
-  - fixed `--start-for-service-stop` mode leaves the owned process running so workflow can verify graceful service-stop cleanup;
-  - fixed `--status-only` mode reads only typed status.
+  - existing nonce/session enrollment;
+  - typed ByeDPI Status/Start/Stop only;
+  - no executable path/native argv access;
+  - full SOCKS5 -> local HTTP functional cycle;
+  - fixed service-stop and status-only lifecycle modes.
 
 ## Production separation
 
@@ -40,47 +39,76 @@ Normal `NetPilot.Service` remains composed with:
 - `NoAdmittedWindowsVerifiedEngineProcessLauncher`;
 - `NoAdmittedWindowsByeDpiRuntimePlanProvider`.
 
-The production installer does not package, install or register either R36 lab executable. Production native engine catalogs remain empty.
+The production installer does not package/register R36 lab executables. Production native engine catalogs remain empty.
 
 ## Compile/security preflight — PASS
 
-Pinned one-shot run `41005736327` on exact checkpoint `aa2711ae1bce1425306aad3cd606295c7b750c90`:
+Pinned run `41005736327` on checkpoint `aa2711ae1bce1425306aad3cd606295c7b750c90`:
 
 - security policy: PASS;
 - runtime admission policy: PASS;
 - R35 service-integration boundary: PASS;
 - R36 lab-isolation boundary: PASS;
 - Linux solution restore/build: PASS;
-- Windows R36 lab-service restore/build: PASS;
-- Windows R36 IPC-client restore/build: PASS;
+- Windows R36 service/client build: PASS;
 - Windows platform tests: PASS;
-- native ByeDPI execution: NOT PERFORMED;
-- Windows service registration: NOT PERFORMED.
+- native execution: NOT PERFORMED.
 
-The one-shot preflight workflow was removed from `main` after PASS.
+## Installed LocalSystem runtime — PASS
 
-## Installed LocalSystem runtime gate
+The first runtime attempt, run `41006065721`, rebuilt and verified the exact candidate and completed protected staging, but failed **before service start** because the PowerShell `sc.exe create` call packaged `start=` incorrectly (`ERROR: Invalid start= field`). ByeDPI did not execute in that failed attempt, and workflow-owned cleanup passed.
 
-Permanent manual workflow:
-`.github/workflows/byedpi-localsystem-service-r36.yml`
+A one-shot retry changed only the service-registration mechanism to `New-Service`; product code and the exact R36 checkpoint were unchanged.
 
-Pinned runtime run currently under evidence collection: `41006065721`.
+Successful retry run: `41007056260`.
 
-The workflow is designed to:
+Evidence artifact:
+- artifact id: `12956356229`;
+- artifact name: `r36-byedpi-installed-localsystem-retry-evidence`;
+- ZIP SHA-256: `6d7279ca0190871dc4255ad0ed64ca90963aecc2e078f31a4aa795751129e24b`.
 
-1. rebuild the exact R34 candidate and require its exact SHA-256;
-2. publish R36 service/client;
-3. refuse any pre-existing `NetPilot.Service`/`NetPilot.R36.Lab` service or NetPilot Program Files root;
-4. stage service + exact candidate only under a protected `Program Files\NetPilot` tree;
-5. prepare one-time enrollment session state;
-6. register `NetPilot.R36.Lab` as LocalSystem and start it;
-7. run the interactive IPC client and prove real LocalSystem service-controlled SOCKS/HTTP traffic;
-8. prove `ciadpi.exe` is a direct child of the service and runs as SYSTEM;
-9. start ByeDPI again via IPC, stop the Windows service and prove no residual `ciadpi.exe`/listener;
-10. restart the service and prove typed status is `Stopped`;
-11. verify system proxy and WinDivert state unchanged;
-12. delete only workflow-owned service/tree and upload text evidence.
+Exact candidate SHA-256 remained:
+`866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd`.
 
-## Not yet proven
+Reviewed evidence proves:
 
-R36 does not become runtime PASS until the pinned hosted workflow succeeds and its text evidence is reviewed. The current R36 design also does not yet prove abrupt service-process termination cleanup or a second interactive SID; those remain explicit later evidence gates unless added safely in R36.x.
+- protected Program Files staging: PASS;
+- Windows service account: `LocalSystem`;
+- LocalSystem service reached Running;
+- enrollment: PASS;
+- authenticated IPC v4: PASS;
+- IPC Start: PASS;
+- SOCKS5 -> local HTTP through service-owned ByeDPI: PASS;
+- IPC Stop cleanup: PASS;
+- `ciadpi.exe` is a direct child of the R36 service process;
+- `ciadpi.exe` owner is SYSTEM;
+- stopping the Windows service while ByeDPI is running leaves no process/listener: PASS;
+- service restart returns typed ByeDPI status `Stopped`;
+- system proxy unchanged;
+- WinDivert state unchanged/not present;
+- no residual `ciadpi.exe`;
+- no residual proxy listener;
+- workflow-owned service/tree cleanup: PASS;
+- final result: `BYEDPI_INSTALLED_LOCALSYSTEM_R36_PASS`.
+
+Repository evidence:
+`security/native-admission/evidence/byedpi-r36/installed-localsystem-ipc-runtime.txt`.
+
+## Decision
+
+R36 is **PASS in the scoped installed LocalSystem + authenticated IPC boundary**.
+
+This permits moving to the next evidence/admission stage. It does **not** by itself authorize production native execution.
+
+## Still not proven
+
+R36 does not yet prove:
+
+- abrupt termination/crash of the LocalSystem service while ByeDPI is active;
+- real second interactive Windows SID attempting to steal/stop an active engine lease;
+- reboot recovery of an admitted production engine;
+- system-wide transparent routing;
+- WinDivert safety;
+- production engine admission.
+
+Those remain explicit later gates.
