@@ -238,14 +238,13 @@ public static class ByeDpiPackageLifecyclePolicy
         canonical = string.Empty;
         if (string.IsNullOrWhiteSpace(value)
             || value.Length > 32
-            || value[0] == '+'
             || value.Any(static c => c is not (>= '0' and <= '9') and not '.'))
         {
             return false;
         }
 
         var parts = value.Split('.');
-        if (parts.Length is < 2 or > 4)
+        if (parts.Length != 3)
         {
             return false;
         }
@@ -256,15 +255,17 @@ public static class ByeDpiPackageLifecyclePolicy
             var part = parts[index];
             if (part.Length == 0
                 || (part.Length > 1 && part[0] == '0')
-                || !int.TryParse(part, System.Globalization.NumberStyles.None,
-                    System.Globalization.CultureInfo.InvariantCulture, out numbers[index])
-                || numbers[index] < 0)
+                || !int.TryParse(
+                    part,
+                    System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out numbers[index]))
             {
                 return false;
             }
         }
 
-        canonical = string.Join('.', numbers);
+        canonical = string.Join(".", numbers);
         return true;
     }
 
@@ -276,13 +277,10 @@ public static class ByeDpiPackageLifecyclePolicy
         var rightParts = right.Split('.').Select(static value => int.Parse(
             value,
             System.Globalization.CultureInfo.InvariantCulture)).ToArray();
-        var count = Math.Max(leftParts.Length, rightParts.Length);
 
-        for (var index = 0; index < count; index++)
+        for (var index = 0; index < 3; index++)
         {
-            var leftValue = index < leftParts.Length ? leftParts[index] : 0;
-            var rightValue = index < rightParts.Length ? rightParts[index] : 0;
-            var comparison = leftValue.CompareTo(rightValue);
+            var comparison = leftParts[index].CompareTo(rightParts[index]);
             if (comparison != 0)
             {
                 return comparison;
