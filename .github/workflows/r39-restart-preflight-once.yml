@@ -1,0 +1,93 @@
+name: R39 Restart Reconciliation Preflight Once
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/r39-restart-preflight-once.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: netpilot-r39-restart-preflight-once
+  cancel-in-progress: false
+
+env:
+  NETPILOT_R39_SHA: 99b0ef2feb4a9276a1b06420a5df53f95fc599b8
+
+jobs:
+  linux-security-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact R39 checkpoint
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.NETPILOT_R39_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$NETPILOT_R39_SHA"
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Security boundaries R35-R39
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/security-policy-check.sh
+          bash scripts/runtime-admission-policy-check.sh
+          bash scripts/security/r35-service-integration-boundary-check.sh
+          bash scripts/security/r36-localsystem-lab-boundary-check.sh
+          bash scripts/security/r37-crash-containment-boundary-check.sh
+          bash scripts/security/r38-multiuser-lease-boundary-check.sh
+          bash scripts/security/r39-restart-reconciliation-boundary-check.sh
+
+      - name: Build solution and R39 client
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet restore NetPilot.sln
+          dotnet build NetPilot.sln --configuration Release --no-restore
+          dotnet build tools/NetPilot.ByeDpiR39RestartClient/NetPilot.ByeDpiR39RestartClient.csproj --configuration Release
+          dotnet test tests/NetPilot.Core.Tests/NetPilot.Core.Tests.csproj --configuration Release --no-build
+
+  windows-service-client-tests:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact R39 checkpoint
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.NETPILOT_R39_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify checkpoint
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne $env:NETPILOT_R39_SHA) { throw 'R39 checkpoint drift.' }
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build hardened lab service and R39 client
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet build tools\NetPilot.ByeDpiR36ServiceLab\NetPilot.ByeDpiR36ServiceLab.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build tools\NetPilot.ByeDpiR39RestartClient\NetPilot.ByeDpiR39RestartClient.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet test tests\NetPilot.Platform.Windows.Tests\NetPilot.Platform.Windows.Tests.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
