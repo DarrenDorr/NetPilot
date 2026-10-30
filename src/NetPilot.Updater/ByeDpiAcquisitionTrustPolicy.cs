@@ -73,6 +73,10 @@ public static class ByeDpiAcquisitionTrustPolicy
         {
             throw Invalid("ByeDPI release metadata must contain exactly the three immutable R42.6 assets.");
         }
+        if (metadata.Assets.Any(static asset => asset is null))
+        {
+            throw Invalid("ByeDPI release metadata contains a null asset entry.");
+        }
 
         var plans = new List<ByeDpiAcquisitionAssetPlan>(expectedAssets.Length);
         long totalBytes = 0;
@@ -91,15 +95,12 @@ public static class ByeDpiAcquisitionTrustPolicy
             var candidate = matches[0];
             ValidateAsset(candidate, expected);
 
-            checked
-            {
-                totalBytes += candidate.SizeBytes;
-            }
-
-            if (totalBytes > MaxTotalAssetBytes)
+            if (candidate.SizeBytes > MaxTotalAssetBytes
+                || totalBytes > MaxTotalAssetBytes - candidate.SizeBytes)
             {
                 throw Invalid("ByeDPI release assets exceed the fixed total acquisition limit.");
             }
+            totalBytes += candidate.SizeBytes;
 
             plans.Add(new ByeDpiAcquisitionAssetPlan(
                 candidate.AssetId,
@@ -208,6 +209,7 @@ public static class ByeDpiAcquisitionTrustPolicy
 
         var expectedApiUri = GetAssetApiUri(candidate.AssetId);
         if (candidate.AssetApiUri is null
+            || !candidate.AssetApiUri.IsAbsoluteUri
             || !string.Equals(candidate.AssetApiUri.AbsoluteUri, expectedApiUri.AbsoluteUri, StringComparison.Ordinal))
         {
             throw Invalid("ByeDPI release asset API URI is outside the exact NetPilot GitHub release boundary.");
@@ -217,7 +219,7 @@ public static class ByeDpiAcquisitionTrustPolicy
     private static void ValidateAntiDowngrade(string targetVersion, string? currentVersion)
     {
         var target = ParseCanonicalVersion(targetVersion);
-        if (string.IsNullOrWhiteSpace(currentVersion))
+        if (currentVersion is null)
         {
             return;
         }
