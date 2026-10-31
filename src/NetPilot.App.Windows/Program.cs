@@ -23,7 +23,10 @@ internal static class Program
             return CompleteInstallerEnrollmentAsync(args[1]).GetAwaiter().GetResult();
         }
 
-        AppComposition.Configure(CreateMainWindowViewModel, CreateSupportInfo());
+        AppComposition.Configure(
+            CreateMainWindowViewModel,
+            CreateSupportInfo(),
+            new WindowsByeDpiControlService());
         return AppComposition.BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
@@ -85,10 +88,8 @@ internal static class Program
         var healthChecker = new PublicHttpsHealthChecker();
         var serviceClient = new WindowsPrivilegedServiceClient();
 
-        // Пока native admission не содержит ADMIT, GUI/Automation вообще не получают
-        // legacy Zapret runtime. Дополнительно adapter получает явную deny-all admission
-        // policy: trusted capability declaration в будущем сама по себе не сможет открыть
-        // profile runtime без отдельного security admission.
+        // Legacy profile automation remains no-admit in the experimental ByeDPI alpha.
+        // ByeDPI Start/Stop is exposed separately through a narrow no-argument IPC surface.
         var profileRuntime = new NoAdmittedEngineProfileRuntime();
         var strategyRuntime = new EngineProfileStrategyRuntimeAdapter(
             profileRuntime,
