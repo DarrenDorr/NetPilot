@@ -51,19 +51,7 @@ jobs:
         run: dotnet restore NetPilot.sln
 
       - name: Build full solution
-        shell: bash
-        run: |
-          set -o pipefail
-          dotnet build NetPilot.sln --configuration Release --no-restore 2>&1 | tee r42-9-build.log
-
-      - name: Upload R42.9 build diagnostics
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: byedpi-r42-9-build-diagnostics
-          path: r42-9-build.log
-          if-no-files-found: warn
-          retention-days: 3
+        run: dotnet build NetPilot.sln --configuration Release --no-restore
 
       - name: Run focused R42.9 fake-handler transport tests
         run: >-
