@@ -1,0 +1,112 @@
+name: WinDivert Runtime Gate R44
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/windivert-runtime-gate-r44.yml"
+      - "security/native-admission/windivert-runtime-gate-r44.yaml"
+      - "security/native-admission/lab-plans/zapret2-windows-windivert-r44.yaml"
+      - "docs/WINDIVERT-RUNTIME-GATE-R44.md"
+
+permissions:
+  contents: read
+
+jobs:
+  fail-closed-policy:
+    name: Enforce blocked WinDivert runtime boundary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout NetPilot without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Validate R44 contract and non-executable lab plan
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          gate_path = Path("security/native-admission/windivert-runtime-gate-r44.yaml")
+          plan_path = Path("security/native-admission/lab-plans/zapret2-windows-windivert-r44.yaml")
+          gate = gate_path.read_text(encoding="utf-8")
+          plan = plan_path.read_text(encoding="utf-8")
+
+          def require(text: str, pattern: str, message: str) -> None:
+              if re.search(pattern, text, flags=re.MULTILINE) is None:
+                  raise SystemExit(message)
+
+          def forbid(text: str, pattern: str, message: str) -> None:
+              if re.search(pattern, text, flags=re.MULTILINE | re.IGNORECASE) is not None:
+                  raise SystemExit(message)
+
+          require(gate, r"^status:\s*BLOCKED_UPSTREAM\s*$", "R44 gate must remain BLOCKED_UPSTREAM")
+          require(gate, r"^\s*runtime_state:\s*BLOCK\s*$", "WinDivert runtime must remain BLOCK")
+          require(gate, r"^\s*driver_load_allowed:\s*false\s*$", "WinDivert driver load must remain disabled")
+          require(gate, r"^\s*driver_install_allowed:\s*false\s*$", "WinDivert driver install must remain disabled")
+          require(gate, r"^\s*production_admission:\s*BLOCK\s*$", "production admission must remain BLOCK")
+          require(gate, r"^\s*windows_zapret2_lab_execution:\s*false\s*$", "Windows zapret2 lab execution must remain false")
+          require(gate, r"^\s*github_hosted_driver_execution:\s*false\s*$", "GitHub-hosted driver execution must remain false")
+          require(gate, r"^\s*self_hosted_driver_execution:\s*false\s*$", "self-hosted driver execution must remain false before approval")
+          if len(re.findall(r"^\s*observed_state:\s*OPEN\s*$", gate, flags=re.MULTILINE)) != 3:
+              raise SystemExit("R44 must pin exactly three currently-open WinDivert blockers")
+
+          require(gate, r"^\s*reviewed_checkpoint:\s*6207d7e6bae80b8ac1d0e84f6777caff20881890\s*$", "zapret2 fork checkpoint mismatch")
+          require(gate, r"^\s*deterministic_windows_x64_sha256:\s*2a21810cbcf53321abe16c49ca2129adbb8391a6ed97c20a91a874fab8b7237a\s*$", "zapret2 deterministic binary hash mismatch")
+          require(gate, r"^\s*release_asset_sha256:\s*63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15\s*$", "WinDivert archive hash mismatch")
+
+          require(plan, r"^status:\s*DRAFT_NOT_APPROVED\s*$", "Windows lab plan must remain a global DRAFT_NOT_APPROVED plan")
+          require(plan, r"^blocker_state:\s*BLOCKED_UPSTREAM\s*$", "Windows lab plan must preserve the upstream blocker state")
+          require(plan, r"^execution_allowed:\s*false\s*$", "Windows lab plan cannot authorize execution")
+          require(plan, r"^approval_id:\s*null\s*$", "Windows lab plan cannot contain an approval id")
+          require(plan, r"^production_activation_allowed:\s*false\s*$", "Windows lab plan cannot authorize production activation")
+          require(plan, r"^lab_pass_implies_admit:\s*false\s*$", "lab PASS cannot imply ADMIT")
+          require(plan, r"^lab_pass_changes_release_gate:\s*false\s*$", "lab PASS cannot change the release gate")
+          require(plan, r"^\s*executable_run_allowed:\s*false\s*$", "winws2 execution must remain disabled")
+          require(plan, r"^\s*driver_load_allowed:\s*false\s*$", "WinDivert driver load must remain disabled in the plan")
+          require(plan, r"^\s*service_installation_allowed:\s*false\s*$", "WinDivert service installation must remain disabled")
+          require(plan, r"^\s*enabled:\s*false\s*$", "future runtime test block must remain disabled")
+          require(plan, r"^\s*github_hosted_allowed:\s*false\s*$", "GitHub-hosted runner must remain forbidden")
+          require(plan, r"^\s*physical_user_pc_allowed:\s*false\s*$", "physical user PC must remain forbidden")
+          require(plan, r"^\s*defender_exclusions_allowed:\s*false\s*$", "Defender exclusions must remain forbidden")
+          require(plan, r"^\s*force_stop_foreign_service_allowed:\s*false\s*$", "foreign WinDivert service force-stop must remain forbidden")
+          require(plan, r"^\s*force_remove_foreign_service_allowed:\s*false\s*$", "foreign WinDivert service removal must remain forbidden")
+          require(plan, r"^\s*activation_allowed:\s*false\s*$", "production activation must remain disabled")
+          require(plan, r"^\s*admission:\s*BLOCK\s*$", "production admission must remain BLOCK")
+
+          combined = gate + "\n" + plan
+          for pattern, message in [
+              (r"\bsc(?:\.exe)?\s+stop\s+windivert\b", "R44 files must not contain a WinDivert force-stop command"),
+              (r"bcdedit[^\n]*testsign", "R44 files must not enable test-signing"),
+              (r"Set-MpPreference[^\n]*(Exclusion|DisableRealtimeMonitoring)", "R44 files must not weaken Defender"),
+              (r"Add-MpPreference[^\n]*Exclusion", "R44 files must not add Defender exclusions"),
+          ]:
+              forbid(combined, pattern, message)
+
+          Path("windivert-r44-policy-evidence.txt").write_text(
+              "schema_version=2\n"
+              "scope=windivert-r44-blocked-runtime-policy\n"
+              "result=PASS\n"
+              "zapret2_checkpoint=6207d7e6bae80b8ac1d0e84f6777caff20881890\n"
+              "zapret2_windows_sha256=2a21810cbcf53321abe16c49ca2129adbb8391a6ed97c20a91a874fab8b7237a\n"
+              "windivert_release=v2.2.2\n"
+              "lab_plan_status=DRAFT_NOT_APPROVED\n"
+              "upstream_blocker_state=BLOCKED_UPSTREAM\n"
+              "windivert_runtime=BLOCK\n"
+              "driver_load_allowed=false\n"
+              "lab_execution_allowed=false\n"
+              "production_admission=BLOCK\n"
+              "github_hosted_native_execution=false\n",
+              encoding="utf-8",
+          )
+
+      - name: Upload text-only R44 evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windivert-r44-policy-evidence
+          path: windivert-r44-policy-evidence.txt
+          if-no-files-found: error
+          retention-days: 14
