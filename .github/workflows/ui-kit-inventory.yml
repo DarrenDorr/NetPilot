@@ -1,0 +1,36 @@
+name: UI Kit Inventory
+
+on:
+  push:
+    branches: [ feature/byedpi-user-smoke-ui-r1 ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: List approved UI Kit archive entries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = 'design/ui-kit/v1.1/NetPilot_UI_Kit_v1_1.zip'
+          if (-not (Test-Path $archive)) { throw 'UI Kit archive missing.' }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $archive))
+          try {
+            $entries = $zip.Entries | ForEach-Object { $_.FullName } | Sort-Object
+            $entries | Set-Content -Encoding utf8 ui-kit-inventory.txt
+            $entries | Write-Host
+          }
+          finally { $zip.Dispose() }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ui-kit-inventory
+          path: ui-kit-inventory.txt
+          retention-days: 2
