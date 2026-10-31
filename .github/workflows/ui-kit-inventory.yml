@@ -19,10 +19,30 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $archive = 'design/ui-kit/v1.1/NetPilot_UI_Kit_v1_1.zip'
-          if (-not (Test-Path $archive)) { throw 'UI Kit archive missing.' }
+          $archive = Resolve-Path 'design/ui-kit/v1.1/NetPilot_UI_Kit_v1_1.zip'
           Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $archive))
+
+          $bytes = [System.IO.File]::ReadAllBytes($archive)
+          $offset = -1
+          for ($i = 0; $i -le $bytes.Length - 4; $i++) {
+            if ($bytes[$i] -eq 0x50 -and $bytes[$i + 1] -eq 0x4B -and $bytes[$i + 2] -eq 0x03 -and $bytes[$i + 3] -eq 0x04) {
+              $offset = $i
+              break
+            }
+          }
+          if ($offset -lt 0) { throw 'ZIP local-header signature not found.' }
+
+          $usableArchive = $archive
+          if ($offset -gt 0) {
+            Write-Host "UI_KIT_LEGACY_PREFIX_BYTES=$offset"
+            $clean = Join-Path $env:RUNNER_TEMP 'NetPilot_UI_Kit_v1_1.clean.zip'
+            $stream = [System.IO.File]::Create($clean)
+            try { $stream.Write($bytes, $offset, $bytes.Length - $offset) }
+            finally { $stream.Dispose() }
+            $usableArchive = $clean
+          }
+
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($usableArchive)
           try {
             $entries = $zip.Entries | ForEach-Object { $_.FullName } | Sort-Object
             $entries | Set-Content -Encoding utf8 ui-kit-inventory.txt
