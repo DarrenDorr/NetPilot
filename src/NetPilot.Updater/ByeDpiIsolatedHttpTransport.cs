@@ -69,20 +69,18 @@ public sealed class ByeDpiIsolatedHttpTransport : IDisposable
 
             return GithubByeDpiReleaseParser.Parse(bytes);
         }
-        catch (OperationCanceledException exception)
+        catch (OperationCanceledException)
             when (!cancellationToken.IsCancellationRequested && timeout.IsCancellationRequested)
         {
             throw new UpdateSecurityException(
                 "ByeDpiHttpTransportTimeout",
-                "ByeDPI isolated HTTP transport exceeded the fixed total timeout.",
-                exception);
+                "ByeDPI isolated HTTP transport exceeded the fixed total timeout.");
         }
-        catch (HttpRequestException exception)
+        catch (HttpRequestException)
         {
             throw new UpdateSecurityException(
                 "ByeDpiHttpTransportFailure",
-                "ByeDPI isolated HTTP transport failed before a trusted response was established.",
-                exception);
+                "ByeDPI isolated HTTP transport failed before a trusted response was established.");
         }
     }
 
@@ -132,20 +130,18 @@ public sealed class ByeDpiIsolatedHttpTransport : IDisposable
                 asset.Sha256Hex,
                 timeout.Token);
         }
-        catch (OperationCanceledException exception)
+        catch (OperationCanceledException)
             when (!cancellationToken.IsCancellationRequested && timeout.IsCancellationRequested)
         {
             throw new UpdateSecurityException(
                 "ByeDpiHttpTransportTimeout",
-                "ByeDPI isolated HTTP transport exceeded the fixed total timeout.",
-                exception);
+                "ByeDPI isolated HTTP transport exceeded the fixed total timeout.");
         }
-        catch (HttpRequestException exception)
+        catch (HttpRequestException)
         {
             throw new UpdateSecurityException(
                 "ByeDpiHttpTransportFailure",
-                "ByeDPI isolated HTTP transport failed before a trusted asset was obtained.",
-                exception);
+                "ByeDPI isolated HTTP transport failed before a trusted asset was obtained.");
         }
     }
 
