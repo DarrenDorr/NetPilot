@@ -1,0 +1,113 @@
+schema_version: 1
+plan_id: zapret2-windows-windivert-r44
+status: DRAFT_BLOCKED_UPSTREAM
+platform: windows-x64
+execution_allowed: false
+approval_id: null
+
+candidate:
+  repository: DarrenDorr/NetPilot-zapret2
+  branch: netpilot/reviewed-v1.0.6-uaf-r43
+  checkpoint: 6207d7e6bae80b8ac1d0e84f6777caff20881890
+  winws2_sha256: 2a21810cbcf53321abe16c49ca2129adbb8391a6ed97c20a91a874fab8b7237a
+  winws2_size: 650240
+  executable_run_allowed: false
+
+windivert_component:
+  exact_component_set_selected: false
+  release_tag: v2.2.2
+  archive_name: WinDivert-2.2.2-A.zip
+  archive_sha256: 63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15
+  driver_load_allowed: false
+  service_installation_allowed: false
+  runtime_binary_hashes_approved: []
+
+blocking_findings:
+  WD-RUNTIME-001: OPEN
+  WD-LIFECYCLE-002: OPEN
+  WD-DEFENDER-003: OPEN
+
+lab_host:
+  runner_type: self-hosted-disposable-vm-only
+  github_hosted_allowed: false
+  physical_user_pc_allowed: false
+  production_host_allowed: false
+  clean_snapshot_required: true
+  restore_after_test_required: true
+  personal_data_allowed: false
+  browser_profiles_allowed: false
+  user_credentials_allowed: false
+  account_tokens_allowed: false
+  private_keys_allowed: false
+
+windows_security:
+  secure_boot_must_remain_enabled: true
+  defender_must_remain_enabled: true
+  defender_exclusions_allowed: false
+  test_signing_as_production_allowed: false
+  unsigned_or_self_signed_production_driver_allowed: false
+  arbitrary_driver_install_allowed: false
+
+pre_execution_inventory:
+  required: true
+  capture:
+    - exact OS edition build and architecture
+    - Secure Boot state
+    - Defender engine product and security-intelligence versions
+    - exact candidate hashes
+    - exact WinDivert archive DLL SYS hashes and Authenticode identity
+    - WinDivert service existence configuration and state
+    - currently loaded driver inventory
+    - NetPilot and WinDivert related process inventory
+    - baseline listeners
+    - firewall profile and rule summary
+    - route table summary
+  packet_payload_capture_allowed: false
+
+future_runtime_tests_after_approval:
+  enabled: false
+  order:
+    - single controlled first open on fixed component set
+    - concurrent first-open regression for issue 408 class
+    - repeated open close lifecycle
+    - coexistence with separately owned WinDivert handle
+    - NetPilot normal stop without global foreign-service stop
+    - candidate crash cleanup
+    - hard-timeout cleanup
+    - reboot recovery
+    - uninstall cleanup without foreign-service destruction
+  hard_timeout_required: true
+  supervised_process_required: true
+  service_autostart_allowed: false
+  force_stop_foreign_service_allowed: false
+  force_remove_foreign_service_allowed: false
+
+post_execution_evidence:
+  required_if_execution_is_ever_approved: true
+  verify:
+    - no residual NetPilot candidate process tree
+    - no unexpected residual listener
+    - no unauthorized firewall rule change
+    - no unauthorized route change
+    - no NetPilot-owned temporary file outside approved lab paths
+    - no unsafe WinDivert service state transition caused by NetPilot
+    - reboot returns the VM to an expected network state
+  evidence_format: text-only-redacted
+  packet_payloads_allowed: false
+  credentials_allowed: false
+  account_identifiers_allowed: false
+
+promotion:
+  current_state: BLOCK
+  next_possible_state: PRE_LAB_REVIEW
+  automatic_promotion: false
+  requires:
+    - all blocking findings re-evaluated against an exact fixed component set
+    - updated component hashes and signing identity
+    - green non-executing compile/static gates
+    - explicit HIGH_ASSURANCE approval
+
+production:
+  activation_allowed: false
+  admission: BLOCK
+  product_catalog_enablement_allowed: false
