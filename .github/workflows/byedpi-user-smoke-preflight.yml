@@ -1,0 +1,55 @@
+name: ByeDPI User Smoke Preflight
+
+on:
+  push:
+    branches: [ feature/byedpi-user-smoke-ui-r1 ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: '10.0.x'
+      - name: Global security policy
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File scripts/security-policy-check.ps1
+      - name: Runtime admission policy
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File scripts/runtime-admission-policy-check.ps1
+      - name: R42.9 isolated HTTP boundary
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File scripts/r42-9-isolated-http-guard.ps1
+      - name: Build default solution
+        shell: pwsh
+        run: dotnet build NetPilot.slnx --configuration Release
+      - name: Build experimental Windows UI and SOCKS diagnostics
+        shell: pwsh
+        run: |
+          dotnet publish src/NetPilot.App.Windows/NetPilot.App.Windows.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --output artifacts/preflight-app `
+            -p:NetPilotExperimentalByeDpi=true `
+            -p:Version=0.1.0 `
+            -p:FileVersion=0.1.0.0 `
+            -p:AssemblyVersion=0.1.0.0 `
+            -p:InformationalVersion=0.1.0-alpha-byedpi2
+      - name: Boundary marker
+        shell: pwsh
+        run: |
+          Write-Host 'DEFAULT_PRODUCT_FAIL_CLOSED=true'
+          Write-Host 'EXPERIMENTAL_BYEDPI_UI=true'
+          Write-Host 'SOCKS_ENDPOINT=127.0.0.1:39036'
+          Write-Host 'SYSTEM_PROXY_MUTATION=false'
+          Write-Host 'WINDIVERT_EXECUTION=false'
+          Write-Host 'ZAPRET2_EXECUTION=false'
+          Write-Host 'PRODUCTION_ADMISSION=BLOCK'
