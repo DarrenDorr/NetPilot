@@ -144,11 +144,11 @@ public sealed partial class MainWindow : Window
 
     private void ApplyByeDpiUiFailure(
         string statusText = "Ошибка управления ByeDPI",
-        string detailsText = "Операция остановлена безопасно. Проверьте службу NetPilot и целостность experimental-пакета.")
+        string detailsText = "Операция остановлена безопасно. Нажмите обновление, чтобы повторно получить состояние службы.")
     {
         this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = statusText;
         this.FindControl<TextBlock>("ByeDpiDetailsText")!.Text = detailsText;
-        SetByeDpiButtonsEnabled(true, true);
+        SetByeDpiButtonsEnabled(canStart: true, canStop: false);
     }
 
     private void ApplyByeDpiStatus(ByeDpiUiStatus status)
@@ -158,15 +158,15 @@ public sealed partial class MainWindow : Window
         switch (status.State)
         {
             case ByeDpiUiState.Running:
-                this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = "Работает";
+                this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = "NetPilot активен";
                 SetByeDpiButtonsEnabled(false, true);
                 break;
             case ByeDpiUiState.Stopped:
-                this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = "Остановлен";
+                this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = "Защита выключена";
                 SetByeDpiButtonsEnabled(true, false);
                 break;
             default:
-                this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = "Недоступен";
+                this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = "Состояние недоступно";
                 SetByeDpiButtonsEnabled(false, false);
                 break;
         }
@@ -174,8 +174,17 @@ public sealed partial class MainWindow : Window
 
     private void SetByeDpiButtonsEnabled(bool canStart, bool canStop)
     {
-        this.FindControl<Button>("ByeDpiStartButton")!.IsEnabled = canStart;
-        this.FindControl<Button>("ByeDpiStopButton")!.IsEnabled = canStop;
+        var startButton = this.FindControl<Button>("ByeDpiStartButton")!;
+        var stopButton = this.FindControl<Button>("ByeDpiStopButton")!;
+
+        startButton.IsEnabled = canStart;
+        stopButton.IsEnabled = canStop;
+
+        // The approved VPN-like control surface shows one power action at a time.
+        // If the state is unavailable, keep the start glyph visible but disabled;
+        // Refresh remains available as the recovery action.
+        stopButton.IsVisible = canStop && !canStart;
+        startButton.IsVisible = !stopButton.IsVisible;
     }
 
     private void OnClosed(object? sender, EventArgs eventArgs)
