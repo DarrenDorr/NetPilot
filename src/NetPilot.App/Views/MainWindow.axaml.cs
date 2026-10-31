@@ -2,7 +2,6 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using NetPilot.App.Services;
 using NetPilot.App.ViewModels;
-using NetPilot.Ipc;
 
 namespace NetPilot.App.Views;
 
@@ -111,9 +110,9 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception)
         {
-            // Never let an unexpected exception escape an async UI event handler and terminate
-            // the desktop process. The native/service boundary remains fail-closed; the UI only
-            // reports a sanitized failure and stays available for Stop/Refresh/recovery.
+            // Never let an unexpected platform exception escape an async UI event handler and
+            // terminate the desktop process. Platform-specific exception types stay below the
+            // NetPilot.App boundary; the UI only reports a sanitized failure.
             ApplyByeDpiUiFailure();
         }
     }
@@ -139,8 +138,7 @@ public sealed partial class MainWindow : Window
         exception is InvalidOperationException
             or IOException
             or UnauthorizedAccessException
-            or OperationCanceledException
-            or IpcProtocolException;
+            or OperationCanceledException;
 
     private void ApplyByeDpiUiFailure(
         string statusText = "Ошибка управления ByeDPI",
