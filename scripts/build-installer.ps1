@@ -160,7 +160,9 @@ if ($EnableExperimentalByeDpi) {
         "[Files]`r`n$injectedFiles",
         1)
 
-    $experimentalIss = Join-Path $toolsDir "NetPilot.experimental-byedpi.iss"
+    # Keep the generated script beside the canonical installer script so its existing
+    # relative Source paths (for LICENSE and notices) preserve exactly the same meaning.
+    $experimentalIss = Join-Path (Join-Path $repoRoot "installer") "NetPilot.experimental-byedpi.generated.iss"
     Set-Content -LiteralPath $experimentalIss -Value $issText -Encoding utf8
     $iss = $experimentalIss
 }
