@@ -30,6 +30,7 @@ $innoUrl = "https://github.com/jrsoftware/issrc/releases/download/is-7_1_1/innos
 $innoSha256 = "8a5a6711c3766a6e5fb74f280ba0e3551e719ce94538d901fdbd1f8f9920b3f0"
 $byeDpiSha256 = "866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd"
 $byeDpiPackageVersion = "0.17.3-netpilot-r34-lab"
+$serviceProject = Join-Path $repoRoot "src\NetPilot.Service\NetPilot.Service.csproj"
 
 New-Item -ItemType Directory -Force -Path $appPublishDir, $servicePublishDir, $toolsDir, $OutputDir | Out-Null
 
@@ -57,7 +58,9 @@ if ($EnableExperimentalByeDpi) {
     }
 
     $publishVersionArgs += "-p:NetPilotExperimentalByeDpi=true"
+    $serviceProject = Join-Path $repoRoot "tools\NetPilot.ByeDpiExperimentalService\NetPilot.ByeDpiExperimentalService.csproj"
     Write-Host "Experimental ByeDPI payload verified: SHA256=$actualByeDpiHash SIZE=$($payloadItem.Length)"
+    Write-Host "Experimental installer uses isolated ByeDPI service host; production NetPilot.Service source stays no-admit."
 }
 
 Write-Host "Публикация NetPilot.App.Windows (self-contained win-x64)..."
@@ -75,8 +78,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish NetPilot.App.Windows завершился с ошибкой."
 }
 
-Write-Host "Публикация NetPilot.Service (self-contained win-x64)..."
-& dotnet publish (Join-Path $repoRoot "src\NetPilot.Service\NetPilot.Service.csproj") `
+Write-Host "Публикация NetPilot.Service host (self-contained win-x64)..."
+& dotnet publish $serviceProject `
     --configuration Release `
     --runtime win-x64 `
     --self-contained true `
@@ -87,7 +90,7 @@ Write-Host "Публикация NetPilot.Service (self-contained win-x64)..."
     @publishVersionArgs
 
 if ($LASTEXITCODE -ne 0) {
-    throw "dotnet publish NetPilot.Service завершился с ошибкой."
+    throw "dotnet publish NetPilot.Service host завершился с ошибкой."
 }
 
 if (-not (Test-Path $innoInstaller)) {
@@ -140,14 +143,15 @@ if ($EnableExperimentalByeDpi) {
 
     $escapedPayload = $ByeDpiPayloadPath.Replace('"', '""')
     $byeDpiDest = "{app}\Engines\Managed\byedpi\$byeDpiPackageVersion\x64\bin"
-    $byeDpiLicense = (Join-Path $repoRoot "third_party\licenses\ByeDPI-MIT.txt").Replace('"', '""')
-    if (-not (Test-Path -LiteralPath $byeDpiLicense)) {
+    $byeDpiLicensePath = Join-Path $repoRoot "third_party\licenses\ByeDPI-MIT.txt"
+    if (-not (Test-Path -LiteralPath $byeDpiLicensePath)) {
         throw "Локальная копия ByeDPI MIT license не найдена."
     }
+    $escapedLicense = $byeDpiLicensePath.Replace('"', '""')
 
     $injectedFiles = @(
         "Source: `"$escapedPayload`"; DestDir: `"$byeDpiDest`"; DestName: `"ciadpi.exe`"; Flags: ignoreversion notimestamp",
-        "Source: `"$byeDpiLicense`"; DestDir: `"{app}\Docs`"; DestName: `"ByeDPI-MIT.txt`"; Flags: ignoreversion notimestamp"
+        "Source: `"$escapedLicense`"; DestDir: `"{app}\Docs`"; DestName: `"ByeDPI-MIT.txt`"; Flags: ignoreversion notimestamp"
     ) -join "`r`n"
 
     $issText = [regex]::Replace(
