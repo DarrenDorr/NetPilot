@@ -51,7 +51,6 @@ jobs:
           require(gate, r"^\s*windows_zapret2_lab_execution:\s*false\s*$", "Windows zapret2 lab execution must remain false")
           require(gate, r"^\s*github_hosted_driver_execution:\s*false\s*$", "GitHub-hosted driver execution must remain false")
           require(gate, r"^\s*self_hosted_driver_execution:\s*false\s*$", "self-hosted driver execution must remain false before approval")
-          require(gate, r"^\s*observed_state:\s*OPEN\s*$", "all R44 upstream blocker snapshots must remain OPEN until separately re-reviewed")
           if len(re.findall(r"^\s*observed_state:\s*OPEN\s*$", gate, flags=re.MULTILINE)) != 3:
               raise SystemExit("R44 must pin exactly three currently-open WinDivert blockers")
 
@@ -59,9 +58,13 @@ jobs:
           require(gate, r"^\s*deterministic_windows_x64_sha256:\s*2a21810cbcf53321abe16c49ca2129adbb8391a6ed97c20a91a874fab8b7237a\s*$", "zapret2 deterministic binary hash mismatch")
           require(gate, r"^\s*release_asset_sha256:\s*63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15\s*$", "WinDivert archive hash mismatch")
 
-          require(plan, r"^status:\s*DRAFT_BLOCKED_UPSTREAM\s*$", "Windows lab plan must remain blocked")
+          require(plan, r"^status:\s*DRAFT_NOT_APPROVED\s*$", "Windows lab plan must remain a global DRAFT_NOT_APPROVED plan")
+          require(plan, r"^blocker_state:\s*BLOCKED_UPSTREAM\s*$", "Windows lab plan must preserve the upstream blocker state")
           require(plan, r"^execution_allowed:\s*false\s*$", "Windows lab plan cannot authorize execution")
           require(plan, r"^approval_id:\s*null\s*$", "Windows lab plan cannot contain an approval id")
+          require(plan, r"^production_activation_allowed:\s*false\s*$", "Windows lab plan cannot authorize production activation")
+          require(plan, r"^lab_pass_implies_admit:\s*false\s*$", "lab PASS cannot imply ADMIT")
+          require(plan, r"^lab_pass_changes_release_gate:\s*false\s*$", "lab PASS cannot change the release gate")
           require(plan, r"^\s*executable_run_allowed:\s*false\s*$", "winws2 execution must remain disabled")
           require(plan, r"^\s*driver_load_allowed:\s*false\s*$", "WinDivert driver load must remain disabled in the plan")
           require(plan, r"^\s*service_installation_allowed:\s*false\s*$", "WinDivert service installation must remain disabled")
@@ -84,12 +87,14 @@ jobs:
               forbid(combined, pattern, message)
 
           Path("windivert-r44-policy-evidence.txt").write_text(
-              "schema_version=1\n"
+              "schema_version=2\n"
               "scope=windivert-r44-blocked-runtime-policy\n"
               "result=PASS\n"
               "zapret2_checkpoint=6207d7e6bae80b8ac1d0e84f6777caff20881890\n"
               "zapret2_windows_sha256=2a21810cbcf53321abe16c49ca2129adbb8391a6ed97c20a91a874fab8b7237a\n"
               "windivert_release=v2.2.2\n"
+              "lab_plan_status=DRAFT_NOT_APPROVED\n"
+              "upstream_blocker_state=BLOCKED_UPSTREAM\n"
               "windivert_runtime=BLOCK\n"
               "driver_load_allowed=false\n"
               "lab_execution_allowed=false\n"
