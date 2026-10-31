@@ -1,0 +1,271 @@
+name: ByeDPI User Smoke Installer
+
+on:
+  push:
+    branches: [ feature/byedpi-user-smoke-ui-r1 ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: netpilot-byedpi-user-smoke-installer
+  cancel-in-progress: true
+
+env:
+  BYEDPI_SOURCE_SHA: 7efde1b1296eaaa187b70e951894dde17527489c
+  BYEDPI_SOURCE_TREE: 8d13f6f5939190cd27ee68696247073a00b3e7dc
+  BYEDPI_WINDOWS_SHA256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+  BYEDPI_PACKAGE_VERSION: 0.17.3-netpilot-r34-lab
+  ALPHA_VERSION: 0.1.0-alpha-byedpi2
+
+jobs:
+  guard:
+    name: Default product remains fail-closed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Global security policy
+        run: bash scripts/security-policy-check.sh
+      - name: Runtime admission policy
+        run: bash scripts/runtime-admission-policy-check.sh
+      - name: R42.9 isolated HTTP boundary
+        run: bash scripts/security/r42-9-byedpi-isolated-http-check.sh
+
+  build-candidate:
+    name: Rebuild exact reviewed ByeDPI candidate
+    needs: guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout NetPilot without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          path: netpilot
+          persist-credentials: false
+      - name: Checkout exact ByeDPI source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: hufrea/byedpi
+          ref: ${{ env.BYEDPI_SOURCE_SHA }}
+          path: byedpi
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify source and apply exact reviewed patch queue
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C byedpi rev-parse HEAD)" = "$BYEDPI_SOURCE_SHA"
+          test "$(git -C byedpi rev-parse 'HEAD^{tree}')" = "$BYEDPI_SOURCE_TREE"
+          patch_dir="$PWD/canonical-byedpi-patches"
+          mkdir -p "$patch_dir"
+          declare -A blob_sha=(
+            [0001-loopback-only-listener.patch]=fa9ba3349792d66f40d925bc612310e8d18aae8a
+            [0002-kavl-iterator-no-before-array-sentinel.patch]=6f51d66597847ee49e373922e4905c80b8ee2f47
+            [0003-pid-file-fail-safe-write.patch]=d56d0f8659a49c48c923b6af85a523a952e77e0c
+            [0004-kavl-empty-erase-guard.patch]=9b196b289efd9a2ea1118c5504f4a811aa0becd2
+            [0005-windows-socket-handle-narrowing-guard.patch]=d5cde98057a0ded600468b1f1c69d2e55c3b4d6e
+            [0006-windows-wait-result-range.patch]=0815be26534c291848a8b16bdedb07a6ab1e485f
+            [0007-windows-aux-socket-probes.patch]=e7b590a7d0594be0629bac221cb120c165dab8cd
+          )
+          declare -A patch_sha256=(
+            [0001-loopback-only-listener.patch]=3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068
+            [0002-kavl-iterator-no-before-array-sentinel.patch]=6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7
+            [0003-pid-file-fail-safe-write.patch]=5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738
+            [0004-kavl-empty-erase-guard.patch]=fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a
+            [0005-windows-socket-handle-narrowing-guard.patch]=7c8f4eee9ff2624346cb886027df66378773d0af04f5f84f54c30815104b4356
+            [0006-windows-wait-result-range.patch]=136b9fdf34b68a55f0f1a6ebf16e8b61c9b88e6d15eeb923594bdd7bf0fa2a3e
+            [0007-windows-aux-socket-probes.patch]=778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25
+          )
+          for patch in \
+            0001-loopback-only-listener.patch \
+            0002-kavl-iterator-no-before-array-sentinel.patch \
+            0003-pid-file-fail-safe-write.patch \
+            0004-kavl-empty-erase-guard.patch \
+            0005-windows-socket-handle-narrowing-guard.patch \
+            0006-windows-wait-result-range.patch \
+            0007-windows-aux-socket-probes.patch
+          do
+            test "$(git -C netpilot rev-parse "HEAD:security/native-admission/patches/byedpi-r28/$patch")" = "${blob_sha[$patch]}"
+            git -C netpilot show "HEAD:security/native-admission/patches/byedpi-r28/$patch" > "$patch_dir/$patch"
+            test "$(sha256sum "$patch_dir/$patch" | awk '{print $1}')" = "${patch_sha256[$patch]}"
+            git -C byedpi apply --check "$patch_dir/$patch"
+            git -C byedpi apply "$patch_dir/$patch"
+          done
+          grep -Fq 'Listening IP, loopback only; default 127.0.0.1' byedpi/main.c
+          grep -Fq 'netpilot_is_loopback_addr' byedpi/main.c
+      - name: Install Windows cross compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mingw-w64 file
+      - name: Build exact deterministic Windows x64 candidate twice
+        shell: bash
+        working-directory: byedpi
+        run: |
+          set -euo pipefail
+          deterministic='-Wl,--no-insert-timestamp -lws2_32 -lmswsock'
+          make clean >/dev/null
+          make windows CC=x86_64-w64-mingw32-gcc WIN_LDFLAGS="$deterministic"
+          test -f ciadpi.exe
+          hash1="$(sha256sum ciadpi.exe | awk '{print $1}')"
+          test "$hash1" = "$BYEDPI_WINDOWS_SHA256"
+          cp ciadpi.exe ../ciadpi-first.exe
+          make clean >/dev/null
+          make windows CC=x86_64-w64-mingw32-gcc WIN_LDFLAGS="$deterministic"
+          hash2="$(sha256sum ciadpi.exe | awk '{print $1}')"
+          test "$hash2" = "$hash1"
+          cmp -s ciadpi.exe ../ciadpi-first.exe
+      - name: Upload exact candidate transfer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: byedpi-user-smoke-candidate
+          path: byedpi/ciadpi.exe
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  windows-functional:
+    name: Install NetPilot alpha2 and prove reviewed ByeDPI path
+    needs: build-candidate
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - name: Checkout without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Download exact candidate
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          name: byedpi-user-smoke-candidate
+          path: candidate
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify candidate and clean host boundary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidate = Resolve-Path 'candidate\ciadpi.exe'
+          $hash = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne $env:BYEDPI_WINDOWS_SHA256) { throw 'Transferred ByeDPI hash drift.' }
+          if (Test-Path (Join-Path $env:ProgramFiles 'NetPilot')) { throw 'Refusing pre-existing NetPilot installation on hosted runner.' }
+          if (Get-CimInstance Win32_SystemDriver | Where-Object { $_.Name -match 'WinDivert' -or $_.PathName -match 'WinDivert' }) { throw 'WinDivert unexpectedly present.' }
+          New-Item -ItemType Directory -Force -Path evidence | Out-Null
+          @(
+            'schema_version=2',
+            'scope=byedpi-user-smoke-alpha2',
+            "byedpi_sha256=$hash",
+            'dark_control_center_ui=true',
+            'diagnostics_via_fixed_socks=true',
+            'system_proxy_mutation_authorized=false',
+            'windivert_present_before=false',
+            'production_admission=false'
+          ) | Set-Content -Encoding utf8 evidence\byedpi-user-smoke-alpha2.txt
+      - name: Build experimental installer with exact payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pwsh -NoLogo -NoProfile -File scripts/build-installer.ps1 `
+            -Version $env:ALPHA_VERSION `
+            -VersionInfoVersion 0.1.0.0 `
+            -EnableExperimentalByeDpi `
+            -ByeDpiPayloadPath candidate\ciadpi.exe
+      - name: Build authenticated R36 client
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet restore tools\NetPilot.ByeDpiR36LabClient\NetPilot.ByeDpiR36LabClient.csproj
+          dotnet build tools\NetPilot.ByeDpiR36LabClient\NetPilot.ByeDpiR36LabClient.csproj --configuration Release --no-restore
+      - name: Install experimental NetPilot alpha2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Resolve-Path "artifacts\installer\NetPilot-Setup-$env:ALPHA_VERSION-x64.exe"
+          $p = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Installer failed: $($p.ExitCode)" }
+          $svc = Get-Service -Name 'NetPilot.Service' -ErrorAction Stop
+          if ($svc.Status -ne 'Running') { throw "NetPilot.Service not running: $($svc.Status)" }
+          $payload = Join-Path $env:ProgramFiles "NetPilot\Engines\Managed\byedpi\$env:BYEDPI_PACKAGE_VERSION\x64\bin\ciadpi.exe"
+          if (-not (Test-Path $payload)) { throw 'Installed exact ByeDPI payload missing.' }
+          $hash = (Get-FileHash -LiteralPath $payload -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne $env:BYEDPI_WINDOWS_SHA256) { throw 'Installed ByeDPI hash mismatch.' }
+          Add-Content evidence\byedpi-user-smoke-alpha2.txt 'install=PASS'
+          Add-Content evidence\byedpi-user-smoke-alpha2.txt 'service_running=PASS'
+          Add-Content evidence\byedpi-user-smoke-alpha2.txt 'exact_payload_installed=PASS'
+      - name: Prove service starts and stops real ByeDPI through authenticated IPC
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $project = 'tools\NetPilot.ByeDpiR36LabClient\NetPilot.ByeDpiR36LabClient.csproj'
+          $output = & dotnet run --project $project --configuration Release --no-build 2>&1
+          $exit = $LASTEXITCODE
+          $output | Tee-Object -FilePath evidence\byedpi-ipc-socks-runtime.txt
+          if ($exit -ne 0) { throw "ByeDPI IPC/SOCKS functional test failed: $exit" }
+          $text = $output -join "`n"
+          foreach ($marker in @('AUTHENTICATED_IPC=PASS','IPC_START=PASS','IPC_SOCKS_HTTP=PASS','IPC_STOP_CLEANUP=PASS','RESULT=BYEDPI_LOCALSYSTEM_IPC_R36_PASS')) {
+            if ($text -notmatch [regex]::Escape($marker)) { throw "Missing runtime marker: $marker" }
+          }
+          Add-Content evidence\byedpi-user-smoke-alpha2.txt 'authenticated_ipc=PASS'
+          Add-Content evidence\byedpi-user-smoke-alpha2.txt 'byedpi_start=PASS'
+          Add-Content evidence\byedpi-user-smoke-alpha2.txt 'socks5_local_http=PASS'
+          Add-Content evidence\byedpi-user-smoke-alpha2.txt 'byedpi_stop_cleanup=PASS'
+      - name: Launch redesigned GUI smoke
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $app = Join-Path $env:ProgramFiles 'NetPilot\App\NetPilot.exe'
+          $proc = Start-Process -FilePath $app -WorkingDirectory (Split-Path $app) -PassThru
+          Start-Sleep -Seconds 8
+          $proc.Refresh()
+          if ($proc.HasExited) { throw "Redesigned GUI exited early: $($proc.ExitCode)" }
+          Stop-Process -Id $proc.Id -Force
+          Add-Content evidence\byedpi-user-smoke-alpha2.txt 'redesigned_gui_alive_8s=PASS'
+      - name: Verify forbidden native components absent
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) { throw 'Residual ciadpi after IPC stop.' }
+          if (Get-CimInstance Win32_SystemDriver | Where-Object { $_.Name -match 'WinDivert' -or $_.PathName -match 'WinDivert' }) { throw 'WinDivert appeared during alpha2 smoke.' }
+          Add-Content evidence\byedpi-user-smoke-alpha2.txt 'residual_ciadpi=false'
+          Add-Content evidence\byedpi-user-smoke-alpha2.txt 'windivert_present_after=false'
+      - name: Uninstall and cleanup
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Get-Process -Name ciadpi -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          $uninstaller = Join-Path $env:ProgramFiles 'NetPilot\unins000.exe'
+          if (Test-Path $uninstaller) {
+            $p = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+            if ($p.ExitCode -ne 0) { Write-Error "Uninstaller failed: $($p.ExitCode)" }
+          }
+          Start-Sleep -Seconds 2
+          if (Get-Service -Name 'NetPilot.Service' -ErrorAction SilentlyContinue) { Write-Error 'Service remained after uninstall.' }
+          if (Test-Path (Join-Path $env:ProgramFiles 'NetPilot')) { Write-Error 'NetPilot root remained after uninstall.' }
+      - name: Upload installer and evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: NetPilot-0.1.0-alpha-byedpi2-x64
+          path: |
+            artifacts/installer/NetPilot-Setup-${{ env.ALPHA_VERSION }}-x64.exe
+            evidence/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Boundary marker
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host 'USER_SMOKE=BYEDPI_ALPHA2'
+          Write-Host 'SCOPE=WINDOWS_X64_LOOPBACK_TCP_ONLY_FIXED_PROFILE'
+          Write-Host 'DIAGNOSTICS_VIA_FIXED_SOCKS=true'
+          Write-Host 'SYSTEM_PROXY_MUTATION=false'
+          Write-Host 'WINDIVERT_EXECUTION=false'
+          Write-Host 'ZAPRET2_EXECUTION=false'
+          Write-Host 'PRODUCTION_ADMISSION=BLOCK'
