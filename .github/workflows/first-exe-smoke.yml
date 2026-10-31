@@ -1,0 +1,180 @@
+name: First EXE Smoke
+
+on:
+  push:
+    branches: [ feature/first-exe-smoke ]
+    paths:
+      - '.github/workflows/first-exe-smoke.yml'
+      - 'src/**'
+      - 'tests/**'
+      - 'installer/**'
+      - 'scripts/**'
+      - 'Directory.*'
+      - 'NetPilot.sln'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: Preserve fail-closed release boundary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Global security policy
+        run: bash scripts/security-policy-check.sh
+
+      - name: Runtime admission policy
+        run: bash scripts/runtime-admission-policy-check.sh
+
+      - name: R42.9 isolated HTTP boundary
+        run: bash scripts/security/r42-9-byedpi-isolated-http-check.sh
+
+  windows-first-exe:
+    name: Build install launch uninstall smoke
+    needs: guard
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - name: Checkout without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build first alpha installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pwsh -NoLogo -NoProfile -File scripts/build-installer.ps1 `
+            -Version 0.1.0-alpha-firstexe `
+            -VersionInfoVersion 0.1.0.0
+
+      - name: Verify installer and published executable identities
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Resolve-Path 'artifacts\installer\NetPilot-Setup-0.1.0-alpha-firstexe-x64.exe'
+          $app = Resolve-Path 'artifacts\publish\app-win-x64\NetPilot.exe'
+          $service = Resolve-Path 'artifacts\publish\service-win-x64\NetPilot.Service.exe'
+
+          foreach ($file in @($setup, $app, $service)) {
+            $item = Get-Item $file
+            if ($item.Length -le 0) { throw "Empty executable: $file" }
+            $bytes = [System.IO.File]::ReadAllBytes($file)
+            if ($bytes.Length -lt 2 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
+              throw "Missing PE MZ header: $file"
+            }
+            $hash = (Get-FileHash -Algorithm SHA256 -Path $file).Hash.ToLowerInvariant()
+            Write-Host "$file SHA256=$hash SIZE=$($item.Length)"
+          }
+
+          $forbidden = Get-ChildItem 'artifacts\publish' -Recurse -File | Where-Object {
+            $_.Name -match '^(ciadpi|winws2|nfqws2)\.exe$' -or
+            $_.Name -match '^WinDivert.*\.(sys|dll)$'
+          }
+          if ($forbidden) {
+            $names = ($forbidden.FullName -join '; ')
+            throw "Native engine/WinDivert payload unexpectedly present in first EXE build: $names"
+          }
+
+          $setupHash = (Get-FileHash -Algorithm SHA256 -Path $setup).Hash.ToLowerInvariant()
+          $appHash = (Get-FileHash -Algorithm SHA256 -Path $app).Hash.ToLowerInvariant()
+          $serviceHash = (Get-FileHash -Algorithm SHA256 -Path $service).Hash.ToLowerInvariant()
+          @(
+            'schema_version=1',
+            'scope=netpilot-first-exe-functional-smoke',
+            'security_evidence=false',
+            'native_engine_execution=false',
+            'windivert_execution=false',
+            "setup_sha256=$setupHash",
+            "app_sha256=$appHash",
+            "service_sha256=$serviceHash"
+          ) | Set-Content -Encoding utf8 first-exe-smoke-evidence.txt
+
+      - name: Silent install functional smoke only
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Resolve-Path 'artifacts\installer\NetPilot-Setup-0.1.0-alpha-firstexe-x64.exe'
+          $p = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Installer failed with exit code $($p.ExitCode)" }
+
+          $svc = Get-Service -Name 'NetPilot.Service' -ErrorAction Stop
+          if ($svc.Status -ne 'Running') { throw "NetPilot.Service is not running: $($svc.Status)" }
+
+          $installedApp = Join-Path $env:ProgramFiles 'NetPilot\App\NetPilot.exe'
+          $installedService = Join-Path $env:ProgramFiles 'NetPilot\Service\NetPilot.Service.exe'
+          if (-not (Test-Path $installedApp)) { throw 'Installed NetPilot.exe not found.' }
+          if (-not (Test-Path $installedService)) { throw 'Installed NetPilot.Service.exe not found.' }
+
+          Add-Content first-exe-smoke-evidence.txt 'install=PASS'
+          Add-Content first-exe-smoke-evidence.txt 'service_running_after_install=PASS'
+
+      - name: Launch GUI process smoke only
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $app = Join-Path $env:ProgramFiles 'NetPilot\App\NetPilot.exe'
+          $proc = Start-Process -FilePath $app -WorkingDirectory (Split-Path $app) -PassThru
+          Start-Sleep -Seconds 5
+          $proc.Refresh()
+          if ($proc.HasExited) {
+            throw "NetPilot GUI exited during five-second startup smoke with exit code $($proc.ExitCode)."
+          }
+          Stop-Process -Id $proc.Id -Force
+          Add-Content first-exe-smoke-evidence.txt 'gui_process_alive_5s=PASS'
+
+      - name: Uninstall and cleanup smoke
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $uninstaller = Join-Path $env:ProgramFiles 'NetPilot\unins000.exe'
+          if (Test-Path $uninstaller) {
+            $p = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+            if ($p.ExitCode -ne 0) { Write-Error "Uninstaller failed with exit code $($p.ExitCode)" }
+          }
+          Start-Sleep -Seconds 2
+          if (Get-Service -Name 'NetPilot.Service' -ErrorAction SilentlyContinue) {
+            Write-Error 'NetPilot.Service remained registered after uninstall.'
+          } else {
+            Add-Content first-exe-smoke-evidence.txt 'service_removed_after_uninstall=PASS'
+          }
+          $installedApp = Join-Path $env:ProgramFiles 'NetPilot\App\NetPilot.exe'
+          if (Test-Path $installedApp) {
+            Write-Error 'NetPilot.exe remained after uninstall.'
+          } else {
+            Add-Content first-exe-smoke-evidence.txt 'app_removed_after_uninstall=PASS'
+          }
+
+      - name: Upload first EXE installer
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: NetPilot-0.1.0-alpha-firstexe-x64
+          path: |
+            artifacts/installer/NetPilot-Setup-0.1.0-alpha-firstexe-x64.exe
+            first-exe-smoke-evidence.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Boundary marker
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host 'FIRST_EXE_SMOKE=FUNCTIONAL_ONLY'
+          Write-Host 'NATIVE_ENGINE_EXECUTION=false'
+          Write-Host 'WINDIVERT_EXECUTION=false'
+          Write-Host 'PRODUCTION_ADMISSION=BLOCK'
+          Write-Host 'HOSTED_WINDOWS_SECURITY_EVIDENCE=false'
