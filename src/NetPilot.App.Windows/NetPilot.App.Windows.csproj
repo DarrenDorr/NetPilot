@@ -5,6 +5,9 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>NetPilot</AssemblyName>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(NetPilotExperimentalByeDpi)' == 'true'">
+    <DefineConstants>$(DefineConstants);NETPILOT_EXPERIMENTAL_BYEDPI</DefineConstants>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia.Desktop" />
   </ItemGroup>
@@ -12,6 +15,7 @@
     <ProjectReference Include="../NetPilot.App/NetPilot.App.csproj" />
     <ProjectReference Include="../NetPilot.Automation/NetPilot.Automation.csproj" />
     <ProjectReference Include="../NetPilot.Health/NetPilot.Health.csproj" />
+    <ProjectReference Include="../NetPilot.Ipc/NetPilot.Ipc.csproj" />
     <ProjectReference Include="../NetPilot.Platform.Windows/NetPilot.Platform.Windows.csproj" />
     <ProjectReference Include="../NetPilot.Security/NetPilot.Security.csproj" />
   </ItemGroup>
