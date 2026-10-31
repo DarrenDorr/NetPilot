@@ -27,7 +27,6 @@ public sealed class ResourceStatusViewModel : INotifyPropertyChanged
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
-
     public string Id { get; }
     public string DisplayName { get; }
 
@@ -79,25 +78,21 @@ public sealed class ResourceStatusViewModel : INotifyPropertyChanged
                 StatusBrush = Brushes.MediumSeaGreen;
                 StatusGlyph = "●";
                 break;
-
             case ResourceHealthState.Degraded:
                 StatusText = "Есть ограничения";
                 DetailsText = detailsText;
                 StatusBrush = Brushes.DarkOrange;
                 StatusGlyph = "●";
                 break;
-
             case ResourceHealthState.Unavailable:
                 StatusText = "Недоступно";
                 DetailsText = detailsText;
                 StatusBrush = Brushes.IndianRed;
                 StatusGlyph = "●";
                 break;
-
             case ResourceHealthState.Checking:
                 SetChecking();
                 break;
-
             default:
                 StatusText = "Не проверено";
                 DetailsText = diagnosticText;
@@ -128,6 +123,7 @@ public sealed class ResourceStatusViewModel : INotifyPropertyChanged
             "TcpConnectFailed" => "Не удалось установить сетевое соединение.",
             "TlsHandshakeFailed" => "Не удалось установить защищённое HTTPS-соединение.",
             "Timeout" => "Превышено время ожидания ответа.",
+            "ProxyTransportFailure" => "Локальный ByeDPI proxy не смог провести проверочный трафик.",
             "EndpointRejected" => "Адрес проверки отклонён политикой безопасности NetPilot.",
             "NoHealthEndpoints" => "Для сервиса не настроена безопасная проверка.",
             "TooManyRedirects" => "Сервис вернул слишком много перенаправлений.",
@@ -155,12 +151,10 @@ public sealed class ResourceStatusViewModel : INotifyPropertyChanged
         {
             return latencyText;
         }
-
         if (string.IsNullOrEmpty(latencyText))
         {
             return diagnosticText;
         }
-
         return $"{diagnosticText} · {latencyText}";
     }
 
@@ -170,7 +164,6 @@ public sealed class ResourceStatusViewModel : INotifyPropertyChanged
         {
             return;
         }
-
         field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
