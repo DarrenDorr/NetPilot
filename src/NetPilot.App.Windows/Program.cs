@@ -85,7 +85,15 @@ internal static class Program
 
     private static MainWindowViewModel CreateMainWindowViewModel()
     {
-        var healthChecker = new PublicHttpsHealthChecker();
+#if NETPILOT_EXPERIMENTAL_BYEDPI
+        // The experimental alpha proves end-user traffic through the already reviewed
+        // fixed loopback SOCKS5 boundary. The transport still resolves and validates the
+        // public destination locally before sending a CONNECT request to 127.0.0.1:39036.
+        IResourceHealthChecker healthChecker = new ExperimentalByeDpiHttpsHealthChecker();
+#else
+        IResourceHealthChecker healthChecker =
+            new PublicHttpsHealthCheckerAdapter(new PublicHttpsHealthChecker());
+#endif
         var serviceClient = new WindowsPrivilegedServiceClient();
 
         // Legacy profile automation remains no-admit in the experimental ByeDPI alpha.
