@@ -4,259 +4,309 @@
         x:Class="NetPilot.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding Title}"
-        Width="920"
-        Height="760"
-        MinWidth="760"
-        MinHeight="620">
-  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="32" MaxWidth="1040">
-      <Grid ColumnDefinitions="*,Auto">
-        <StackPanel Spacing="5">
-          <TextBlock Text="{Binding Title}" FontSize="32" FontWeight="SemiBold" />
-          <TextBlock Text="{Binding Subtitle}" FontSize="15" Opacity="0.62" />
+        Width="1120"
+        Height="780"
+        MinWidth="900"
+        MinHeight="680"
+        Background="#080D18">
+  <Window.Styles>
+    <Style Selector="TextBlock">
+      <Setter Property="Foreground" Value="#EAF2FF" />
+      <Setter Property="FontFamily" Value="Segoe UI" />
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="Background" Value="#111C2E" />
+      <Setter Property="Foreground" Value="#EAF2FF" />
+      <Setter Property="BorderBrush" Value="#223A5D" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="16,10" />
+    </Style>
+    <Style Selector="Button:pointerover">
+      <Setter Property="Background" Value="#17263D" />
+      <Setter Property="BorderBrush" Value="#2E77D0" />
+    </Style>
+    <Style Selector="Button:disabled">
+      <Setter Property="Opacity" Value="0.38" />
+    </Style>
+  </Window.Styles>
+
+  <Grid ColumnDefinitions="238,*">
+    <!-- Left navigation / identity rail -->
+    <Border Background="#0B1220" BorderBrush="#14233A" BorderThickness="0,0,1,0">
+      <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="18,22">
+        <StackPanel Spacing="4">
+          <TextBlock Text="NetPilot" FontSize="28" FontWeight="SemiBold" />
+          <TextBlock Text="NETWORK CONTROL" FontSize="10" Foreground="#6E89AA" LetterSpacing="1.8" />
         </StackPanel>
 
-        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
-          <TextBlock Text="Расширенный режим" FontSize="12" Opacity="0.62" HorizontalAlignment="Right" />
-          <ToggleSwitch IsChecked="{Binding IsAdvancedMode}" HorizontalAlignment="Right" />
+        <StackPanel Grid.Row="1" Margin="0,34,0,0" Spacing="8">
+          <Border Background="#12223A" CornerRadius="12" Padding="13,11">
+            <Grid ColumnDefinitions="28,*">
+              <TextBlock Text="⌂" FontSize="18" Foreground="#4FA8FF" HorizontalAlignment="Center" />
+              <TextBlock Grid.Column="1" Text="Главная" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </Grid>
+          </Border>
+          <Border CornerRadius="12" Padding="13,11">
+            <Grid ColumnDefinitions="28,*">
+              <TextBlock Text="◉" FontSize="17" Foreground="#6E89AA" HorizontalAlignment="Center" />
+              <TextBlock Grid.Column="1" Text="Движки" FontSize="14" Foreground="#8FA7C4" VerticalAlignment="Center" />
+            </Grid>
+          </Border>
+          <Border CornerRadius="12" Padding="13,11">
+            <Grid ColumnDefinitions="28,*">
+              <TextBlock Text="⌁" FontSize="19" Foreground="#6E89AA" HorizontalAlignment="Center" />
+              <TextBlock Grid.Column="1" Text="Диагностика" FontSize="14" Foreground="#8FA7C4" VerticalAlignment="Center" />
+            </Grid>
+          </Border>
         </StackPanel>
-      </Grid>
 
-      <Border Grid.Row="1"
-              Margin="0,28,0,0"
-              Padding="24"
-              CornerRadius="18"
-              BorderThickness="1"
-              BorderBrush="#33808080">
-        <Grid ColumnDefinitions="*,Auto">
+        <Border Grid.Row="3" Background="#0F1929" CornerRadius="14" Padding="14">
           <StackPanel Spacing="7">
-            <TextBlock Text="Общее состояние" FontSize="14" Opacity="0.62" />
-            <TextBlock Text="{Binding OverallStatus}" FontSize="26" FontWeight="SemiBold" TextWrapping="Wrap" />
-            <TextBlock Text="{Binding OverallDetails}" FontSize="14" Opacity="0.70" TextWrapping="Wrap" MaxWidth="620" />
+            <TextBlock Text="ALPHA · BYEDPI" FontSize="10" Foreground="#48A6FF" FontWeight="SemiBold" />
+            <TextBlock Text="Windows x64" FontSize="12" Foreground="#839AB7" />
+            <TextBlock x:Name="SupportVersionText" Text="неизвестно" FontSize="10" Foreground="#5F7693" TextWrapping="Wrap" />
+            <TextBlock x:Name="SupportPlatformText" Text="неизвестно" IsVisible="False" />
+            <TextBlock x:Name="SupportArchitectureText" Text="неизвестно" IsVisible="False" />
           </StackPanel>
+        </Border>
+      </Grid>
+    </Border>
 
-          <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="24,0,0,0" Spacing="10">
-            <Button Content="Установить сетевой движок"
-                    Command="{Binding InstallEngineCommand}"
-                    IsVisible="{Binding CanInstallEngine}"
-                    Padding="18,10"
-                    HorizontalAlignment="Stretch" />
-            <Button Content="Проверить сейчас"
-                    Command="{Binding CheckCommand}"
-                    Padding="18,10"
-                    HorizontalAlignment="Stretch" />
-            <Button Content="Подобрать профиль"
-                    Command="{Binding FindProfileCommand}"
-                    Padding="18,10"
-                    HorizontalAlignment="Stretch" />
-          </StackPanel>
-        </Grid>
-      </Border>
-
-      <Border x:Name="ByeDpiExperimentalCard"
-              Grid.Row="2"
-              IsVisible="False"
-              Margin="0,18,0,0"
-              Padding="20"
-              CornerRadius="16"
-              BorderThickness="1"
-              BorderBrush="#40808080">
+    <!-- Main surface -->
+    <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled">
+      <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto" Margin="34,26,36,34" MaxWidth="980">
         <Grid ColumnDefinitions="*,Auto">
-          <StackPanel Spacing="6">
-            <StackPanel Orientation="Horizontal" Spacing="10">
-              <TextBlock Text="ByeDPI Experimental" FontSize="18" FontWeight="SemiBold" />
-              <TextBlock x:Name="ByeDpiStatusText" Text="Проверяем…" FontSize="14" VerticalAlignment="Center" Opacity="0.78" />
-            </StackPanel>
-            <TextBlock x:Name="ByeDpiDetailsText"
-                       Text="Локальный SOCKS5 proxy. Эта alpha-сборка не меняет системный proxy и не использует WinDivert."
-                       FontSize="12"
-                       Opacity="0.66"
-                       TextWrapping="Wrap"
-                       MaxWidth="620" />
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Адрес:" FontSize="12" Opacity="0.58" />
-              <TextBlock x:Name="ByeDpiEndpointText" Text="127.0.0.1:39036" FontSize="12" FontWeight="SemiBold" />
-            </StackPanel>
+          <StackPanel Spacing="3">
+            <TextBlock Text="Управление сетью" FontSize="24" FontWeight="SemiBold" />
+            <TextBlock Text="Безопасный запуск проверенных сетевых движков" FontSize="12" Foreground="#7188A6" />
           </StackPanel>
-
-          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="18,0,0,0">
-            <Button x:Name="ByeDpiStartButton"
-                    Content="Запустить"
-                    Click="OnStartByeDpiClicked"
-                    Padding="14,9" />
-            <Button x:Name="ByeDpiStopButton"
-                    Content="Остановить"
-                    Click="OnStopByeDpiClicked"
-                    Padding="14,9" />
-            <Button Content="Обновить"
-                    Click="OnRefreshByeDpiClicked"
-                    Padding="14,9" />
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+            <TextBlock Text="Расширенный режим" FontSize="12" Foreground="#7188A6" VerticalAlignment="Center" />
+            <ToggleSwitch IsChecked="{Binding IsAdvancedMode}" />
           </StackPanel>
         </Grid>
-      </Border>
 
-      <StackPanel Grid.Row="3" Margin="0,22,0,0" Spacing="12">
-        <TextBlock Text="Сервисы" FontSize="18" FontWeight="SemiBold" />
+        <!-- VPN-like hero / ByeDPI control -->
+        <Border x:Name="ByeDpiExperimentalCard"
+                Grid.Row="1"
+                IsVisible="False"
+                Margin="0,22,0,0"
+                Padding="30,26"
+                CornerRadius="24"
+                Background="#0D1727"
+                BorderBrush="#1B3353"
+                BorderThickness="1">
+          <Grid ColumnDefinitions="*,310" MinHeight="302">
+            <StackPanel VerticalAlignment="Center" Spacing="12" Margin="4,0,34,0">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Border Background="#102A46" CornerRadius="10" Padding="10,6">
+                  <TextBlock Text="BYEDPI" FontSize="11" Foreground="#55B5FF" FontWeight="SemiBold" />
+                </Border>
+                <TextBlock Text="Экспериментальный движок" FontSize="12" Foreground="#7188A6" VerticalAlignment="Center" />
+              </StackPanel>
 
-        <ItemsControl ItemsSource="{Binding Resources}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:ResourceStatusViewModel">
-              <Border Padding="18"
-                      Margin="0,0,0,10"
-                      CornerRadius="14"
-                      BorderThickness="1"
-                      BorderBrush="#28808080">
+              <TextBlock x:Name="ByeDpiStatusText"
+                         Text="Проверяем…"
+                         FontSize="34"
+                         FontWeight="SemiBold" />
+              <TextBlock x:Name="ByeDpiDetailsText"
+                         Text="Локальный SOCKS5 proxy. Системный proxy не изменяется."
+                         FontSize="13"
+                         Foreground="#8298B4"
+                         TextWrapping="Wrap"
+                         MaxWidth="500" />
+
+              <Border Background="#0A1321" CornerRadius="12" Padding="13,10" Margin="0,6,0,0">
                 <Grid ColumnDefinitions="Auto,*,Auto">
-                  <TextBlock Text="{Binding StatusGlyph}"
-                             Foreground="{Binding StatusBrush}"
-                             FontSize="21"
-                             VerticalAlignment="Center"
-                             Margin="0,0,14,0" />
-
-                  <StackPanel Grid.Column="1" Spacing="3">
-                    <TextBlock Text="{Binding DisplayName}" FontSize="17" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding DetailsText}" FontSize="12" Opacity="0.58" TextWrapping="Wrap" />
-                  </StackPanel>
-
-                  <TextBlock Grid.Column="2"
-                             Text="{Binding StatusText}"
-                             Foreground="{Binding StatusBrush}"
-                             FontSize="14"
-                             FontWeight="SemiBold"
-                             VerticalAlignment="Center"
-                             Margin="18,0,0,0" />
+                  <Ellipse Width="8" Height="8" Fill="#42A5FF" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="Локальный защищённый SOCKS5" Margin="10,0,0,0" FontSize="12" Foreground="#8CA3BE" />
+                  <TextBlock Grid.Column="2" x:Name="ByeDpiEndpointText" Text="127.0.0.1:39036" FontSize="12" Foreground="#BFD7F2" FontWeight="SemiBold" />
                 </Grid>
               </Border>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-      </StackPanel>
 
-      <Border Grid.Row="4"
-              IsVisible="{Binding IsAdvancedMode}"
-              Margin="0,12,0,0"
-              Padding="20"
-              CornerRadius="14"
-              BorderThickness="1"
-              BorderBrush="#33808080">
-        <StackPanel Spacing="10">
-          <StackPanel Spacing="2">
-            <TextBlock Text="Профили NetPilot" FontSize="16" FontWeight="SemiBold" />
-            <TextBlock Text="Каталог сетевых профилей NetPilot. Legacy-профили остаются закрыты, пока их движок не прошёл отдельный security admission."
-                       FontSize="12"
-                       Opacity="0.58"
-                       TextWrapping="Wrap" />
-          </StackPanel>
-
-          <ItemsControl ItemsSource="{Binding EngineProfiles}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="vm:EngineProfileViewModel">
-                <Border Padding="12,9"
-                        Margin="0,0,0,6"
-                        CornerRadius="8"
-                        BorderThickness="1"
-                        BorderBrush="#20808080">
-                  <Grid ColumnDefinitions="*,150,220">
-                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
-                    <TextBlock Grid.Column="1"
-                               Text="{Binding Id}"
-                               Opacity="0.55"
-                               Margin="12,0,0,0" />
-                    <TextBlock Grid.Column="2"
-                               Text="{Binding StatusText}"
-                               HorizontalAlignment="Right"
-                               Margin="12,0,0,0" />
-                  </Grid>
-                </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </StackPanel>
-      </Border>
-
-      <Border Grid.Row="5"
-              IsVisible="{Binding IsAdvancedMode}"
-              Margin="0,12,0,0"
-              Padding="20"
-              CornerRadius="14"
-              BorderThickness="1"
-              BorderBrush="#33808080">
-        <StackPanel Spacing="9">
-          <TextBlock Text="Техническая информация" FontSize="16" FontWeight="SemiBold" />
-          <TextBlock Text="Локальные сведения для поддержки. NetPilot не отправляет их автоматически."
-                     FontSize="12"
-                     Opacity="0.58"
-                     TextWrapping="Wrap" />
-          <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
-            <TextBlock Text="Версия" Opacity="0.60" />
-            <TextBlock x:Name="SupportVersionText" Grid.Column="1" Text="неизвестно" TextWrapping="Wrap" />
-
-            <TextBlock Grid.Row="1" Text="Платформа" Opacity="0.60" Margin="0,7,0,0" />
-            <TextBlock x:Name="SupportPlatformText" Grid.Row="1" Grid.Column="1" Text="неизвестно" TextWrapping="Wrap" Margin="0,7,0,0" />
-
-            <TextBlock Grid.Row="2" Text="Архитектура" Opacity="0.60" Margin="0,7,0,0" />
-            <TextBlock x:Name="SupportArchitectureText" Grid.Row="2" Grid.Column="1" Text="неизвестно" TextWrapping="Wrap" Margin="0,7,0,0" />
-
-            <TextBlock Grid.Row="3" Text="Служба" Opacity="0.60" Margin="0,7,0,0" />
-            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding ServiceStatus}" TextWrapping="Wrap" Margin="0,7,0,0" />
-
-            <TextBlock Grid.Row="4" Text="Legacy-движок" Opacity="0.60" Margin="0,7,0,0" />
-            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding EngineStatus}" TextWrapping="Wrap" Margin="0,7,0,0" />
-
-            <TextBlock Grid.Row="5" Text="Последнее действие" Opacity="0.60" Margin="0,7,0,0" />
-            <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding LastAction}" TextWrapping="Wrap" Margin="0,7,0,0" />
-          </Grid>
-        </StackPanel>
-      </Border>
-
-      <Border Grid.Row="6"
-              IsVisible="{Binding IsAdvancedMode}"
-              Margin="0,12,0,0"
-              Padding="20"
-              CornerRadius="14"
-              BorderThickness="1"
-              BorderBrush="#33808080">
-        <StackPanel Spacing="10">
-          <Grid ColumnDefinitions="*,Auto">
-            <StackPanel Spacing="2">
-              <TextBlock Text="История диагностики" FontSize="16" FontWeight="SemiBold" />
-              <TextBlock Text="{Binding DiagnosticHistorySummary}"
-                         FontSize="12"
-                         Opacity="0.66" />
-              <TextBlock Text="Только в памяти · показываются последние 12 записей · URL, IP и содержимое трафика не сохраняются"
-                         FontSize="12"
-                         Opacity="0.58"
-                         TextWrapping="Wrap" />
+              <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                <StackPanel>
+                  <TextBlock Text="{Binding OverallStatus}" FontSize="14" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding OverallDetails}" FontSize="11" Foreground="#667F9C" TextWrapping="Wrap" MaxWidth="500" />
+                </StackPanel>
+                <Button Grid.Column="1"
+                        Content="Проверить"
+                        Command="{Binding CheckCommand}"
+                        Margin="16,0,0,0"
+                        VerticalAlignment="Center" />
+              </Grid>
             </StackPanel>
 
-            <Button Grid.Column="1"
-                    Content="Очистить историю"
-                    Command="{Binding ClearDiagnosticHistoryCommand}"
-                    Margin="16,0,0,0"
-                    Padding="14,8"
-                    VerticalAlignment="Top" />
+            <!-- Central power control -->
+            <Grid Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+              <Ellipse Width="232" Height="232" Fill="#0A1320" Stroke="#173F66" StrokeThickness="1" />
+              <Ellipse Width="190" Height="190" Fill="#0E1E32" Stroke="#247AC0" StrokeThickness="2" />
+
+              <Button x:Name="ByeDpiStartButton"
+                      Width="148"
+                      Height="148"
+                      CornerRadius="74"
+                      Padding="0"
+                      Background="#12345A"
+                      BorderBrush="#43A8FF"
+                      BorderThickness="2"
+                      Click="OnStartByeDpiClicked"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center">
+                <Grid Width="62" Height="62">
+                  <Path Data="M31,5 L31,31"
+                        Stroke="#D8EEFF"
+                        StrokeThickness="6"
+                        StrokeLineCap="Round" />
+                  <Path Data="M18,14 C10,19 6,28 6,37 C6,51 17,59 31,59 C45,59 56,51 56,37 C56,28 52,19 44,14"
+                        Stroke="#D8EEFF"
+                        StrokeThickness="6"
+                        StrokeLineCap="Round"
+                        Fill="Transparent" />
+                </Grid>
+              </Button>
+
+              <Button x:Name="ByeDpiStopButton"
+                      Width="148"
+                      Height="148"
+                      CornerRadius="74"
+                      Padding="0"
+                      Background="#123B31"
+                      BorderBrush="#35D98A"
+                      BorderThickness="2"
+                      Click="OnStopByeDpiClicked"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center">
+                <Grid Width="62" Height="62">
+                  <Path Data="M31,5 L31,31"
+                        Stroke="#DFFFF0"
+                        StrokeThickness="6"
+                        StrokeLineCap="Round" />
+                  <Path Data="M18,14 C10,19 6,28 6,37 C6,51 17,59 31,59 C45,59 56,51 56,37 C56,28 52,19 44,14"
+                        Stroke="#DFFFF0"
+                        StrokeThickness="6"
+                        StrokeLineCap="Round"
+                        Fill="Transparent" />
+                </Grid>
+              </Button>
+
+              <Button Width="38"
+                      Height="38"
+                      CornerRadius="19"
+                      Content="↻"
+                      FontSize="18"
+                      Padding="0"
+                      Background="#0D1A2B"
+                      BorderBrush="#244663"
+                      Click="OnRefreshByeDpiClicked"
+                      HorizontalAlignment="Right"
+                      VerticalAlignment="Bottom"
+                      Margin="0,0,12,8" />
+            </Grid>
+          </Grid>
+        </Border>
+
+        <!-- Services -->
+        <StackPanel Grid.Row="2" Margin="0,22,0,0" Spacing="11">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="Сервисы" FontSize="18" FontWeight="SemiBold" />
+            <TextBlock Grid.Column="1" Text="Проверка через активный движок" FontSize="11" Foreground="#617894" VerticalAlignment="Center" />
           </Grid>
 
-          <ItemsControl ItemsSource="{Binding DiagnosticHistory}">
+          <ItemsControl ItemsSource="{Binding Resources}">
             <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="vm:DiagnosticHistoryItemViewModel">
-                <Border Padding="10,8"
-                        Margin="0,0,0,6"
-                        CornerRadius="8"
+              <DataTemplate x:DataType="vm:ResourceStatusViewModel">
+                <Border Padding="16,14"
+                        Margin="0,0,0,8"
+                        CornerRadius="14"
+                        Background="#0D1726"
                         BorderThickness="1"
-                        BorderBrush="#20808080">
-                  <Grid ColumnDefinitions="70,140,120,*">
-                    <TextBlock Text="{Binding TimeText}" Opacity="0.62" />
-                    <TextBlock Grid.Column="1" Text="{Binding ResourceName}" FontWeight="SemiBold" Margin="8,0,0,0" />
-                    <TextBlock Grid.Column="2" Text="{Binding StateText}" Margin="8,0,0,0" />
-                    <TextBlock Grid.Column="3" Text="{Binding DetailsText}" Margin="8,0,0,0" Opacity="0.70" TextWrapping="Wrap" />
+                        BorderBrush="#172B46">
+                  <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Border Width="38" Height="38" CornerRadius="11" Background="#111F33" VerticalAlignment="Center">
+                      <Grid>
+                        <Ellipse Width="10" Height="10" Fill="{Binding StatusBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      </Grid>
+                    </Border>
+
+                    <StackPanel Grid.Column="1" Margin="13,0,0,0" Spacing="2" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding DisplayName}" FontSize="15" FontWeight="SemiBold" />
+                      <TextBlock Text="{Binding DetailsText}" FontSize="11" Foreground="#687F9A" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <Border Grid.Column="2" Background="#0A1320" CornerRadius="9" Padding="11,6" VerticalAlignment="Center" Margin="14,0,0,0">
+                      <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusBrush}" FontSize="12" FontWeight="SemiBold" />
+                    </Border>
                   </Grid>
                 </Border>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
         </StackPanel>
-      </Border>
-    </Grid>
-  </ScrollViewer>
+
+        <!-- Advanced technical surface -->
+        <Grid Grid.Row="3"
+              IsVisible="{Binding IsAdvancedMode}"
+              ColumnDefinitions="*,*"
+              Margin="0,14,0,0">
+          <Border Background="#0D1726" BorderBrush="#172B46" BorderThickness="1" CornerRadius="16" Padding="18" Margin="0,0,7,0">
+            <StackPanel Spacing="9">
+              <TextBlock Text="Состояние системы" FontSize="15" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding ServiceStatus}" FontSize="12" Foreground="#7D96B4" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding EngineStatus}" FontSize="12" Foreground="#7D96B4" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding LastAction}" FontSize="11" Foreground="#5F7897" TextWrapping="Wrap" />
+            </StackPanel>
+          </Border>
+
+          <Border Grid.Column="1" Background="#0D1726" BorderBrush="#172B46" BorderThickness="1" CornerRadius="16" Padding="18" Margin="7,0,0,0">
+            <StackPanel Spacing="8">
+              <TextBlock Text="Профили" FontSize="15" FontWeight="SemiBold" />
+              <ItemsControl ItemsSource="{Binding EngineProfiles}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:EngineProfileViewModel">
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,3">
+                      <TextBlock Text="{Binding DisplayName}" FontSize="11" Foreground="#849CB8" />
+                      <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontSize="10" Foreground="#607995" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+        </Grid>
+
+        <Border Grid.Row="4"
+                IsVisible="{Binding IsAdvancedMode}"
+                Margin="0,14,0,0"
+                Padding="18"
+                CornerRadius="16"
+                Background="#0D1726"
+                BorderThickness="1"
+                BorderBrush="#172B46">
+          <StackPanel Spacing="10">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel>
+                <TextBlock Text="История диагностики" FontSize="15" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding DiagnosticHistorySummary}" FontSize="10" Foreground="#607995" />
+              </StackPanel>
+              <Button Grid.Column="1" Content="Очистить" Command="{Binding ClearDiagnosticHistoryCommand}" Padding="12,7" />
+            </Grid>
+            <ItemsControl ItemsSource="{Binding DiagnosticHistory}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:DiagnosticHistoryItemViewModel">
+                  <Grid ColumnDefinitions="65,120,110,*" Margin="0,4">
+                    <TextBlock Text="{Binding TimeText}" FontSize="10" Foreground="#5F7897" />
+                    <TextBlock Grid.Column="1" Text="{Binding ResourceName}" FontSize="11" FontWeight="SemiBold" />
+                    <TextBlock Grid.Column="2" Text="{Binding StateText}" FontSize="11" Foreground="#8AA4C2" />
+                    <TextBlock Grid.Column="3" Text="{Binding DetailsText}" FontSize="10" Foreground="#637D9B" TextWrapping="Wrap" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+      </Grid>
+    </ScrollViewer>
+  </Grid>
 </Window>
