@@ -8,10 +8,12 @@ public static class AppComposition
 {
     private static Func<MainWindowViewModel>? _mainWindowFactory;
     private static ApplicationSupportInfo _supportInfo = ApplicationSupportInfo.Unknown;
+    private static IByeDpiControlService _byeDpiControlService = UnavailableByeDpiControlService.Instance;
 
     public static void Configure(
         Func<MainWindowViewModel> mainWindowFactory,
-        ApplicationSupportInfo? supportInfo = null)
+        ApplicationSupportInfo? supportInfo = null,
+        IByeDpiControlService? byeDpiControlService = null)
     {
         ArgumentNullException.ThrowIfNull(mainWindowFactory);
 
@@ -22,6 +24,7 @@ public static class AppComposition
 
         _mainWindowFactory = mainWindowFactory;
         _supportInfo = supportInfo ?? ApplicationSupportInfo.Unknown;
+        _byeDpiControlService = byeDpiControlService ?? UnavailableByeDpiControlService.Instance;
     }
 
     internal static MainWindowViewModel CreateMainWindowViewModel() =>
@@ -30,6 +33,8 @@ public static class AppComposition
             "Платформенный host не настроил NetPilot.App перед запуском интерфейса.");
 
     internal static ApplicationSupportInfo SupportInfo => _supportInfo;
+
+    internal static IByeDpiControlService ByeDpiControlService => _byeDpiControlService;
 
     public static AppBuilder BuildAvaloniaApp()
     {
