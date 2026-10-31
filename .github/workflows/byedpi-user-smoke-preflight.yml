@@ -19,14 +19,14 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - name: Global security policy
-        shell: pwsh
-        run: pwsh -NoLogo -NoProfile -File scripts/security-policy-check.ps1
+        shell: bash
+        run: bash scripts/security-policy-check.sh
       - name: Runtime admission policy
-        shell: pwsh
-        run: pwsh -NoLogo -NoProfile -File scripts/runtime-admission-policy-check.ps1
+        shell: bash
+        run: bash scripts/runtime-admission-policy-check.sh
       - name: R42.9 isolated HTTP boundary
-        shell: pwsh
-        run: pwsh -NoLogo -NoProfile -File scripts/r42-9-isolated-http-guard.ps1
+        shell: bash
+        run: bash scripts/security/r42-9-byedpi-isolated-http-check.sh
       - name: Build default solution
         shell: pwsh
         run: dotnet build NetPilot.slnx --configuration Release
