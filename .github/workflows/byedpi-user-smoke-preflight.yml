@@ -29,7 +29,7 @@ jobs:
         run: bash scripts/security/r42-9-byedpi-isolated-http-check.sh
       - name: Build default solution
         shell: pwsh
-        run: dotnet build NetPilot.slnx --configuration Release
+        run: dotnet build NetPilot.sln --configuration Release
       - name: Build experimental Windows UI and SOCKS diagnostics
         shell: pwsh
         run: |
