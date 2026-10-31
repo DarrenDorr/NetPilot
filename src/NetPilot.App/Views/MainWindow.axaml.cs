@@ -64,14 +64,16 @@ public sealed partial class MainWindow : Window
     {
         await RunByeDpiOperationAsync(
             cancellationToken => ByeDpiControl.StartAsync(cancellationToken),
-            "Запускаем проверенный ByeDPI…");
+            "Запускаем проверенный ByeDPI…",
+            refreshResourcesWhenRunning: true);
     }
 
     private async void OnStopByeDpiClicked(object? sender, RoutedEventArgs eventArgs)
     {
         await RunByeDpiOperationAsync(
             cancellationToken => ByeDpiControl.StopAsync(cancellationToken),
-            "Останавливаем ByeDPI…");
+            "Останавливаем ByeDPI…",
+            refreshResourcesWhenRunning: false);
     }
 
     private async void OnRefreshByeDpiClicked(object? sender, RoutedEventArgs eventArgs)
@@ -81,7 +83,8 @@ public sealed partial class MainWindow : Window
 
     private async Task RunByeDpiOperationAsync(
         Func<CancellationToken, Task<ByeDpiUiStatus>> operation,
-        string progressText)
+        string progressText,
+        bool refreshResourcesWhenRunning)
     {
         SetByeDpiButtonsEnabled(false, false);
         this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = progressText;
@@ -89,7 +92,18 @@ public sealed partial class MainWindow : Window
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            ApplyByeDpiStatus(await operation(timeout.Token));
+            var status = await operation(timeout.Token);
+            ApplyByeDpiStatus(status);
+
+            if (refreshResourcesWhenRunning
+                && status.State == ByeDpiUiState.Running
+                && DataContext is MainWindowViewModel viewModel
+                && viewModel.CheckCommand.CanExecute(null))
+            {
+                // AsyncCommand owns its exception boundary and busy state. The experimental
+                // build's health transport is fixed to the reviewed ByeDPI SOCKS5 endpoint.
+                viewModel.CheckCommand.Execute(null);
+            }
         }
         catch (Exception exception) when (IsExpectedByeDpiUiFailure(exception))
         {
