@@ -1,7 +1,9 @@
 param(
     [string]$Version = "0.1.0-alpha",
     [string]$VersionInfoVersion = "0.1.0.0",
-    [string]$OutputDir = ""
+    [string]$OutputDir = "",
+    [switch]$EnableExperimentalByeDpi,
+    [string]$ByeDpiPayloadPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,6 +28,8 @@ $innoInstallDir = Join-Path $toolsDir "inno-7.1.1"
 $innoInstaller = Join-Path $toolsDir "innosetup-7.1.1-x64.exe"
 $innoUrl = "https://github.com/jrsoftware/issrc/releases/download/is-7_1_1/innosetup-7.1.1-x64.exe"
 $innoSha256 = "8a5a6711c3766a6e5fb74f280ba0e3551e719ce94538d901fdbd1f8f9920b3f0"
+$byeDpiSha256 = "866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd"
+$byeDpiPackageVersion = "0.17.3-netpilot-r34-lab"
 
 New-Item -ItemType Directory -Force -Path $appPublishDir, $servicePublishDir, $toolsDir, $OutputDir | Out-Null
 
@@ -35,6 +39,26 @@ $publishVersionArgs = @(
     "-p:AssemblyVersion=$VersionInfoVersion",
     "-p:InformationalVersion=$Version"
 )
+
+if ($EnableExperimentalByeDpi) {
+    if ([string]::IsNullOrWhiteSpace($ByeDpiPayloadPath)) {
+        throw "Experimental ByeDPI build требует -ByeDpiPayloadPath."
+    }
+
+    $ByeDpiPayloadPath = (Resolve-Path $ByeDpiPayloadPath).Path
+    $payloadItem = Get-Item -LiteralPath $ByeDpiPayloadPath
+    if ($payloadItem.Length -le 0) {
+        throw "ByeDPI payload пуст."
+    }
+
+    $actualByeDpiHash = (Get-FileHash -LiteralPath $ByeDpiPayloadPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualByeDpiHash -ne $byeDpiSha256) {
+        throw "SHA-256 ByeDPI не совпал с exact R34-R40 candidate."
+    }
+
+    $publishVersionArgs += "-p:NetPilotExperimentalByeDpi=true"
+    Write-Host "Experimental ByeDPI payload verified: SHA256=$actualByeDpiHash SIZE=$($payloadItem.Length)"
+}
 
 Write-Host "Публикация NetPilot.App.Windows (self-contained win-x64)..."
 & dotnet publish (Join-Path $repoRoot "src\NetPilot.App.Windows\NetPilot.App.Windows.csproj") `
@@ -108,6 +132,35 @@ if (-not (Test-Path $iscc)) {
 }
 
 $iss = Join-Path $repoRoot "installer\NetPilot.iss"
+if ($EnableExperimentalByeDpi) {
+    $issText = Get-Content -LiteralPath $iss -Raw
+    if ($issText -notmatch '(?m)^\[Files\]\s*$') {
+        throw "В installer script не найден [Files] для controlled ByeDPI injection."
+    }
+
+    $escapedPayload = $ByeDpiPayloadPath.Replace('"', '""')
+    $byeDpiDest = "{app}\Engines\Managed\byedpi\$byeDpiPackageVersion\x64\bin"
+    $byeDpiLicense = (Join-Path $repoRoot "third_party\licenses\ByeDPI-MIT.txt").Replace('"', '""')
+    if (-not (Test-Path -LiteralPath $byeDpiLicense)) {
+        throw "Локальная копия ByeDPI MIT license не найдена."
+    }
+
+    $injectedFiles = @(
+        "Source: `"$escapedPayload`"; DestDir: `"$byeDpiDest`"; DestName: `"ciadpi.exe`"; Flags: ignoreversion notimestamp",
+        "Source: `"$byeDpiLicense`"; DestDir: `"{app}\Docs`"; DestName: `"ByeDPI-MIT.txt`"; Flags: ignoreversion notimestamp"
+    ) -join "`r`n"
+
+    $issText = [regex]::Replace(
+        $issText,
+        '(?m)^\[Files\]\s*$',
+        "[Files]`r`n$injectedFiles",
+        1)
+
+    $experimentalIss = Join-Path $toolsDir "NetPilot.experimental-byedpi.iss"
+    Set-Content -LiteralPath $experimentalIss -Value $issText -Encoding utf8
+    $iss = $experimentalIss
+}
+
 Write-Host "Компиляция NetPilot Setup..."
 & $iscc `
     "/DAppVersion=$Version" `
