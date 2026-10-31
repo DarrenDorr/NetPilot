@@ -63,7 +63,7 @@ NetPilot не отключает Defender, не создаёт exclusions и н�
 Добавлены:
 
 - `security/native-admission/windivert-runtime-gate-r44.yaml` — machine-readable blocker contract;
-- `security/native-admission/lab-plans/zapret2-windows-windivert-r44.yaml` — будущий disposable-VM lab plan, но в состоянии `DRAFT_BLOCKED_UPSTREAM`;
+- `security/native-admission/lab-plans/zapret2-windows-windivert-r44.yaml` — будущий disposable-VM lab plan. По общему native-lab контракту его статус остаётся `DRAFT_NOT_APPROVED`, а отдельное поле `blocker_state: BLOCKED_UPSTREAM` фиксирует, что Windows boundary пока даже не достигла стадии approval review;
 - `.github/workflows/windivert-runtime-gate-r44.yml` — fail-closed CI policy.
 
 CI проверяет, что:
