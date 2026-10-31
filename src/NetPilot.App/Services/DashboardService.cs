@@ -26,7 +26,7 @@ public interface IDashboardService : IDisposable
 
 public sealed class DashboardService : IDashboardService
 {
-    private readonly PublicHttpsHealthChecker _healthChecker;
+    private readonly IResourceHealthChecker _healthChecker;
     private readonly IStrategyRuntime _strategyRuntime;
     private readonly StrategySelectionEngine _selectionEngine;
     private readonly IEngineProvisioningService _provisioningService;
@@ -34,6 +34,19 @@ public sealed class DashboardService : IDashboardService
 
     public DashboardService(
         PublicHttpsHealthChecker healthChecker,
+        IStrategyRuntime strategyRuntime,
+        StrategySelectionEngine selectionEngine,
+        IEngineProvisioningService provisioningService)
+        : this(
+            new PublicHttpsHealthCheckerAdapter(healthChecker),
+            strategyRuntime,
+            selectionEngine,
+            provisioningService)
+    {
+    }
+
+    public DashboardService(
+        IResourceHealthChecker healthChecker,
         IStrategyRuntime strategyRuntime,
         StrategySelectionEngine selectionEngine,
         IEngineProvisioningService provisioningService)
