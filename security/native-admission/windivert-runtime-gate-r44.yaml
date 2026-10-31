@@ -1,0 +1,99 @@
+schema_version: 1
+policy_id: netpilot-windivert-runtime-gate-r44
+status: BLOCKED_UPSTREAM
+review_date: 2026-10-31
+production_effect: NONE
+
+zapret2:
+  repository: DarrenDorr/NetPilot-zapret2
+  authoritative_branch: netpilot/reviewed-v1.0.6-uaf-r43
+  reviewed_checkpoint: 6207d7e6bae80b8ac1d0e84f6777caff20881890
+  deterministic_windows_x64_sha256: 2a21810cbcf53321abe16c49ca2129adbb8391a6ed97c20a91a874fab8b7237a
+  deterministic_windows_x64_size: 650240
+  source_gate: PASS
+  deterministic_compile_gate: PASS
+
+windivert:
+  upstream_repository: basil00/WinDivert
+  latest_reviewed_release: v2.2.2
+  release_asset: WinDivert-2.2.2-A.zip
+  release_asset_id: 78510020
+  release_asset_size: 405137
+  release_asset_sha256: 63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15
+  runtime_state: BLOCK
+  driver_load_allowed: false
+  driver_install_allowed: false
+  service_stop_remove_allowed: false
+  production_signing_ready: false
+
+blockers:
+  - id: WD-RUNTIME-001
+    upstream_issue: https://github.com/basil00/WinDivert/issues/408
+    issue_number: 408
+    observed_state: OPEN
+    boundary: first-load concurrent open initialization race
+    impact: possible kernel bugcheck 0xD1
+    required_for_recheck: reviewed fixed exact component set
+  - id: WD-LIFECYCLE-002
+    upstream_issue: https://github.com/basil00/WinDivert/issues/406
+    issue_number: 406
+    observed_state: OPEN
+    boundary: shared service and foreign open handle lifecycle
+    impact: ERROR_SERVICE_DISABLED 1058 and unsafe global stop/remove semantics
+    required_for_recheck: lifecycle model that never force-stops foreign ownership
+  - id: WD-DEFENDER-003
+    upstream_issue: https://github.com/basil00/WinDivert/issues/411
+    issue_number: 411
+    observed_state: OPEN
+    boundary: official archive Defender disposition
+    impact: unresolved exact-artifact trust/distribution signal
+    required_for_recheck: artifact-specific disposition or reviewed replacement component set
+
+execution:
+  windows_zapret2_lab_execution: false
+  native_candidate_execution: false
+  github_hosted_driver_execution: false
+  self_hosted_driver_execution: false
+  production_admission: BLOCK
+  product_integration: false
+  approval_id: null
+  lab_component_set: null
+
+forbidden_workarounds:
+  defender_disable: true
+  defender_exclusion: true
+  secure_boot_disable: true
+  production_test_signing: true
+  self_signed_kernel_driver_as_production: true
+  force_stop_foreign_windivert_service: true
+  force_remove_foreign_windivert_service: true
+  mutable_latest_component: true
+
+re_evaluation_triggers:
+  - new exact tagged WinDivert release
+  - reviewed closure or source-level fix for issue 408
+  - reviewed shared-service lifecycle resolution for issue 406
+  - artifact-specific Defender disposition or replacement for issue 411
+  - explicit NetPilot HIGH_ASSURANCE decision for a different Windows backend
+
+promotion_requirements:
+  to_pre_lab_review:
+    - exact fixed WinDivert component set pinned by tag commit tree archive hash DLL hash SYS hash and signature identity
+    - source review demonstrates issue 408 class is closed for that exact component set
+    - service lifecycle design does not assume exclusive global ownership
+    - Defender remains enabled with no exclusions
+    - Secure Boot remains enabled
+    - compile/static driver evidence is green without loading the driver
+    - disposable Windows VM lab plan is updated for the exact component set
+    - explicit HIGH_ASSURANCE human approval is recorded
+  to_lab_approved:
+    automatic: false
+    requires_all_pre_lab_review_conditions: true
+  to_production_admit:
+    automatic: false
+    requires_separate_release_security_decision: true
+
+invariants:
+  lab_pass_never_implies_production_admit: true
+  compile_pass_never_implies_driver_load_permission: true
+  fork_bootstrap_never_implies_runtime_permission: true
