@@ -1,0 +1,81 @@
+name: R42.9 ByeDPI Isolated HTTP Preflight Once
+
+on:
+  push:
+    branches:
+      - feature/byedpi-isolated-http-r42-9
+    paths:
+      - 'src/NetPilot.Updater/ByeDpiIsolatedHttpTransport.cs'
+      - 'src/NetPilot.Updater/ByeDpiTransportResponsePolicy.cs'
+      - 'tests/NetPilot.Core.Tests/ByeDpiIsolatedHttpTransportTests.cs'
+      - 'security/native-admission/byedpi-isolated-http-r42-9.yaml'
+      - 'scripts/security/r42-9-byedpi-isolated-http-check.sh'
+      - 'docs/BYEDPI-ISOLATED-HTTP-R42-9.md'
+      - '.github/workflows/r42-9-isolated-http-preflight-once.yml'
+  pull_request:
+    branches:
+      - feature/byedpi-metadata-parser-r42-8
+    paths:
+      - 'src/NetPilot.Updater/ByeDpiIsolatedHttpTransport.cs'
+      - 'src/NetPilot.Updater/ByeDpiTransportResponsePolicy.cs'
+      - 'tests/NetPilot.Core.Tests/ByeDpiIsolatedHttpTransportTests.cs'
+      - 'security/native-admission/byedpi-isolated-http-r42-9.yaml'
+      - 'scripts/security/r42-9-byedpi-isolated-http-check.sh'
+      - 'docs/BYEDPI-ISOLATED-HTTP-R42-9.md'
+      - '.github/workflows/r42-9-isolated-http-preflight-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  managed-preflight:
+    name: Enforce isolated fake-handler HTTP boundary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout exact branch or PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: R42.9 fail-closed isolated HTTP guard
+        run: bash scripts/security/r42-9-byedpi-isolated-http-check.sh
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore solution
+        run: dotnet restore NetPilot.sln
+
+      - name: Build full solution
+        run: dotnet build NetPilot.sln --configuration Release --no-restore
+
+      - name: Run focused R42.9 fake-handler transport tests
+        run: >-
+          dotnet test tests/NetPilot.Core.Tests/NetPilot.Core.Tests.csproj
+          --configuration Release
+          --no-build
+          --filter 'FullyQualifiedName~ByeDpiIsolatedHttpTransportTests|FullyQualifiedName~ByeDpiTransportResponsePolicyTests|FullyQualifiedName~GithubByeDpiReleaseParserTests'
+
+      - name: Boundary marker
+        run: |
+          cat r42-9-isolated-http-guard-evidence.txt
+          echo 'R42_9_HTTP_TRANSPORT=ISOLATED_TEST_BOUNDARY_ONLY'
+          echo 'R42_9_LIVE_NETWORK_TESTED=False'
+          echo 'R42_9_PRODUCT_DOWNLOADER=NOT_IMPLEMENTED'
+          echo 'R42_9_FILESYSTEM_WRITE=NOT_IMPLEMENTED'
+          echo 'R42_9_SERVICE_IPC_WIRING=ABSENT'
+          echo 'R42_9_NATIVE_EXECUTION=NOT_IMPLEMENTED'
+          echo 'R42_9_PRODUCTION_ADMISSION=BLOCK'
+          echo 'RESULT=R42_9_PREFLIGHT_PASS_BLOCK'
+
+      - name: Upload text-only R42.9 guard evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: byedpi-r42-9-isolated-http-evidence
+          path: r42-9-isolated-http-guard-evidence.txt
+          if-no-files-found: error
+          retention-days: 14

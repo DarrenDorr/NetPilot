@@ -6,7 +6,7 @@ public sealed record ByeDpiTransportResponseFacts(
     Uri? Location);
 
 /// <summary>
-/// Pure R42.8 response-shape policy for a future ByeDPI HTTP transport.
+/// Pure R42.8/R42.9 response-shape policy for the bounded ByeDPI HTTP transport.
 /// This type performs no network access and owns no streams/files.
 /// </summary>
 public static class ByeDpiTransportResponsePolicy
@@ -48,6 +48,11 @@ public static class ByeDpiTransportResponsePolicy
 
         if (response.StatusCode == 302)
         {
+            if (response.ContentLength is not null)
+            {
+                throw Invalid("ByeDPI release asset HTTP 302 response must not carry an asset Content-Length.");
+            }
+
             if (response.Location is null)
             {
                 throw Invalid("ByeDPI release asset HTTP 302 response is missing Location.");
