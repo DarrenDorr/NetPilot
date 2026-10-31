@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using NetPilot.App.Services;
 using NetPilot.App.ViewModels;
+using NetPilot.Ipc;
 
 namespace NetPilot.App.Views;
 
@@ -90,16 +91,16 @@ public sealed partial class MainWindow : Window
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             ApplyByeDpiStatus(await operation(timeout.Token));
         }
-        catch (Exception exception) when (
-            exception is InvalidOperationException
-                or IOException
-                or UnauthorizedAccessException
-                or OperationCanceledException)
+        catch (Exception exception) when (IsExpectedByeDpiUiFailure(exception))
         {
-            this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = "Ошибка управления ByeDPI";
-            this.FindControl<TextBlock>("ByeDpiDetailsText")!.Text =
-                "Операция остановлена безопасно. Проверьте службу NetPilot и целостность experimental-пакета.";
-            SetByeDpiButtonsEnabled(true, true);
+            ApplyByeDpiUiFailure();
+        }
+        catch (Exception)
+        {
+            // Never let an unexpected exception escape an async UI event handler and terminate
+            // the desktop process. The native/service boundary remains fail-closed; the UI only
+            // reports a sanitized failure and stays available for Stop/Refresh/recovery.
+            ApplyByeDpiUiFailure();
         }
     }
 
@@ -110,17 +111,30 @@ public sealed partial class MainWindow : Window
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(6));
             ApplyByeDpiStatus(await ByeDpiControl.GetStatusAsync(timeout.Token));
         }
-        catch (Exception exception) when (
-            exception is InvalidOperationException
-                or IOException
-                or UnauthorizedAccessException
-                or OperationCanceledException)
+        catch (Exception exception) when (IsExpectedByeDpiUiFailure(exception))
         {
-            this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = "Состояние недоступно";
-            this.FindControl<TextBlock>("ByeDpiDetailsText")!.Text =
-                "Защищённый IPC не подтвердил состояние experimental ByeDPI.";
-            SetByeDpiButtonsEnabled(true, true);
+            ApplyByeDpiUiFailure("Состояние недоступно", "Защищённый IPC не подтвердил состояние experimental ByeDPI.");
         }
+        catch (Exception)
+        {
+            ApplyByeDpiUiFailure("Состояние недоступно", "Не удалось безопасно обновить состояние ByeDPI. Интерфейс продолжает работу.");
+        }
+    }
+
+    private static bool IsExpectedByeDpiUiFailure(Exception exception) =>
+        exception is InvalidOperationException
+            or IOException
+            or UnauthorizedAccessException
+            or OperationCanceledException
+            or IpcProtocolException;
+
+    private void ApplyByeDpiUiFailure(
+        string statusText = "Ошибка управления ByeDPI",
+        string detailsText = "Операция остановлена безопасно. Проверьте службу NetPilot и целостность experimental-пакета.")
+    {
+        this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = statusText;
+        this.FindControl<TextBlock>("ByeDpiDetailsText")!.Text = detailsText;
+        SetByeDpiButtonsEnabled(true, true);
     }
 
     private void ApplyByeDpiStatus(ByeDpiUiStatus status)
