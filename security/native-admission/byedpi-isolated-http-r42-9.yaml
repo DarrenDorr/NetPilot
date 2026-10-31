@@ -1,0 +1,84 @@
+schema_version: 1
+contract_id: byedpi-isolated-http-r42-9
+status: ISOLATED_TEST_BOUNDARY_ONLY
+production_effect: NONE
+
+parent:
+  r42_7_checkpoint: cf6fbd7bf15325f8538553454a59d3e60b134565
+  r42_8_checkpoint: 3fa46206c19e6be32116bf4ff05d03fb95092665
+
+scope:
+  transport_type: injected_http_message_handler_only
+  live_network_tested: false
+  product_downloader: NOT_IMPLEMENTED
+  filesystem_write: NOT_IMPLEMENTED
+  staging_invocation: NOT_IMPLEMENTED
+  service_ipc_wiring: ABSENT
+  native_execution: NOT_IMPLEMENTED
+  production_admission: BLOCK
+
+request_contract:
+  github_api_origin: https://api.github.com
+  metadata_endpoint: exact_tag_only
+  api_version_header: '2026-03-10'
+  metadata_accept: application/vnd.github+json
+  asset_accept: application/octet-stream
+  user_agent: NetPilot-ByeDPI-Acquisition
+  authorization_header_allowed: false
+  cookie_header_allowed: false
+  arbitrary_uri_allowed: false
+  arbitrary_headers_allowed: false
+
+redirect_contract:
+  automatic_redirects_trusted: false
+  hidden_auto_redirect_detection_required: true
+  maximum_redirects: 1
+  redirect_origin: https://release-assets.githubusercontent.com
+  forward_github_api_headers_to_redirect: false
+  forward_authorization_to_redirect: false
+  forward_cookie_to_redirect: false
+  first_302_content_length_allowed: false
+  terminal_status: 200
+
+bounds:
+  metadata_max_bytes: 262144
+  asset_total_max_bytes: 67108864
+  total_timeout_seconds: 20
+  timeout_override_may_only_reduce_limit: true
+  retries: 0
+
+integrity:
+  metadata_parser: GithubByeDpiReleaseParser
+  response_policy: ByeDpiTransportResponsePolicy
+  asset_expected_size_required: true
+  asset_stream_overrun_rejected: true
+  asset_stream_underrun_rejected: true
+  sha256_verified_while_streaming: true
+  constant_time_hash_compare: true
+  verified_asset_retained_in_memory_only: true
+
+focused_tests:
+  - exact metadata request headers and exact-tag URI
+  - direct HTTP 200 asset success
+  - one trusted HTTP 302 redirect success
+  - untrusted redirect rejection
+  - second redirect rejection
+  - redirect Content-Length rejection
+  - wrong terminal Content-Length rejection
+  - chunked asset overrun rejection
+  - chunked asset underrun rejection
+  - SHA-256 mismatch rejection
+  - chunked metadata over-cap rejection
+  - fixed internal timeout
+  - caller cancellation preservation
+  - hidden automatic redirect rejection
+  - no authorization/cookie forwarding
+
+markers:
+  HTTP_TRANSPORT: ISOLATED_TEST_BOUNDARY_ONLY
+  LIVE_NETWORK_TESTED: false
+  PRODUCT_DOWNLOADER: NOT_IMPLEMENTED
+  FILESYSTEM_WRITE: NOT_IMPLEMENTED
+  SERVICE_IPC_WIRING: ABSENT
+  NATIVE_EXECUTION: NOT_IMPLEMENTED
+  PRODUCTION_ADMISSION: BLOCK
