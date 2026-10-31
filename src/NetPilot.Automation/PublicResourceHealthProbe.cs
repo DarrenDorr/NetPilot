@@ -3,11 +3,22 @@ using NetPilot.Health;
 
 namespace NetPilot.Automation;
 
-public sealed class PublicResourceHealthProbe(
-    PublicHttpsHealthChecker checker) : IResourceHealthProbe
+public sealed class PublicResourceHealthProbe : IResourceHealthProbe
 {
+    private readonly IResourceHealthChecker _checker;
+
+    public PublicResourceHealthProbe(PublicHttpsHealthChecker checker)
+        : this(new PublicHttpsHealthCheckerAdapter(checker))
+    {
+    }
+
+    public PublicResourceHealthProbe(IResourceHealthChecker checker)
+    {
+        _checker = checker ?? throw new ArgumentNullException(nameof(checker));
+    }
+
     public Task<ResourceHealth> CheckAsync(
         ResourceDefinition resource,
         CancellationToken cancellationToken = default) =>
-        checker.CheckAsync(resource, cancellationToken);
+        _checker.CheckAsync(resource, cancellationToken);
 }
