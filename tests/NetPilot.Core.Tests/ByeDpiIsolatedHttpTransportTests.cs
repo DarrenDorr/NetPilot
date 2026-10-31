@@ -195,7 +195,7 @@ public sealed class ByeDpiIsolatedHttpTransportTests
     {
         var plan = CreatePlan();
         var asset = plan.Assets[0];
-        var over = PayloadBytes.Concat([0x42]).ToArray();
+        var over = PayloadBytes.Concat([(byte)0x42]).ToArray();
         var under = PayloadBytes[..^1];
         var current = over;
 
