@@ -1,9 +1,13 @@
 schema_version: 1
 plan_id: zapret2-windows-windivert-r44
-status: DRAFT_BLOCKED_UPSTREAM
+status: DRAFT_NOT_APPROVED
+blocker_state: BLOCKED_UPSTREAM
 platform: windows-x64
 execution_allowed: false
 approval_id: null
+production_activation_allowed: false
+lab_pass_implies_admit: false
+lab_pass_changes_release_gate: false
 
 candidate:
   repository: DarrenDorr/NetPilot-zapret2
