@@ -13,11 +13,18 @@ builder.Services.AddWindowsService(options =>
     options.ServiceName = "NetPilot Service";
 });
 
-// На текущем этапе ни Flowseal/zapret1, ни zapret2, ни ByeDPI не имеют
-// production runtime ADMIT. Поэтому installation/start остаются fail-closed.
-// EngineStop оставлен намеренно для уже управляемого процесса, но новый native
-// process production-служба создать не способна.
+#if NETPILOT_EXPERIMENTAL_BYEDPI
+// Experimental alpha composition: only the exact R34-R40 ByeDPI candidate may start.
+// Zapret/zapret2 remain no-admit and WinDivert is not present. EngineInstall remains denied.
+builder.Services.AddSingleton(new OperationPolicy(
+[
+    PrivilegedOperation.EngineStart,
+    PrivilegedOperation.EngineStop
+]));
+#else
+// Default product composition remains fail-closed for all native engine starts.
 builder.Services.AddSingleton(OperationPolicy.CreateNoAdmittedEnginePolicy());
+#endif
 
 var installationRoot = WindowsZapretEngineLocation.GetDefaultInstallationRoot();
 builder.Services.AddSingleton(_ =>
@@ -31,8 +38,7 @@ builder.Services.AddSingleton<UserResourceOwnership>();
 builder.Services.AddSingleton<WindowsNamedPipeServerFactory>();
 builder.Services.AddSingleton<WindowsNamedPipePeerAuthenticator>();
 
-// R20: без ADMIT LocalSystem-служба получает только fail-closed Zapret launcher.
-// Даже прямой ошибочный StartAsync не может дойти до Process.Start.
+// Zapret remains fail-closed even in the experimental ByeDPI build.
 builder.Services.AddSingleton<IZapretProcessLauncher>(
     NoAdmittedZapretProcessLauncher.Instance);
 builder.Services.AddSingleton<ZapretProcessRunner>();
@@ -42,21 +48,23 @@ builder.Services.AddSingleton(serviceProvider =>
         serviceProvider.GetRequiredService<ZapretProcessRunner>()));
 builder.Services.AddSingleton<IZapretUpdateRuntimeGate, WindowsZapretUpdateRuntimeGate>();
 
-// R35: service-owned ByeDPI lifecycle подключён к Service как отдельная runtime-session,
-// но обе production-границы запуска остаются fail-closed:
-// 1) process launcher не может создать процесс;
-// 2) runtime plan provider не может выдать verified/compiled launch plan.
-// Замена любого из них требует отдельного admission decision после runtime evidence.
+#if NETPILOT_EXPERIMENTAL_BYEDPI
+// The only execution-capable composition in this alpha build. The provider performs
+// exact immutable package + ACL/owner + typed argv verification before returning a plan.
+builder.Services.AddSingleton<IWindowsVerifiedEngineProcessLauncher, SystemZapretProcessLauncher>();
+builder.Services.AddSingleton<ExperimentalByeDpiRuntimePlanProvider>();
+builder.Services.AddSingleton<IWindowsByeDpiRuntimePlanProvider>(serviceProvider =>
+    serviceProvider.GetRequiredService<ExperimentalByeDpiRuntimePlanProvider>());
+#else
 builder.Services.AddSingleton<IWindowsVerifiedEngineProcessLauncher>(
     NoAdmittedWindowsVerifiedEngineProcessLauncher.Instance);
 builder.Services.AddSingleton<IWindowsByeDpiRuntimePlanProvider>(
     NoAdmittedWindowsByeDpiRuntimePlanProvider.Instance);
+#endif
 builder.Services.AddSingleton<WindowsByeDpiServiceOwnedProcessController>();
 builder.Services.AddSingleton<WindowsByeDpiRuntimeSession>();
 
-// R17/R20: release identity по-прежнему проходит только через admission-wrapper,
-// но при отсутствии ADMIT LocalSystem-служба даже не получает сетевой GitHub transport.
-// NoAdmittedZapretReleaseTransport не содержит HttpClient и всегда отказывает fail-closed.
+// Network acquisition stays disabled in both builds. This alpha is installer-bundled only.
 builder.Services.AddSingleton<IZapretReleaseTransport>(
     NoAdmittedZapretReleaseTransport.Instance);
 builder.Services.AddSingleton<IZapretReleaseAdmissionCatalog>(
