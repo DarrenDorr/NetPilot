@@ -51,7 +51,8 @@ public static class WindowsTypedEngineArgumentPlanCompiler
         LongOption,
         ShortOption,
         UnsignedDecimal,
-        LoopbackIpv4
+        LoopbackIpv4,
+        SniRelativePosition
     }
 
     public static WindowsCompiledEngineArgumentPlan Compile(
@@ -76,92 +77,54 @@ public static class WindowsTypedEngineArgumentPlanCompiler
             switch (template.Kind)
             {
                 case EngineArgumentTokenKind.Flag:
-                    AddResolved(
-                        result,
-                        template.OptionName,
-                        ResolvedArgumentShape.LongOption,
-                        ref aggregateCharacters);
+                    AddResolved(result, template.OptionName, ResolvedArgumentShape.LongOption, ref aggregateCharacters);
                     break;
 
                 case EngineArgumentTokenKind.FixedPositiveUInt:
-                    AddResolved(
-                        result,
-                        AppendUnsigned(template.OptionName, template.FixedPositiveUInt),
-                        ResolvedArgumentShape.LongOption,
-                        ref aggregateCharacters);
+                    AddResolved(result, AppendUnsigned(template.OptionName, template.FixedPositiveUInt), ResolvedArgumentShape.LongOption, ref aggregateCharacters);
                     break;
 
                 case EngineArgumentTokenKind.ConntrackMaxEntries:
-                    AddResolved(
-                        result,
-                        AppendUnsigned(template.OptionName, budget.ConntrackMaxEntries),
-                        ResolvedArgumentShape.LongOption,
-                        ref aggregateCharacters);
+                    AddResolved(result, AppendUnsigned(template.OptionName, budget.ConntrackMaxEntries), ResolvedArgumentShape.LongOption, ref aggregateCharacters);
                     break;
 
                 case EngineArgumentTokenKind.DelayedQueueMaxBytes:
-                    AddResolved(
-                        result,
-                        AppendUnsigned(template.OptionName, budget.DelayedQueueMaxBytes),
-                        ResolvedArgumentShape.LongOption,
-                        ref aggregateCharacters);
+                    AddResolved(result, AppendUnsigned(template.OptionName, budget.DelayedQueueMaxBytes), ResolvedArgumentShape.LongOption, ref aggregateCharacters);
                     break;
 
                 case EngineArgumentTokenKind.VerifiedComponentPath:
                     AddResolved(
                         result,
-                        AppendVerifiedComponentPath(
-                            template.OptionName,
-                            template.ComponentId!,
-                            preLaunchHandoff.VerifiedPackage),
+                        AppendVerifiedComponentPath(template.OptionName, template.ComponentId!, preLaunchHandoff.VerifiedPackage),
                         ResolvedArgumentShape.LongOption,
                         ref aggregateCharacters);
                     break;
 
                 case EngineArgumentTokenKind.ShortFlag:
-                    AddResolved(
-                        result,
-                        template.OptionName,
-                        ResolvedArgumentShape.ShortOption,
-                        ref aggregateCharacters);
+                    AddResolved(result, template.OptionName, ResolvedArgumentShape.ShortOption, ref aggregateCharacters);
                     break;
 
                 case EngineArgumentTokenKind.ShortFixedPositiveUInt:
-                    AddResolved(
-                        result,
-                        template.OptionName,
-                        ResolvedArgumentShape.ShortOption,
-                        ref aggregateCharacters);
-                    AddResolved(
-                        result,
-                        FormatPositiveUnsigned(template.FixedPositiveUInt),
-                        ResolvedArgumentShape.UnsignedDecimal,
-                        ref aggregateCharacters);
+                    AddResolved(result, template.OptionName, ResolvedArgumentShape.ShortOption, ref aggregateCharacters);
+                    AddResolved(result, FormatPositiveUnsigned(template.FixedPositiveUInt), ResolvedArgumentShape.UnsignedDecimal, ref aggregateCharacters);
                     break;
 
                 case EngineArgumentTokenKind.ShortFixedNonNegativeUInt:
-                    AddResolved(
-                        result,
-                        template.OptionName,
-                        ResolvedArgumentShape.ShortOption,
-                        ref aggregateCharacters);
-                    AddResolved(
-                        result,
-                        template.FixedPositiveUInt.ToString(CultureInfo.InvariantCulture),
-                        ResolvedArgumentShape.UnsignedDecimal,
-                        ref aggregateCharacters);
+                    AddResolved(result, template.OptionName, ResolvedArgumentShape.ShortOption, ref aggregateCharacters);
+                    AddResolved(result, template.FixedPositiveUInt.ToString(CultureInfo.InvariantCulture), ResolvedArgumentShape.UnsignedDecimal, ref aggregateCharacters);
                     break;
 
                 case EngineArgumentTokenKind.ShortLoopbackIpv4:
+                    AddResolved(result, template.OptionName, ResolvedArgumentShape.ShortOption, ref aggregateCharacters);
+                    AddResolved(result, "127.0.0.1", ResolvedArgumentShape.LoopbackIpv4, ref aggregateCharacters);
+                    break;
+
+                case EngineArgumentTokenKind.ShortFixedSniRelativePosition:
+                    AddResolved(result, template.OptionName, ResolvedArgumentShape.ShortOption, ref aggregateCharacters);
                     AddResolved(
                         result,
-                        template.OptionName,
-                        ResolvedArgumentShape.ShortOption,
-                        ref aggregateCharacters);
-                    AddResolved(
-                        result,
-                        "127.0.0.1",
-                        ResolvedArgumentShape.LoopbackIpv4,
+                        FormatSniRelativePosition(template.FixedPositiveUInt),
+                        ResolvedArgumentShape.SniRelativePosition,
                         ref aggregateCharacters);
                     break;
 
@@ -191,9 +154,7 @@ public static class WindowsTypedEngineArgumentPlanCompiler
             || actual.Platform != expected.Platform
             || actual.Architecture != expected.Architecture
             || actual.ProfileId != expected.ProfileId
-            || !ReferenceEquals(
-                actual.ExecutableIdentity,
-                expected.ExecutableIdentity))
+            || !ReferenceEquals(actual.ExecutableIdentity, expected.ExecutableIdentity))
         {
             throw new WindowsEngineArgumentPlanException(
                 "ArgumentPlanBindingMismatch",
@@ -216,16 +177,23 @@ public static class WindowsTypedEngineArgumentPlanCompiler
         return value.ToString(CultureInfo.InvariantCulture);
     }
 
+    private static string FormatSniRelativePosition(ulong offset) =>
+        offset switch
+        {
+            1 => "1+s",
+            3 => "3+s",
+            _ => throw new WindowsEngineArgumentPlanException(
+                "SniRelativePositionNotAllowed",
+                "Разрешены только exact ByeDPI SNI-relative positions 1+s и 3+s.")
+        };
+
     private static string AppendVerifiedComponentPath(
         string optionName,
         string componentId,
         WindowsVerifiedEnginePackage verifiedPackage)
     {
         var matches = verifiedPackage.Components
-            .Where(component => string.Equals(
-                component.ComponentId,
-                componentId,
-                StringComparison.Ordinal))
+            .Where(component => string.Equals(component.ComponentId, componentId, StringComparison.Ordinal))
             .ToArray();
 
         if (matches.Length != 1)
@@ -270,16 +238,11 @@ public static class WindowsTypedEngineArgumentPlanCompiler
 
         var valid = shape switch
         {
-            ResolvedArgumentShape.LongOption =>
-                value.StartsWith("--", StringComparison.Ordinal),
-            ResolvedArgumentShape.ShortOption =>
-                value.Length == 2
-                && value[0] == '-'
-                && IsAsciiLetter(value[1]),
-            ResolvedArgumentShape.UnsignedDecimal =>
-                value.All(static character => character is >= '0' and <= '9'),
-            ResolvedArgumentShape.LoopbackIpv4 =>
-                string.Equals(value, "127.0.0.1", StringComparison.Ordinal),
+            ResolvedArgumentShape.LongOption => value.StartsWith("--", StringComparison.Ordinal),
+            ResolvedArgumentShape.ShortOption => value.Length == 2 && value[0] == '-' && IsAsciiLetter(value[1]),
+            ResolvedArgumentShape.UnsignedDecimal => value.All(static character => character is >= '0' and <= '9'),
+            ResolvedArgumentShape.LoopbackIpv4 => string.Equals(value, "127.0.0.1", StringComparison.Ordinal),
+            ResolvedArgumentShape.SniRelativePosition => value is "1+s" or "3+s",
             _ => false
         };
 
