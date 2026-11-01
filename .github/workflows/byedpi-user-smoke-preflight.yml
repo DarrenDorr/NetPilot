@@ -2,7 +2,7 @@ name: ByeDPI User Smoke Preflight
 
 on:
   push:
-    branches: [ feature/byedpi-user-smoke-ui-r1 ]
+    branches: [ feature/byedpi-real-profile-ui-r2 ]
   workflow_dispatch:
 
 permissions:
@@ -30,6 +30,13 @@ jobs:
       - name: Build default solution
         shell: pwsh
         run: dotnet build NetPilot.sln --configuration Release
+      - name: Test typed ByeDPI user-smoke contract
+        shell: pwsh
+        run: |
+          dotnet test tests/NetPilot.Core.Tests/NetPilot.Core.Tests.csproj `
+            --configuration Release `
+            --no-build `
+            --filter "FullyQualifiedName~EngineShortArgumentTokenContractsTests|FullyQualifiedName~ByeDpiWindowsUserSmokeContractTests"
       - name: Build experimental Windows UI and SOCKS diagnostics
         shell: pwsh
         run: |
@@ -42,12 +49,13 @@ jobs:
             -p:Version=0.1.0 `
             -p:FileVersion=0.1.0.0 `
             -p:AssemblyVersion=0.1.0.0 `
-            -p:InformationalVersion=0.1.0-alpha-byedpi2
+            -p:InformationalVersion=0.1.0-alpha-byedpi3
       - name: Boundary marker
         shell: pwsh
         run: |
           Write-Host 'DEFAULT_PRODUCT_FAIL_CLOSED=true'
           Write-Host 'EXPERIMENTAL_BYEDPI_UI=true'
+          Write-Host 'BYPASS_PROFILE=BYEDPI_SPLIT_1S_DISORDER_3S'
           Write-Host 'SOCKS_ENDPOINT=127.0.0.1:39036'
           Write-Host 'SYSTEM_PROXY_MUTATION=false'
           Write-Host 'WINDIVERT_EXECUTION=false'
