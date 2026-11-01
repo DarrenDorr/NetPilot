@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using NetPilot.App.Services;
 using NetPilot.App.ViewModels;
 
@@ -7,6 +8,9 @@ namespace NetPilot.App.Views;
 
 public sealed partial class MainWindow : Window
 {
+    private ByeDpiUiState _byeDpiState = ByeDpiUiState.Unavailable;
+    private bool _byeDpiBusy;
+
     private IByeDpiControlService ByeDpiControl => AppComposition.ByeDpiControlService;
 
     public MainWindow()
@@ -21,6 +25,8 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         SetSupportInfo(supportInfo);
         ConfigureByeDpiExperimentalCard();
+        SyncShellMode(advanced: false);
+        ShowExpertPage("main");
         Opened += OnOpened;
         Closed += OnClosed;
     }
@@ -30,26 +36,28 @@ public sealed partial class MainWindow : Window
         this.FindControl<TextBlock>("SupportVersionText")!.Text = supportInfo.Version;
         this.FindControl<TextBlock>("SupportPlatformText")!.Text = supportInfo.Platform;
         this.FindControl<TextBlock>("SupportArchitectureText")!.Text = supportInfo.Architecture;
+        this.FindControl<TextBlock>("AboutVersionText")!.Text = $"Версия {supportInfo.Version}";
     }
 
     private void ConfigureByeDpiExperimentalCard()
     {
-        var card = this.FindControl<Border>("ByeDpiExperimentalCard")!;
-        card.IsVisible = ByeDpiControl.IsExperimentalAvailable;
+        this.FindControl<Border>("ByeDpiExperimentalCard")!.IsVisible = ByeDpiControl.IsExperimentalAvailable;
         this.FindControl<TextBlock>("ByeDpiEndpointText")!.Text = ByeDpiControl.ProxyEndpoint;
+        SetPowerPresentation();
     }
 
     private async void OnOpened(object? sender, EventArgs eventArgs)
     {
         if (DataContext is MainWindowViewModel viewModel)
         {
+            SyncShellMode(viewModel.IsAdvancedMode);
             try
             {
                 await viewModel.InitializeAsync();
             }
             catch
             {
-                // The window remains usable when optional platform state is unavailable.
+                // The desktop shell remains usable when optional platform state is unavailable.
             }
         }
 
@@ -59,25 +67,77 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void OnStartByeDpiClicked(object? sender, RoutedEventArgs eventArgs)
+    private async void OnByeDpiPowerClicked(object? sender, RoutedEventArgs eventArgs)
     {
-        await RunByeDpiOperationAsync(
-            cancellationToken => ByeDpiControl.StartAsync(cancellationToken),
-            "Запускаем проверенный ByeDPI…",
-            refreshResourcesWhenRunning: true);
-    }
+        if (_byeDpiBusy || !ByeDpiControl.IsExperimentalAvailable)
+        {
+            return;
+        }
 
-    private async void OnStopByeDpiClicked(object? sender, RoutedEventArgs eventArgs)
-    {
-        await RunByeDpiOperationAsync(
-            cancellationToken => ByeDpiControl.StopAsync(cancellationToken),
-            "Останавливаем ByeDPI…",
-            refreshResourcesWhenRunning: false);
+        switch (_byeDpiState)
+        {
+            case ByeDpiUiState.Running:
+                await RunByeDpiOperationAsync(
+                    cancellationToken => ByeDpiControl.StopAsync(cancellationToken),
+                    "Останавливаем NetPilot…",
+                    refreshResourcesWhenRunning: false);
+                break;
+
+            case ByeDpiUiState.Stopped:
+                await RunByeDpiOperationAsync(
+                    cancellationToken => ByeDpiControl.StartAsync(cancellationToken),
+                    "Запускаем стратегию ByeDPI…",
+                    refreshResourcesWhenRunning: true);
+                break;
+
+            default:
+                await RefreshByeDpiStatusAsync();
+                break;
+        }
     }
 
     private async void OnRefreshByeDpiClicked(object? sender, RoutedEventArgs eventArgs)
     {
-        await RefreshByeDpiStatusAsync();
+        if (!_byeDpiBusy)
+        {
+            await RefreshByeDpiStatusAsync();
+        }
+    }
+
+    private void OnShowAdvancedClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.IsAdvancedMode = true;
+        }
+        SyncShellMode(advanced: true);
+    }
+
+    private void OnReturnCompactClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.IsAdvancedMode = false;
+        }
+        SyncShellMode(advanced: false);
+    }
+
+    private void OnExpertModeChanged(object? sender, RoutedEventArgs eventArgs)
+    {
+        var advanced = sender is ToggleSwitch toggle && toggle.IsChecked == true;
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.IsAdvancedMode = advanced;
+        }
+        SyncShellMode(advanced);
+    }
+
+    private void OnNavigationClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Button button && button.Tag is string page)
+        {
+            ShowExpertPage(page);
+        }
     }
 
     private async Task RunByeDpiOperationAsync(
@@ -85,12 +145,14 @@ public sealed partial class MainWindow : Window
         string progressText,
         bool refreshResourcesWhenRunning)
     {
-        SetByeDpiButtonsEnabled(false, false);
+        _byeDpiBusy = true;
         this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = progressText;
+        this.FindControl<TextBlock>("ExpertStatusText")!.Text = progressText;
+        SetPowerPresentation();
 
         try
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12));
             var status = await operation(timeout.Token);
             ApplyByeDpiStatus(status);
 
@@ -99,8 +161,6 @@ public sealed partial class MainWindow : Window
                 && DataContext is MainWindowViewModel viewModel
                 && viewModel.CheckCommand.CanExecute(null))
             {
-                // AsyncCommand owns its exception boundary and busy state. The experimental
-                // build's health transport is fixed to the reviewed ByeDPI SOCKS5 endpoint.
                 viewModel.CheckCommand.Execute(null);
             }
         }
@@ -110,15 +170,22 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception)
         {
-            // Never let an unexpected platform exception escape an async UI event handler and
-            // terminate the desktop process. Platform-specific exception types stay below the
-            // NetPilot.App boundary; the UI only reports a sanitized failure.
+            // A platform exception must never escape an async UI event handler and terminate
+            // the desktop process. Native/runtime details remain below the application boundary.
             ApplyByeDpiUiFailure();
+        }
+        finally
+        {
+            _byeDpiBusy = false;
+            SetPowerPresentation();
         }
     }
 
     private async Task RefreshByeDpiStatusAsync()
     {
+        _byeDpiBusy = true;
+        SetPowerPresentation();
+
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(6));
@@ -126,11 +193,20 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception) when (IsExpectedByeDpiUiFailure(exception))
         {
-            ApplyByeDpiUiFailure("Состояние недоступно", "Защищённый IPC не подтвердил состояние experimental ByeDPI.");
+            ApplyByeDpiUiFailure(
+                "Состояние недоступно",
+                "Защищённый IPC не подтвердил состояние ByeDPI. Нажмите обновление и повторите проверку.");
         }
         catch (Exception)
         {
-            ApplyByeDpiUiFailure("Состояние недоступно", "Не удалось безопасно обновить состояние ByeDPI. Интерфейс продолжает работу.");
+            ApplyByeDpiUiFailure(
+                "Состояние недоступно",
+                "Не удалось безопасно обновить состояние ByeDPI. Интерфейс продолжает работу.");
+        }
+        finally
+        {
+            _byeDpiBusy = false;
+            SetPowerPresentation();
         }
     }
 
@@ -141,48 +217,112 @@ public sealed partial class MainWindow : Window
             or OperationCanceledException;
 
     private void ApplyByeDpiUiFailure(
-        string statusText = "Ошибка управления ByeDPI",
-        string detailsText = "Операция остановлена безопасно. Нажмите обновление, чтобы повторно получить состояние службы.")
+        string statusText = "Ошибка запуска",
+        string detailsText = "Операция остановлена безопасно. Проверьте состояние службы и повторите попытку.")
     {
+        _byeDpiState = ByeDpiUiState.Unavailable;
         this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = statusText;
         this.FindControl<TextBlock>("ByeDpiDetailsText")!.Text = detailsText;
-        SetByeDpiButtonsEnabled(canStart: true, canStop: false);
+        this.FindControl<TextBlock>("ExpertStatusText")!.Text = "NetPilot требует проверки";
+        this.FindControl<TextBlock>("ExpertStatusDetailsText")!.Text = detailsText;
+        SetPowerPresentation();
     }
 
     private void ApplyByeDpiStatus(ByeDpiUiStatus status)
     {
+        _byeDpiState = status.State;
         this.FindControl<TextBlock>("ByeDpiDetailsText")!.Text = status.Details;
+        this.FindControl<TextBlock>("ExpertStatusDetailsText")!.Text = status.Details;
 
         switch (status.State)
         {
             case ByeDpiUiState.Running:
-                this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = "NetPilot активен";
-                SetByeDpiButtonsEnabled(false, true);
+                this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = "NetPilot работает";
+                this.FindControl<TextBlock>("ExpertStatusText")!.Text = "NetPilot работает";
                 break;
             case ByeDpiUiState.Stopped:
-                this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = "Защита выключена";
-                SetByeDpiButtonsEnabled(true, false);
+                this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = "NetPilot не запущен";
+                this.FindControl<TextBlock>("ExpertStatusText")!.Text = "NetPilot остановлен";
                 break;
             default:
-                this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = "Состояние недоступно";
-                SetByeDpiButtonsEnabled(false, false);
+                this.FindControl<TextBlock>("ByeDpiStatusText")!.Text = "Состояние не подтверждено";
+                this.FindControl<TextBlock>("ExpertStatusText")!.Text = "Состояние не подтверждено";
+                break;
+        }
+
+        SetPowerPresentation();
+    }
+
+    private void SetPowerPresentation()
+    {
+        var powerButton = this.FindControl<Button>("ByeDpiPowerButton")!;
+        var expertButton = this.FindControl<Button>("ExpertPowerButton")!;
+        var label = this.FindControl<TextBlock>("ByeDpiPowerLabel")!;
+        var ring = this.FindControl<Border>("ByeDpiPowerRing")!;
+        var core = this.FindControl<Border>("ByeDpiPowerCore")!;
+
+        powerButton.IsVisible = true;
+        powerButton.IsEnabled = ByeDpiControl.IsExperimentalAvailable && !_byeDpiBusy;
+        expertButton.IsEnabled = powerButton.IsEnabled;
+
+        if (_byeDpiBusy)
+        {
+            label.Text = _byeDpiState == ByeDpiUiState.Running ? "ОСТАНОВКА…" : "ЗАПУСК…";
+            expertButton.Content = "Выполняется…";
+            ApplyPowerColors(ring, core, "#2F80C9", "#12304D");
+            return;
+        }
+
+        switch (_byeDpiState)
+        {
+            case ByeDpiUiState.Running:
+                label.Text = "РАБОТАЕТ";
+                expertButton.Content = "Остановить";
+                ApplyPowerColors(ring, core, "#35E58C", "#0E442E");
+                break;
+            case ByeDpiUiState.Stopped:
+                label.Text = "ЗАПУСТИТЬ";
+                expertButton.Content = "Запустить";
+                ApplyPowerColors(ring, core, "#3A9CFF", "#12345A");
+                break;
+            default:
+                label.Text = "ОБНОВИТЬ";
+                expertButton.Content = "Проверить состояние";
+                ApplyPowerColors(ring, core, "#F2A93B", "#4A3514");
                 break;
         }
     }
 
-    private void SetByeDpiButtonsEnabled(bool canStart, bool canStop)
+    private static void ApplyPowerColors(Border ring, Border core, string accent, string fill)
     {
-        var startButton = this.FindControl<Button>("ByeDpiStartButton")!;
-        var stopButton = this.FindControl<Button>("ByeDpiStopButton")!;
+        var accentBrush = new SolidColorBrush(Color.Parse(accent));
+        ring.BorderBrush = accentBrush;
+        core.BorderBrush = accentBrush;
+        core.Background = new SolidColorBrush(Color.Parse(fill));
+    }
 
-        startButton.IsEnabled = canStart;
-        stopButton.IsEnabled = canStop;
+    private void SyncShellMode(bool advanced)
+    {
+        this.FindControl<Grid>("CompactShell")!.IsVisible = !advanced;
+        this.FindControl<Grid>("ExpertShell")!.IsVisible = advanced;
+        var toggle = this.FindControl<ToggleSwitch>("ExpertModeToggle")!;
+        if (toggle.IsChecked != advanced)
+        {
+            toggle.IsChecked = advanced;
+        }
+    }
 
-        // The approved VPN-like control surface shows one power action at a time.
-        // If the state is unavailable, keep the start glyph visible but disabled;
-        // Refresh remains available as the recovery action.
-        stopButton.IsVisible = canStop && !canStart;
-        startButton.IsVisible = !stopButton.IsVisible;
+    private void ShowExpertPage(string page)
+    {
+        var main = this.FindControl<Grid>("ExpertMainPanel")!;
+        var strategies = this.FindControl<Grid>("StrategiesPanel")!;
+        var settings = this.FindControl<Grid>("SettingsPanel")!;
+        var about = this.FindControl<Grid>("AboutPanel")!;
+
+        main.IsVisible = page is "main" or "services" or "engines" or "diagnostics" or "journal";
+        strategies.IsVisible = page == "strategies";
+        settings.IsVisible = page == "settings";
+        about.IsVisible = page == "about";
     }
 
     private void OnClosed(object? sender, EventArgs eventArgs)
