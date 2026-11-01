@@ -33,10 +33,22 @@ jobs:
       - name: Test typed ByeDPI user-smoke contract
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force -Path artifacts/test-results | Out-Null
           dotnet test tests/NetPilot.Core.Tests/NetPilot.Core.Tests.csproj `
             --configuration Release `
             --no-build `
-            --filter "FullyQualifiedName~EngineShortArgumentTokenContractsTests|FullyQualifiedName~ByeDpiWindowsUserSmokeContractTests"
+            --filter "FullyQualifiedName~EngineShortArgumentTokenContractsTests|FullyQualifiedName~ByeDpiWindowsUserSmokeContractTests" `
+            --logger "console;verbosity=detailed" `
+            --logger "trx;LogFileName=byedpi-user-smoke.trx" `
+            --results-directory artifacts/test-results
+      - name: Upload focused test diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: byedpi-user-smoke-test-results
+          path: artifacts/test-results
+          if-no-files-found: warn
+          retention-days: 3
       - name: Build experimental Windows UI and SOCKS diagnostics
         shell: pwsh
         run: |
