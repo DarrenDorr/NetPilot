@@ -13,6 +13,8 @@ public sealed class EngineShortArgumentTokenContractsTests
     [InlineData(EngineArgumentTokenKind.ShortFixedPositiveUInt, "-c", 8UL)]
     [InlineData(EngineArgumentTokenKind.ShortFixedNonNegativeUInt, "-x", 0UL)]
     [InlineData(EngineArgumentTokenKind.ShortLoopbackIpv4, "-i", 0UL)]
+    [InlineData(EngineArgumentTokenKind.ShortFixedSniRelativePosition, "-s", 1UL)]
+    [InlineData(EngineArgumentTokenKind.ShortFixedSniRelativePosition, "-d", 3UL)]
     public void Exact_typed_short_forms_are_representable(
         EngineArgumentTokenKind kind,
         string optionName,
@@ -60,6 +62,31 @@ public sealed class EngineShortArgumentTokenContractsTests
 
         Assert.Equal(0UL, token.FixedPositiveUInt);
         Assert.Null(token.ComponentId);
+    }
+
+    [Theory]
+    [InlineData(0UL)]
+    [InlineData(2UL)]
+    [InlineData(4UL)]
+    [InlineData(999UL)]
+    public void Sni_relative_position_rejects_everything_except_one_and_three(ulong offset)
+    {
+        Assert.Throws<ArgumentException>(() =>
+            CreateToken(
+                EngineArgumentTokenKind.ShortFixedSniRelativePosition,
+                "-s",
+                fixedValue: offset));
+    }
+
+    [Fact]
+    public void Sni_relative_position_cannot_carry_arbitrary_component_text()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            CreateToken(
+                EngineArgumentTokenKind.ShortFixedSniRelativePosition,
+                "-s",
+                fixedValue: 1,
+                componentId: "1+s;calc.exe"));
     }
 
     [Fact]
