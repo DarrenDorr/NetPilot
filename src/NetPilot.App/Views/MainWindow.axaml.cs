@@ -110,6 +110,8 @@ public sealed partial class MainWindow : Window
         {
             viewModel.IsAdvancedMode = true;
         }
+
+        ShowExpertPage("main");
         SyncShellMode(advanced: true);
     }
 
@@ -119,17 +121,8 @@ public sealed partial class MainWindow : Window
         {
             viewModel.IsAdvancedMode = false;
         }
-        SyncShellMode(advanced: false);
-    }
 
-    private void OnExpertModeChanged(object? sender, RoutedEventArgs eventArgs)
-    {
-        var advanced = sender is ToggleSwitch toggle && toggle.IsChecked == true;
-        if (DataContext is MainWindowViewModel viewModel)
-        {
-            viewModel.IsAdvancedMode = advanced;
-        }
-        SyncShellMode(advanced);
+        SyncShellMode(advanced: false);
     }
 
     private void OnNavigationClicked(object? sender, RoutedEventArgs eventArgs)
@@ -314,15 +307,27 @@ public sealed partial class MainWindow : Window
 
     private void ShowExpertPage(string page)
     {
-        var main = this.FindControl<Grid>("ExpertMainPanel")!;
-        var strategies = this.FindControl<Grid>("StrategiesPanel")!;
-        var settings = this.FindControl<Grid>("SettingsPanel")!;
-        var about = this.FindControl<Grid>("AboutPanel")!;
+        var panels = new Dictionary<string, Grid>(StringComparer.Ordinal)
+        {
+            ["main"] = this.FindControl<Grid>("ExpertMainPanel")!,
+            ["strategies"] = this.FindControl<Grid>("StrategiesPanel")!,
+            ["services"] = this.FindControl<Grid>("ServicesPanel")!,
+            ["engines"] = this.FindControl<Grid>("EnginesPanel")!,
+            ["diagnostics"] = this.FindControl<Grid>("DiagnosticsPanel")!,
+            ["journal"] = this.FindControl<Grid>("JournalPanel")!,
+            ["settings"] = this.FindControl<Grid>("SettingsPanel")!,
+            ["about"] = this.FindControl<Grid>("AboutPanel")!
+        };
 
-        main.IsVisible = page is "main" or "services" or "engines" or "diagnostics" or "journal";
-        strategies.IsVisible = page == "strategies";
-        settings.IsVisible = page == "settings";
-        about.IsVisible = page == "about";
+        if (!panels.ContainsKey(page))
+        {
+            page = "main";
+        }
+
+        foreach (var pair in panels)
+        {
+            pair.Value.IsVisible = string.Equals(pair.Key, page, StringComparison.Ordinal);
+        }
     }
 
     private void OnClosed(object? sender, EventArgs eventArgs)
