@@ -14,7 +14,8 @@ public enum EngineArgumentTokenKind
     ShortFlag,
     ShortFixedPositiveUInt,
     ShortFixedNonNegativeUInt,
-    ShortLoopbackIpv4
+    ShortLoopbackIpv4,
+    ShortFixedSniRelativePosition
 }
 
 /// <summary>
@@ -57,6 +58,14 @@ public sealed class EngineArgumentTokenTemplate
                 {
                     throw new ArgumentException(
                         "Positive integer typed argument требует только положительное целое значение.");
+                }
+                break;
+
+            case EngineArgumentTokenKind.ShortFixedSniRelativePosition:
+                if (fixedPositiveUInt is not (1 or 3) || componentId is not null)
+                {
+                    throw new ArgumentException(
+                        "SNI-relative position допускает только exact offsets 1+s или 3+s.");
                 }
                 break;
 
@@ -156,7 +165,8 @@ public sealed class EngineArgumentTokenTemplate
         kind is EngineArgumentTokenKind.ShortFlag
             or EngineArgumentTokenKind.ShortFixedPositiveUInt
             or EngineArgumentTokenKind.ShortFixedNonNegativeUInt
-            or EngineArgumentTokenKind.ShortLoopbackIpv4;
+            or EngineArgumentTokenKind.ShortLoopbackIpv4
+            or EngineArgumentTokenKind.ShortFixedSniRelativePosition;
 
     private static bool IsAsciiLowerOrDigit(char value) =>
         value is >= 'a' and <= 'z' or >= '0' and <= '9';
