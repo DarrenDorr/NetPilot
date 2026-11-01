@@ -30,26 +30,31 @@ jobs:
       - name: Build default solution
         shell: pwsh
         run: dotnet build NetPilot.sln --configuration Release
-      - name: Test typed ByeDPI user-smoke contract
+      - name: Test short typed argument primitives
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path artifacts/test-results | Out-Null
           dotnet test tests/NetPilot.Core.Tests/NetPilot.Core.Tests.csproj `
             --configuration Release `
             --no-build `
-            --filter "FullyQualifiedName~EngineShortArgumentTokenContractsTests|FullyQualifiedName~ByeDpiWindowsUserSmokeContractTests" `
-            --logger "console;verbosity=detailed" `
-            --logger "trx;LogFileName=byedpi-user-smoke.trx" `
-            --results-directory artifacts/test-results
-      - name: Upload focused test diagnostics
+            --filter "FullyQualifiedName~EngineShortArgumentTokenContractsTests"
+      - name: Test exact ByeDPI fixed profile
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: byedpi-user-smoke-test-results
-          path: artifacts/test-results
-          if-no-files-found: warn
-          retention-days: 3
+        shell: pwsh
+        run: |
+          dotnet test tests/NetPilot.Core.Tests/NetPilot.Core.Tests.csproj `
+            --configuration Release `
+            --no-build `
+            --filter "FullyQualifiedName~ByeDpiWindowsUserSmokeContractTests.Contract_is_isolated_from_production_catalogs_and_uses_exact_fixed_profile"
+      - name: Test ByeDPI privileged-port rejection
+        if: always()
+        shell: pwsh
+        run: |
+          dotnet test tests/NetPilot.Core.Tests/NetPilot.Core.Tests.csproj `
+            --configuration Release `
+            --no-build `
+            --filter "FullyQualifiedName~ByeDpiWindowsUserSmokeContractTests.Contract_rejects_privileged_proxy_ports"
       - name: Build experimental Windows UI and SOCKS diagnostics
+        if: success()
         shell: pwsh
         run: |
           dotnet publish src/NetPilot.App.Windows/NetPilot.App.Windows.csproj `
@@ -63,6 +68,7 @@ jobs:
             -p:AssemblyVersion=0.1.0.0 `
             -p:InformationalVersion=0.1.0-alpha-byedpi3
       - name: Boundary marker
+        if: success()
         shell: pwsh
         run: |
           Write-Host 'DEFAULT_PRODUCT_FAIL_CLOSED=true'
