@@ -31,7 +31,7 @@ AppSupportURL={#ProjectUrl}/issues
 AppUpdatesURL={#ProjectUrl}/releases
 DefaultDirName={autopf}\NetPilot
 DefaultGroupName=NetPilot
-DisableDirPage=yes
+DisableDirPage=no
 DisableProgramGroupPage=yes
 AllowNoIcons=yes
 AllowUNCPath=no
@@ -122,6 +122,48 @@ end;
 function EnrollmentSessionPath: String;
 begin
   Result := ExpandConstant('{app}\Config\enrollment.session');
+end;
+
+function NormalizeInstallPath(const Value: String): String;
+begin
+  Result := RemoveBackslashUnlessRoot(ExpandFileName(Value));
+end;
+
+function IsSafeInstallDirectory(const Value: String): Boolean;
+var
+  ProgramFilesRoot: String;
+  ProgramFilesPrefix: String;
+  Candidate: String;
+begin
+  Result := False;
+  ProgramFilesRoot := NormalizeInstallPath(ExpandConstant('{autopf}'));
+  Candidate := NormalizeInstallPath(Value);
+
+  if CompareText(Candidate, ProgramFilesRoot) = 0 then
+    Exit;
+
+  ProgramFilesPrefix := AddBackslash(ProgramFilesRoot);
+  Result :=
+    CompareText(
+      Copy(Candidate, 1, Length(ProgramFilesPrefix)),
+      ProgramFilesPrefix) = 0;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+
+  if (CurPageID = wpSelectDir) and
+     (not IsSafeInstallDirectory(WizardDirValue)) then
+  begin
+    MsgBox(
+      'Из соображений безопасности NetPilot можно установить только в отдельную папку внутри Program Files. ' +
+      'Служба NetPilot работает от LocalSystem, поэтому пользовательские, сетевые и другие доступные для записи каталоги запрещены.',
+      mbError,
+      MB_OK);
+    Log('Отклонён небезопасный каталог установки: ' + WizardDirValue);
+    Result := False;
+  end;
 end;
 
 function RunSc(const Parameters: String; const AllowNonZero: Boolean; var ResultCode: Integer): Boolean;
@@ -308,6 +350,12 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
   NeedsRestart := False;
+
+  if not IsSafeInstallDirectory(WizardDirValue) then
+  begin
+    Result := 'Небезопасный каталог установки. Выберите отдельную папку внутри Program Files.';
+    Exit;
+  end;
 
   if not StopServiceAndWait then
     Result := 'Не удалось безопасно остановить службу NetPilot. Закройте NetPilot и повторите установку.';
