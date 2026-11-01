@@ -4,109 +4,68 @@
         x:Class="NetPilot.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="NetPilot"
-        Width="1120"
-        Height="760"
-        MinWidth="920"
-        MinHeight="680"
+        Width="1120" Height="760" MinWidth="920" MinHeight="680"
         Background="#050B14">
   <Window.Styles>
-    <Style Selector="TextBlock">
-      <Setter Property="FontFamily" Value="Segoe UI" />
-      <Setter Property="Foreground" Value="#EDF5FF" />
-    </Style>
-    <Style Selector="Button">
-      <Setter Property="FontFamily" Value="Segoe UI" />
-      <Setter Property="Foreground" Value="#EAF4FF" />
-      <Setter Property="Background" Value="#0F1B2B" />
-      <Setter Property="BorderBrush" Value="#213B5D" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="Padding" Value="12,8" />
-    </Style>
-    <Style Selector="Button:pointerover">
-      <Setter Property="Background" Value="#14263D" />
-      <Setter Property="BorderBrush" Value="#318CE7" />
-    </Style>
-    <Style Selector="Button:disabled">
-      <Setter Property="Opacity" Value="0.55" />
-    </Style>
-    <Style Selector="Button.nav">
-      <Setter Property="HorizontalContentAlignment" Value="Left" />
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="Padding" Value="12,10" />
-    </Style>
-    <Style Selector="Button.nav:pointerover">
-      <Setter Property="Background" Value="#102744" />
-    </Style>
-    <Style Selector="Border.card">
-      <Setter Property="Background" Value="#091626" />
-      <Setter Property="BorderBrush" Value="#173453" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="14" />
-    </Style>
-    <Style Selector="Border.service">
-      <Setter Property="Background" Value="#0A1829" />
-      <Setter Property="BorderBrush" Value="#183653" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="12" />
-    </Style>
+    <Style Selector="TextBlock"><Setter Property="FontFamily" Value="Segoe UI"/><Setter Property="Foreground" Value="#EDF5FF"/></Style>
+    <Style Selector="Button"><Setter Property="FontFamily" Value="Segoe UI"/><Setter Property="Foreground" Value="#EAF4FF"/><Setter Property="Background" Value="#0F1B2B"/><Setter Property="BorderBrush" Value="#213B5D"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="10"/><Setter Property="Padding" Value="12,8"/></Style>
+    <Style Selector="Button:pointerover"><Setter Property="Background" Value="#14263D"/><Setter Property="BorderBrush" Value="#318CE7"/></Style>
+    <Style Selector="Button:disabled"><Setter Property="Opacity" Value="0.55"/></Style>
+    <Style Selector="Button.nav"><Setter Property="HorizontalContentAlignment" Value="Left"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="12,10"/></Style>
+    <Style Selector="Button.nav:pointerover"><Setter Property="Background" Value="#102744"/></Style>
+    <Style Selector="Border.card"><Setter Property="Background" Value="#091626"/><Setter Property="BorderBrush" Value="#173453"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="14"/></Style>
+    <Style Selector="Border.tile"><Setter Property="Background" Value="#0A1829"/><Setter Property="BorderBrush" Value="#183653"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="12"/></Style>
   </Window.Styles>
 
   <Grid>
+    <!-- Compact mode -->
     <Grid x:Name="CompactShell" RowDefinitions="64,*,Auto" Background="#06101C">
       <Canvas Grid.RowSpan="3" IsHitTestVisible="False" Opacity="0.18">
-        <Path Fill="#143A5C" Data="M 0,455 L 120,315 L 218,388 L 340,220 L 470,390 L 580,285 L 720,455 Z" />
-        <Path Fill="#0D2B49" Data="M 340,455 L 520,310 L 610,366 L 760,180 L 905,360 L 1035,255 L 1180,455 Z" />
-        <Path Fill="#071521" Data="M 0,500 L 150,410 L 260,468 L 430,365 L 570,472 L 740,380 L 900,468 L 1120,350 L 1120,560 L 0,560 Z" />
+        <Path Fill="#143A5C" Data="M0,455 L120,315 L218,388 L340,220 L470,390 L580,285 L720,455 Z"/>
+        <Path Fill="#0D2B49" Data="M340,455 L520,310 L610,366 L760,180 L905,360 L1035,255 L1180,455 Z"/>
+        <Path Fill="#071521" Data="M0,500 L150,410 L260,468 L430,365 L570,472 L740,380 L900,468 L1120,350 L1120,560 L0,560 Z"/>
       </Canvas>
 
       <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="18,12,18,0">
         <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-          <Button Width="38" Height="38" Padding="0" FontSize="20" Content="☰" Click="OnShowAdvancedClicked" />
-          <Path Width="30" Height="30" Stretch="Uniform" Fill="#2D9CFF" Data="M2,1 L28,15 L2,29 L8,17 L18,15 L8,13 Z" />
-          <TextBlock Text="NetPilot" FontSize="23" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <Button Width="38" Height="38" Padding="0" FontSize="20" Content="☰" Click="OnShowAdvancedClicked"/>
+          <Path Width="30" Height="30" Stretch="Uniform" Fill="#2D9CFF" Data="M2,1 L28,15 L2,29 L8,17 L18,15 L8,13 Z"/>
+          <TextBlock Text="NetPilot" FontSize="23" FontWeight="SemiBold" VerticalAlignment="Center"/>
         </StackPanel>
-        <Button Grid.Column="2" Width="38" Height="38" Padding="0" FontSize="18" Content="⚙" Click="OnShowAdvancedClicked" />
+        <Button Grid.Column="2" Width="38" Height="38" Padding="0" FontSize="18" Content="⚙" Click="OnShowAdvancedClicked"/>
       </Grid>
 
-      <Border x:Name="ByeDpiExperimentalCard" Grid.Row="1" IsVisible="False" Background="Transparent" Margin="18,0,18,0">
-        <Grid RowDefinitions="*,Auto" HorizontalAlignment="Stretch">
-          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" Margin="0,8,0,8">
+      <Border x:Name="ByeDpiExperimentalCard" Grid.Row="1" IsVisible="False" Background="Transparent" Margin="18,0">
+        <Grid RowDefinitions="*,Auto">
+          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
             <Grid Width="250" Height="250">
-              <Border Width="250" Height="250" CornerRadius="125" BorderBrush="#123960" BorderThickness="1" Background="#06101D" />
-              <Border x:Name="ByeDpiPowerRing" Width="214" Height="214" CornerRadius="107" BorderBrush="#3A9CFF" BorderThickness="3" Background="#07182A" />
+              <Border Width="250" Height="250" CornerRadius="125" BorderBrush="#123960" BorderThickness="1" Background="#06101D"/>
+              <Border x:Name="ByeDpiPowerRing" Width="214" Height="214" CornerRadius="107" BorderBrush="#3A9CFF" BorderThickness="3" Background="#07182A"/>
               <Border x:Name="ByeDpiPowerCore" Width="182" Height="182" CornerRadius="91" BorderBrush="#3A9CFF" BorderThickness="2" Background="#12345A">
                 <Button x:Name="ByeDpiPowerButton" Width="178" Height="178" CornerRadius="89" Padding="0" Background="Transparent" BorderThickness="0" Click="OnByeDpiPowerClicked">
                   <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
                     <Grid Width="64" Height="64">
-                      <Path Data="M32,5 L32,31" Stroke="#F4FAFF" StrokeThickness="6" StrokeLineCap="Round" />
-                      <Path Data="M18,14 C10,20 7,28 7,38 C7,52 18,60 32,60 C46,60 57,52 57,38 C57,28 54,20 46,14" Stroke="#F4FAFF" StrokeThickness="6" StrokeLineCap="Round" Fill="Transparent" />
+                      <Path Data="M32,5 L32,31" Stroke="#F4FAFF" StrokeThickness="6" StrokeLineCap="Round"/>
+                      <Path Data="M18,14 C10,20 7,28 7,38 C7,52 18,60 32,60 C46,60 57,52 57,38 C57,28 54,20 46,14" Stroke="#F4FAFF" StrokeThickness="6" StrokeLineCap="Round" Fill="Transparent"/>
                     </Grid>
-                    <TextBlock x:Name="ByeDpiPowerLabel" Text="ОБНОВИТЬ" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center" />
+                    <TextBlock x:Name="ByeDpiPowerLabel" Text="ОБНОВИТЬ" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center"/>
                   </StackPanel>
                 </Button>
               </Border>
             </Grid>
-
-            <TextBlock x:Name="ByeDpiStatusText" Text="Проверяем состояние…" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" />
-            <TextBlock x:Name="ByeDpiDetailsText" Text="ByeDPI работает как локальный SOCKS5 proxy." FontSize="12" Foreground="#7892AF" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="520" HorizontalAlignment="Center" />
-
-            <Border Background="#0B2133" BorderBrush="#164D6E" BorderThickness="1" CornerRadius="10" Padding="13,8" Margin="0,4,0,0">
+            <TextBlock x:Name="ByeDpiStatusText" Text="Проверяем состояние…" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+            <TextBlock x:Name="ByeDpiDetailsText" Text="ByeDPI работает как локальный SOCKS5 proxy." FontSize="12" Foreground="#7892AF" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="520"/>
+            <Border Background="#0B2133" BorderBrush="#164D6E" BorderThickness="1" CornerRadius="10" Padding="13,8">
               <StackPanel Orientation="Horizontal" Spacing="8">
-                <Ellipse Width="8" Height="8" Fill="#2EA7FF" VerticalAlignment="Center" />
-                <TextBlock Text="TCP · локальный SOCKS5 · split 1+s · disorder 3+s" FontSize="11" Foreground="#8DC8F4" />
-                <TextBlock x:Name="ByeDpiEndpointText" Text="127.0.0.1:39036" FontSize="11" Foreground="#D5EBFF" FontWeight="SemiBold" />
+                <Ellipse Width="8" Height="8" Fill="#2EA7FF" VerticalAlignment="Center"/>
+                <TextBlock Text="TCP · SOCKS5 · split 1+s · disorder 3+s" FontSize="11" Foreground="#8DC8F4"/>
+                <TextBlock x:Name="ByeDpiEndpointText" Text="127.0.0.1:39036" FontSize="11" Foreground="#D5EBFF" FontWeight="SemiBold"/>
               </StackPanel>
             </Border>
           </StackPanel>
-
           <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
-            <StackPanel>
-              <TextBlock Text="{Binding OverallStatus}" FontSize="12" FontWeight="SemiBold" />
-              <TextBlock Text="{Binding OverallDetails}" FontSize="10" Foreground="#617B98" TextWrapping="Wrap" MaxWidth="620" />
-            </StackPanel>
-            <Button Grid.Column="1" Content="↻  Проверить" Command="{Binding CheckCommand}" Click="OnRefreshByeDpiClicked" Padding="14,8" />
+            <StackPanel><TextBlock Text="{Binding OverallStatus}" FontSize="12" FontWeight="SemiBold"/><TextBlock Text="{Binding OverallDetails}" FontSize="10" Foreground="#617B98" TextWrapping="Wrap" MaxWidth="620"/></StackPanel>
+            <Button Grid.Column="1" Content="↻  Проверить сервисы" Command="{Binding CheckCommand}" Padding="14,8"/>
           </Grid>
         </Grid>
       </Border>
@@ -114,108 +73,65 @@
       <Border Grid.Row="2" Margin="18,0,18,18" Classes="card" Padding="12">
         <Grid RowDefinitions="Auto,Auto">
           <Grid ColumnDefinitions="*,*,*,*,*,*" ColumnSpacing="8">
-            <Border Grid.Column="0" Classes="service" Padding="10">
-              <StackPanel Spacing="7" HorizontalAlignment="Center">
-                <Border Width="38" Height="38" CornerRadius="9" Background="#E83535"><Path Width="22" Height="16" Stretch="Fill" Fill="White" Data="M6,2 L18,8 L6,14 Z" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                <TextBlock Text="YouTube" FontSize="11" FontWeight="SemiBold" /><TextBlock Text="{Binding Resources[1].StatusText}" FontSize="9" Foreground="{Binding Resources[1].StatusBrush}" />
-              </StackPanel>
-            </Border>
-            <Border Grid.Column="1" Classes="service" Padding="10">
-              <StackPanel Spacing="7" HorizontalAlignment="Center">
-                <Border Width="38" Height="38" CornerRadius="9" Background="#5865F2"><TextBlock Text="◉" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                <TextBlock Text="Discord" FontSize="11" FontWeight="SemiBold" /><TextBlock Text="{Binding Resources[0].StatusText}" FontSize="9" Foreground="{Binding Resources[0].StatusBrush}" />
-              </StackPanel>
-            </Border>
-            <Border Grid.Column="2" Classes="service" Padding="10">
-              <StackPanel Spacing="7" HorizontalAlignment="Center">
-                <Border Width="38" Height="38" CornerRadius="9" Background="#1597D4"><TextBlock Text="➤" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                <TextBlock Text="Telegram" FontSize="11" FontWeight="SemiBold" /><TextBlock Text="{Binding Telegram.StatusText}" FontSize="9" Foreground="{Binding Telegram.StatusBrush}" />
-              </StackPanel>
-            </Border>
-            <Border Grid.Column="3" Classes="service" Padding="10"><StackPanel Spacing="7" HorizontalAlignment="Center"><Border Width="38" Height="38" CornerRadius="9" Background="#22344D"><TextBlock Text="S" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><TextBlock Text="Steam" FontSize="11" FontWeight="SemiBold" /><TextBlock Text="Позже" FontSize="9" Foreground="#60778F" /></StackPanel></Border>
-            <Border Grid.Column="4" Classes="service" Padding="10"><StackPanel Spacing="7" HorizontalAlignment="Center"><Border Width="38" Height="38" CornerRadius="9" Background="#8A3FFC"><TextBlock Text="T" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><TextBlock Text="Twitch" FontSize="11" FontWeight="SemiBold" /><TextBlock Text="Позже" FontSize="9" Foreground="#60778F" /></StackPanel></Border>
-            <Border Grid.Column="5" Classes="service" Padding="10"><StackPanel Spacing="7" HorizontalAlignment="Center"><Border Width="38" Height="38" CornerRadius="9" Background="#14243A"><TextBlock Text="…" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><TextBlock Text="Ещё" FontSize="11" FontWeight="SemiBold" /><TextBlock Text="2 сервиса" FontSize="9" Foreground="#60778F" /></StackPanel></Border>
+            <Border Grid.Column="0" Classes="tile" Padding="10"><StackPanel Spacing="7" HorizontalAlignment="Center"><Border Width="38" Height="38" CornerRadius="9" Background="#E83535"><Path Width="22" Height="16" Stretch="Fill" Fill="White" Data="M6,2 L18,8 L6,14 Z" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="YouTube" FontSize="11" FontWeight="SemiBold"/><TextBlock Text="{Binding Resources[1].StatusText}" FontSize="9" Foreground="{Binding Resources[1].StatusBrush}"/></StackPanel></Border>
+            <Border Grid.Column="1" Classes="tile" Padding="10"><StackPanel Spacing="7" HorizontalAlignment="Center"><Border Width="38" Height="38" CornerRadius="9" Background="#5865F2"><TextBlock Text="◉" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="Discord" FontSize="11" FontWeight="SemiBold"/><TextBlock Text="{Binding Resources[0].StatusText}" FontSize="9" Foreground="{Binding Resources[0].StatusBrush}"/></StackPanel></Border>
+            <Border Grid.Column="2" Classes="tile" Padding="10"><StackPanel Spacing="7" HorizontalAlignment="Center"><Border Width="38" Height="38" CornerRadius="9" Background="#1597D4"><TextBlock Text="➤" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="Telegram" FontSize="11" FontWeight="SemiBold"/><TextBlock Text="{Binding Telegram.StatusText}" FontSize="9" Foreground="{Binding Telegram.StatusBrush}"/></StackPanel></Border>
+            <Border Grid.Column="3" Classes="tile" Padding="10"><StackPanel Spacing="7" HorizontalAlignment="Center"><Border Width="38" Height="38" CornerRadius="9" Background="#22344D"><TextBlock Text="S" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="Steam" FontSize="11" FontWeight="SemiBold"/><TextBlock Text="Позже" FontSize="9" Foreground="#60778F"/></StackPanel></Border>
+            <Border Grid.Column="4" Classes="tile" Padding="10"><StackPanel Spacing="7" HorizontalAlignment="Center"><Border Width="38" Height="38" CornerRadius="9" Background="#8A3FFC"><TextBlock Text="T" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="Twitch" FontSize="11" FontWeight="SemiBold"/><TextBlock Text="Позже" FontSize="9" Foreground="#60778F"/></StackPanel></Border>
+            <Border Grid.Column="5" Classes="tile" Padding="10"><StackPanel Spacing="7" HorizontalAlignment="Center"><Border Width="38" Height="38" CornerRadius="9" Background="#14243A"><TextBlock Text="…" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="Ещё" FontSize="11" FontWeight="SemiBold"/><TextBlock Text="2 сервиса" FontSize="9" Foreground="#60778F"/></StackPanel></Border>
           </Grid>
-
           <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="2,12,2,0">
-            <StackPanel><TextBlock Text="Последние события" FontSize="12" FontWeight="SemiBold" /><TextBlock Text="{Binding LastAction}" FontSize="10" Foreground="#7189A4" Margin="0,4,0,0" /></StackPanel>
-            <StackPanel Grid.Column="1" HorizontalAlignment="Right">
-              <TextBlock Text="NetPilot" FontSize="10" Foreground="#5B7591" HorizontalAlignment="Right" />
-              <TextBlock x:Name="SupportVersionText" Text="неизвестно" FontSize="9" Foreground="#445D77" MaxWidth="260" TextWrapping="Wrap" TextAlignment="Right" />
-              <TextBlock x:Name="SupportPlatformText" Text="неизвестно" IsVisible="False" /><TextBlock x:Name="SupportArchitectureText" Text="неизвестно" IsVisible="False" />
-            </StackPanel>
+            <StackPanel><TextBlock Text="Последние события" FontSize="12" FontWeight="SemiBold"/><TextBlock Text="{Binding LastAction}" FontSize="10" Foreground="#7189A4" Margin="0,4,0,0"/></StackPanel>
+            <StackPanel Grid.Column="1" HorizontalAlignment="Right"><TextBlock Text="NetPilot" FontSize="10" Foreground="#5B7591" HorizontalAlignment="Right"/><TextBlock x:Name="SupportVersionText" Text="неизвестно" FontSize="9" Foreground="#445D77" MaxWidth="260" TextWrapping="Wrap" TextAlignment="Right"/><TextBlock x:Name="SupportPlatformText" Text="неизвестно" IsVisible="False"/><TextBlock x:Name="SupportArchitectureText" Text="неизвестно" IsVisible="False"/></StackPanel>
           </Grid>
         </Grid>
       </Border>
     </Grid>
 
+    <!-- Expert mode -->
     <Grid x:Name="ExpertShell" IsVisible="False" ColumnDefinitions="190,*" Background="#06101C">
       <Border Grid.Column="0" Background="#071321" BorderBrush="#15314E" BorderThickness="0,0,1,0">
         <Grid RowDefinitions="Auto,*,Auto" Margin="12,14">
-          <StackPanel Orientation="Horizontal" Spacing="9" Margin="8,3,0,18"><Path Width="24" Height="24" Stretch="Uniform" Fill="#2D9CFF" Data="M2,1 L28,15 L2,29 L8,17 L18,15 L8,13 Z" /><TextBlock Text="NetPilot" FontSize="19" FontWeight="SemiBold" VerticalAlignment="Center" /></StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="9" Margin="8,3,0,18"><Path Width="24" Height="24" Stretch="Uniform" Fill="#2D9CFF" Data="M2,1 L28,15 L2,29 L8,17 L18,15 L8,13 Z"/><TextBlock Text="NetPilot" FontSize="19" FontWeight="SemiBold" VerticalAlignment="Center"/></StackPanel>
           <StackPanel Grid.Row="1" Spacing="3">
-            <Button Classes="nav" Tag="main" Click="OnNavigationClicked" Content="⌂   Главная" Background="#102744" />
-            <Button Classes="nav" Tag="strategies" Click="OnNavigationClicked" Content="◎   Стратегии" />
-            <Button Classes="nav" Tag="services" Click="OnNavigationClicked" Content="▦   Сервисы" />
-            <Button Classes="nav" Tag="engines" Click="OnNavigationClicked" Content="◉   Движки" />
-            <Button Classes="nav" Tag="diagnostics" Click="OnNavigationClicked" Content="⌁   Диагностика" />
-            <Button Classes="nav" Tag="journal" Click="OnNavigationClicked" Content="▤   Журнал" />
-            <Button Classes="nav" Tag="settings" Click="OnNavigationClicked" Content="⚙   Настройки" />
-            <Button Classes="nav" Tag="about" Click="OnNavigationClicked" Content="ⓘ   О программе" Margin="0,12,0,0" />
+            <Button Classes="nav" Tag="main" Click="OnNavigationClicked" Content="⌂   Главная"/><Button Classes="nav" Tag="strategies" Click="OnNavigationClicked" Content="◎   Стратегии"/><Button Classes="nav" Tag="services" Click="OnNavigationClicked" Content="▦   Сервисы"/><Button Classes="nav" Tag="engines" Click="OnNavigationClicked" Content="◉   Движки"/><Button Classes="nav" Tag="diagnostics" Click="OnNavigationClicked" Content="⌁   Диагностика"/><Button Classes="nav" Tag="journal" Click="OnNavigationClicked" Content="▤   Журнал"/><Button Classes="nav" Tag="settings" Click="OnNavigationClicked" Content="⚙   Настройки"/><Button Classes="nav" Tag="about" Click="OnNavigationClicked" Content="ⓘ   О программе" Margin="0,12,0,0"/>
           </StackPanel>
-          <StackPanel Grid.Row="2" Spacing="8"><TextBlock Text="Режим эксперта" FontSize="10" Foreground="#64809D" /><ToggleSwitch x:Name="ExpertModeToggle" IsChecked="True" Checked="OnExpertModeChanged" Unchecked="OnExpertModeChanged" /><Button Content="← Минимальный режим" FontSize="10" Click="OnReturnCompactClicked" /></StackPanel>
+          <StackPanel Grid.Row="2" Spacing="8"><TextBlock Text="Режим эксперта" FontSize="10" Foreground="#64809D"/><ToggleSwitch x:Name="ExpertModeToggle" IsChecked="True" IsHitTestVisible="False"/><Button Content="← Минимальный режим" FontSize="10" Click="OnReturnCompactClicked"/></StackPanel>
         </Grid>
       </Border>
 
-      <Grid Grid.Column="1" Margin="18">
-        <Grid x:Name="ExpertMainPanel" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="12">
-          <Border Classes="card" Padding="15">
-            <Grid ColumnDefinitions="*,Auto">
-              <StackPanel Spacing="3"><TextBlock Text="Статус системы" FontSize="11" Foreground="#6D89A8" /><StackPanel Orientation="Horizontal" Spacing="8"><Ellipse Width="10" Height="10" Fill="#35E58C" VerticalAlignment="Center" /><TextBlock x:Name="ExpertStatusText" Text="Проверяем NetPilot…" FontSize="18" FontWeight="SemiBold" Foreground="#71F0AD" /></StackPanel><TextBlock x:Name="ExpertStatusDetailsText" Text="Получаем состояние защищённой службы." FontSize="10" Foreground="#6F88A3" TextWrapping="Wrap" MaxWidth="650" /></StackPanel>
-              <Button x:Name="ExpertPowerButton" Grid.Column="1" Content="Проверить состояние" Click="OnByeDpiPowerClicked" VerticalAlignment="Center" />
-            </Grid>
-          </Border>
-
-          <Grid Grid.Row="1" ColumnDefinitions="*,*,*" ColumnSpacing="10">
-            <Border Grid.Column="0" Classes="card" Padding="13"><Grid ColumnDefinitions="42,*"><Border Width="34" Height="34" CornerRadius="9" Background="#102C4A"><TextBlock Text="☷" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><StackPanel Grid.Column="1" Spacing="2"><TextBlock Text="Стратегия" FontSize="9" Foreground="#617D9B" /><TextBlock Text="Рекомендованная" FontSize="12" FontWeight="SemiBold" /></StackPanel></Grid></Border>
-            <Border Grid.Column="1" Classes="card" Padding="13"><Grid ColumnDefinitions="42,*"><Border Width="34" Height="34" CornerRadius="9" Background="#123452"><TextBlock Text="⚙" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><StackPanel Grid.Column="1" Spacing="2"><TextBlock Text="Движок" FontSize="9" Foreground="#617D9B" /><TextBlock Text="ByeDPI" FontSize="12" FontWeight="SemiBold" /></StackPanel></Grid></Border>
-            <Border Grid.Column="2" Classes="card" Padding="13"><Grid ColumnDefinitions="42,*"><Border Width="34" Height="34" CornerRadius="9" Background="#123452"><TextBlock Text="⌁" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><StackPanel Grid.Column="1" Spacing="2"><TextBlock Text="Проверочный трафик" FontSize="9" Foreground="#617D9B" /><TextBlock Text="TCP через SOCKS5" FontSize="12" FontWeight="SemiBold" /></StackPanel></Grid></Border>
+      <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled">
+        <Grid Margin="18" MinHeight="620">
+          <!-- Main -->
+          <Grid x:Name="ExpertMainPanel" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="12">
+            <Border Classes="card" Padding="15"><Grid ColumnDefinitions="*,Auto"><StackPanel Spacing="3"><TextBlock Text="Статус системы" FontSize="11" Foreground="#6D89A8"/><StackPanel Orientation="Horizontal" Spacing="8"><Ellipse Width="10" Height="10" Fill="#35E58C" VerticalAlignment="Center"/><TextBlock x:Name="ExpertStatusText" Text="Проверяем NetPilot…" FontSize="18" FontWeight="SemiBold" Foreground="#71F0AD"/></StackPanel><TextBlock x:Name="ExpertStatusDetailsText" Text="Получаем состояние защищённой службы." FontSize="10" Foreground="#6F88A3" TextWrapping="Wrap" MaxWidth="650"/></StackPanel><Button x:Name="ExpertPowerButton" Grid.Column="1" Content="Проверить состояние" Click="OnByeDpiPowerClicked" VerticalAlignment="Center"/></Grid></Border>
+            <Grid Grid.Row="1" ColumnDefinitions="*,*,*" ColumnSpacing="10"><Border Classes="card" Padding="13"><StackPanel><TextBlock Text="Стратегия" FontSize="9" Foreground="#617D9B"/><TextBlock Text="Рекомендованная" FontSize="12" FontWeight="SemiBold"/></StackPanel></Border><Border Grid.Column="1" Classes="card" Padding="13"><StackPanel><TextBlock Text="Движок" FontSize="9" Foreground="#617D9B"/><TextBlock Text="ByeDPI" FontSize="12" FontWeight="SemiBold"/></StackPanel></Border><Border Grid.Column="2" Classes="card" Padding="13"><StackPanel><TextBlock Text="Проверочный трафик" FontSize="9" Foreground="#617D9B"/><TextBlock Text="TCP через SOCKS5" FontSize="12" FontWeight="SemiBold"/></StackPanel></Border></Grid>
+            <Grid Grid.Row="2" ColumnDefinitions="3*,2*" ColumnSpacing="12"><Border Classes="card" Padding="14"><StackPanel Spacing="8"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="Сервисы" FontSize="14" FontWeight="SemiBold"/><Button Grid.Column="1" Content="Проверить все" Command="{Binding CheckCommand}" Padding="10,6"/></Grid><ItemsControl ItemsSource="{Binding Resources}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:ResourceStatusViewModel"><Border Classes="tile" Margin="0,0,0,6" Padding="10"><Grid ColumnDefinitions="Auto,*,Auto"><Ellipse Width="10" Height="10" Fill="{Binding StatusBrush}"/><TextBlock Grid.Column="1" Text="{Binding DisplayName}" Margin="9,0" FontSize="11" FontWeight="SemiBold"/><TextBlock Grid.Column="2" Text="{Binding StatusText}" FontSize="9" Foreground="{Binding StatusBrush}"/></Grid></Border></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></StackPanel></Border><Border Grid.Column="1" Classes="card" Padding="14"><StackPanel Spacing="8"><TextBlock Text="Быстрая диагностика" FontSize="14" FontWeight="SemiBold"/><TextBlock Text="{Binding ServiceStatus}" FontSize="10" Foreground="#8DA7BF" TextWrapping="Wrap"/><TextBlock Text="{Binding EngineStatus}" FontSize="10" Foreground="#8DA7BF" TextWrapping="Wrap"/><Button Content="↻  Обновить состояние" Click="OnRefreshByeDpiClicked"/></StackPanel></Border></Grid>
+            <Border Grid.Row="3" Classes="card" Padding="14"><StackPanel Spacing="7"><TextBlock Text="Последние события" FontSize="14" FontWeight="SemiBold"/><TextBlock Text="{Binding LastAction}" FontSize="10" Foreground="#7891AD"/><ItemsControl ItemsSource="{Binding DiagnosticHistory}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:DiagnosticHistoryItemViewModel"><Grid ColumnDefinitions="62,105,100,*" Margin="0,3"><TextBlock Text="{Binding TimeText}" FontSize="9" Foreground="#55718E"/><TextBlock Grid.Column="1" Text="{Binding ResourceName}" FontSize="10" FontWeight="SemiBold"/><TextBlock Grid.Column="2" Text="{Binding StateText}" FontSize="10" Foreground="#82A0BD"/><TextBlock Grid.Column="3" Text="{Binding DetailsText}" FontSize="9" Foreground="#617D99"/></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></StackPanel></Border>
           </Grid>
 
-          <Grid Grid.Row="2" ColumnDefinitions="3*,2*" ColumnSpacing="12">
-            <Border Classes="card" Padding="14"><StackPanel Spacing="10"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="Сервисы" FontSize="14" FontWeight="SemiBold" /><Button Grid.Column="1" Content="Проверить все" Command="{Binding CheckCommand}" Padding="10,6" /></Grid><ItemsControl ItemsSource="{Binding Resources}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:ResourceStatusViewModel"><Border Classes="service" Width="142" Margin="0,0,8,8" Padding="10"><Grid ColumnDefinitions="Auto,*"><Ellipse Width="10" Height="10" Fill="{Binding StatusBrush}" VerticalAlignment="Center" /><StackPanel Grid.Column="1" Margin="9,0,0,0"><TextBlock Text="{Binding DisplayName}" FontSize="11" FontWeight="SemiBold" /><TextBlock Text="{Binding StatusText}" FontSize="9" Foreground="{Binding StatusBrush}" /></StackPanel></Grid></Border></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></StackPanel></Border>
-            <Border Grid.Column="1" Classes="card" Padding="14"><StackPanel Spacing="10"><TextBlock Text="Быстрая диагностика" FontSize="14" FontWeight="SemiBold" /><Border Background="#0C2230" CornerRadius="9" Padding="10"><TextBlock Text="{Binding ServiceStatus}" FontSize="10" Foreground="#8DA7BF" TextWrapping="Wrap" /></Border><Border Background="#0C2230" CornerRadius="9" Padding="10"><TextBlock Text="{Binding EngineStatus}" FontSize="10" Foreground="#8DA7BF" TextWrapping="Wrap" /></Border><Button Content="↻  Обновить состояние" Click="OnRefreshByeDpiClicked" /></StackPanel></Border>
-          </Grid>
+          <!-- Strategies -->
+          <Grid x:Name="StrategiesPanel" IsVisible="False" RowDefinitions="Auto,*"><StackPanel><TextBlock Text="Стратегии подключения" FontSize="22" FontWeight="SemiBold"/><TextBlock Text="В alpha разрешён только фиксированный проверяемый профиль." FontSize="11" Foreground="#6F88A3"/></StackPanel><StackPanel Grid.Row="1" Spacing="9" Margin="0,20,0,0" MaxWidth="760" HorizontalAlignment="Left"><Border Classes="card" Padding="16" BorderBrush="#2D8FE5"><StackPanel><TextBlock Text="Рекомендованная · текущая" FontSize="13" FontWeight="SemiBold"/><TextBlock Text="ByeDPI TCP · split 1+s · disorder 3+s" FontSize="10" Foreground="#6F88A3"/></StackPanel></Border><Border Classes="card" Padding="16" Opacity="0.58"><TextBlock Text="Автоматическая — после появления нескольких допущенных профилей"/></Border><Border Classes="card" Padding="16" Opacity="0.58"><TextBlock Text="Агрессивная — недоступна до отдельного security admission"/></Border><Border Classes="card" Padding="16" Opacity="0.58"><TextBlock Text="Консервативная — недоступна до отдельного security admission"/></Border><Border Classes="card" Padding="16" Opacity="0.58"><TextBlock Text="Пользовательская — произвольные native-параметры запрещены"/></Border></StackPanel></Grid>
 
-          <Border Grid.Row="3" Classes="card" Padding="14"><StackPanel Spacing="8"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="Журнал событий" FontSize="14" FontWeight="SemiBold" /><Button Grid.Column="1" Content="Очистить" Command="{Binding ClearDiagnosticHistoryCommand}" Padding="10,6" /></Grid><TextBlock Text="{Binding LastAction}" FontSize="10" Foreground="#7891AD" /><ItemsControl ItemsSource="{Binding DiagnosticHistory}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:DiagnosticHistoryItemViewModel"><Grid ColumnDefinitions="62,105,100,*" Margin="0,3"><TextBlock Text="{Binding TimeText}" FontSize="9" Foreground="#55718E" /><TextBlock Grid.Column="1" Text="{Binding ResourceName}" FontSize="10" FontWeight="SemiBold" /><TextBlock Grid.Column="2" Text="{Binding StateText}" FontSize="10" Foreground="#82A0BD" /><TextBlock Grid.Column="3" Text="{Binding DetailsText}" FontSize="9" Foreground="#617D99" TextWrapping="Wrap" /></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></StackPanel></Border>
-        </Grid>
+          <!-- Services -->
+          <Grid x:Name="ServicesPanel" IsVisible="False" RowDefinitions="Auto,*"><StackPanel><TextBlock Text="Сервисы" FontSize="22" FontWeight="SemiBold"/><TextBlock Text="Проверка доступности через активный ByeDPI SOCKS5." FontSize="11" Foreground="#6F88A3"/></StackPanel><StackPanel Grid.Row="1" Margin="0,20,0,0" Spacing="8"><Button Content="Проверить все" Command="{Binding CheckCommand}" HorizontalAlignment="Left"/><ItemsControl ItemsSource="{Binding Resources}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:ResourceStatusViewModel"><Border Classes="card" Margin="0,0,0,8" Padding="14"><Grid ColumnDefinitions="Auto,*,Auto"><Ellipse Width="12" Height="12" Fill="{Binding StatusBrush}"/><StackPanel Grid.Column="1" Margin="12,0"><TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold"/><TextBlock Text="{Binding DetailsText}" FontSize="10" Foreground="#6F88A3"/></StackPanel><TextBlock Grid.Column="2" Text="{Binding StatusText}" Foreground="{Binding StatusBrush}"/></Grid></Border></DataTemplate></ItemsControl.ItemTemplate></ItemsControl><Border Classes="card" Padding="14"><Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock Text="Telegram" FontSize="13" FontWeight="SemiBold"/><TextBlock Text="Отдельный движок/профиль ещё не подключён." FontSize="10" Foreground="#6F88A3"/></StackPanel><TextBlock Grid.Column="1" Text="Пока не подключён" Foreground="#71859B"/></Grid></Border></StackPanel></Grid>
 
-        <Grid x:Name="StrategiesPanel" IsVisible="False" RowDefinitions="Auto,*">
-          <StackPanel Margin="2,2,0,18"><TextBlock Text="Стратегии подключения" FontSize="22" FontWeight="SemiBold" /><TextBlock Text="Выбор режима обхода. В alpha активен только проверяемый ByeDPI-профиль." FontSize="11" Foreground="#6F88A3" /></StackPanel>
-          <StackPanel Grid.Row="1" Spacing="9" MaxWidth="760" HorizontalAlignment="Left">
-            <Border Classes="card" Padding="16" BorderBrush="#2D8FE5"><Grid ColumnDefinitions="Auto,*,Auto"><Border Width="38" Height="38" CornerRadius="19" Background="#113C63"><TextBlock Text="A" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><StackPanel Grid.Column="1" Margin="12,0"><TextBlock Text="Автоматическая" FontSize="13" FontWeight="SemiBold" /><TextBlock Text="Будущий автоматический подбор оптимальной конфигурации." FontSize="10" Foreground="#6F88A3" /></StackPanel><Ellipse Grid.Column="2" Width="12" Height="12" Fill="#2D9CFF" VerticalAlignment="Center" /></Grid></Border>
-            <Border Classes="card" Padding="16"><Grid ColumnDefinitions="Auto,*"><TextBlock Text="◎" FontSize="24" Foreground="#72A8D8" /><StackPanel Grid.Column="1" Margin="12,0"><TextBlock Text="Рекомендованная · текущий alpha-профиль" FontSize="13" FontWeight="SemiBold" /><TextBlock Text="ByeDPI TCP: split 1+s + disorder 3+s. Проверяется на реальном соединении." FontSize="10" Foreground="#6F88A3" /></StackPanel></Grid></Border>
-            <Border Classes="card" Padding="16" Opacity="0.58"><TextBlock Text="Агрессивная — недоступна до отдельного security admission" FontSize="12" /></Border>
-            <Border Classes="card" Padding="16" Opacity="0.58"><TextBlock Text="Консервативная — недоступна до отдельного security admission" FontSize="12" /></Border>
-            <Border Classes="card" Padding="16" Opacity="0.58"><TextBlock Text="Пользовательская — произвольные native-параметры запрещены" FontSize="12" /></Border>
-          </StackPanel>
-        </Grid>
+          <!-- Engines -->
+          <Grid x:Name="EnginesPanel" IsVisible="False" RowDefinitions="Auto,*"><StackPanel><TextBlock Text="Движки" FontSize="22" FontWeight="SemiBold"/><TextBlock Text="Нативные компоненты включаются только после отдельного допуска." FontSize="11" Foreground="#6F88A3"/></StackPanel><StackPanel Grid.Row="1" Margin="0,20,0,0" Spacing="10"><Border Classes="card" Padding="16" BorderBrush="#2D8FE5"><Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock Text="ByeDPI" FontSize="15" FontWeight="SemiBold"/><TextBlock Text="Experimental · Windows x64 · TCP · loopback SOCKS5" FontSize="10" Foreground="#6F88A3"/><TextBlock Text="Профиль: split 1+s / disorder 3+s" FontSize="10" Foreground="#8DB9DD" Margin="0,6,0,0"/></StackPanel><TextBlock Grid.Column="1" Text="АКТИВЕН В ALPHA" Foreground="#35E58C" VerticalAlignment="Center"/></Grid></Border><Border Classes="card" Padding="16" Opacity="0.62"><Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock Text="zapret2" FontSize="14" FontWeight="SemiBold"/><TextBlock Text="Owned fork подготовлен; runtime зависит от закрытия WinDivert gate." FontSize="10" Foreground="#6F88A3"/></StackPanel><TextBlock Grid.Column="1" Text="BLOCK" Foreground="#FF6969"/></Grid></Border><Border Classes="card" Padding="16" Opacity="0.62"><Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock Text="WinDivert" FontSize="14" FontWeight="SemiBold"/><TextBlock Text="Драйвер не загружается и не устанавливается этой alpha." FontSize="10" Foreground="#6F88A3"/></StackPanel><TextBlock Grid.Column="1" Text="BLOCK" Foreground="#FF6969"/></Grid></Border></StackPanel></Grid>
 
-        <Grid x:Name="SettingsPanel" IsVisible="False" RowDefinitions="Auto,*">
-          <StackPanel Margin="2,2,0,18"><TextBlock Text="Настройки" FontSize="22" FontWeight="SemiBold" /><TextBlock Text="Системные функции будут включаться только после реализации и проверки." FontSize="11" Foreground="#6F88A3" /></StackPanel>
-          <StackPanel Grid.Row="1" Spacing="9" MaxWidth="760" HorizontalAlignment="Left">
-            <Border Classes="card" Padding="15"><Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock Text="Запуск с Windows" FontSize="12" FontWeight="SemiBold" /><TextBlock Text="Пока не реализовано в alpha." FontSize="10" Foreground="#6F88A3" /></StackPanel><ToggleSwitch Grid.Column="1" IsEnabled="False" /></Grid></Border>
-            <Border Classes="card" Padding="15"><Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock Text="Сворачивать в трей" FontSize="12" FontWeight="SemiBold" /><TextBlock Text="Пока не реализовано в alpha." FontSize="10" Foreground="#6F88A3" /></StackPanel><ToggleSwitch Grid.Column="1" IsEnabled="False" /></Grid></Border>
-            <Border Classes="card" Padding="15"><Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock Text="Автоматический выбор стратегии" FontSize="12" FontWeight="SemiBold" /><TextBlock Text="Отключено до завершения admission нескольких профилей." FontSize="10" Foreground="#6F88A3" /></StackPanel><ToggleSwitch Grid.Column="1" IsEnabled="False" /></Grid></Border>
-            <Border Classes="card" Padding="15"><Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock Text="Проверять обновления" FontSize="12" FontWeight="SemiBold" /><TextBlock Text="Автообновление пока не подключено к пользовательской alpha." FontSize="10" Foreground="#6F88A3" /></StackPanel><ToggleSwitch Grid.Column="1" IsEnabled="False" /></Grid></Border>
-          </StackPanel>
-        </Grid>
+          <!-- Diagnostics -->
+          <Grid x:Name="DiagnosticsPanel" IsVisible="False" RowDefinitions="Auto,*"><StackPanel><TextBlock Text="Диагностика" FontSize="22" FontWeight="SemiBold"/><TextBlock Text="Локальные сведения; содержимое трафика не сохраняется." FontSize="11" Foreground="#6F88A3"/></StackPanel><StackPanel Grid.Row="1" Margin="0,20,0,0" Spacing="10"><Border Classes="card" Padding="16"><TextBlock Text="{Binding ServiceStatus}" TextWrapping="Wrap"/></Border><Border Classes="card" Padding="16"><TextBlock Text="{Binding EngineStatus}" TextWrapping="Wrap"/></Border><Border Classes="card" Padding="16"><StackPanel><TextBlock Text="Текущий endpoint" FontWeight="SemiBold"/><TextBlock Text="127.0.0.1:39036 · TCP SOCKS5" Foreground="#8DB9DD"/></StackPanel></Border><Button Content="Запустить проверку сервисов" Command="{Binding CheckCommand}" HorizontalAlignment="Left"/></StackPanel></Grid>
 
-        <Grid x:Name="AboutPanel" IsVisible="False" RowDefinitions="Auto,*">
-          <StackPanel HorizontalAlignment="Center" Margin="0,20,0,18" Spacing="6"><Path Width="78" Height="78" Stretch="Uniform" Fill="#2D9CFF" Data="M2,1 L28,15 L2,29 L8,17 L18,15 L8,13 Z" /><TextBlock Text="NetPilot" FontSize="27" FontWeight="SemiBold" HorizontalAlignment="Center" /><TextBlock Text="Контроль. Доступ. Свобода." FontSize="11" Foreground="#7890AA" HorizontalAlignment="Center" /><TextBlock x:Name="AboutVersionText" Text="Версия неизвестна" FontSize="10" Foreground="#5F7893" HorizontalAlignment="Center" /></StackPanel>
-          <Border Grid.Row="1" Classes="card" Padding="18" MaxWidth="760" HorizontalAlignment="Center" VerticalAlignment="Top"><StackPanel Spacing="12"><TextBlock Text="Лицензия" FontSize="13" FontWeight="SemiBold" /><TextBlock Text="NetPilot распространяется под лицензией MIT. Компоненты третьих сторон поставляются с собственными уведомлениями." FontSize="10" Foreground="#7890AA" TextWrapping="Wrap" /><Separator Background="#173453" /><TextBlock Text="Используемые компоненты" FontSize="13" FontWeight="SemiBold" /><TextBlock Text="• ByeDPI — экспериментальный TCP/SOCKS5 движок" FontSize="10" Foreground="#7890AA" /><TextBlock Text="• Avalonia — пользовательский интерфейс" FontSize="10" Foreground="#7890AA" /><TextBlock Text="• NetPilot.Service — защищённая Windows-служба" FontSize="10" Foreground="#7890AA" /><TextBlock Text="• WinDivert / zapret2 — не активированы в этой alpha" FontSize="10" Foreground="#7890AA" /></StackPanel></Border>
+          <!-- Journal -->
+          <Grid x:Name="JournalPanel" IsVisible="False" RowDefinitions="Auto,*"><Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock Text="Журнал событий" FontSize="22" FontWeight="SemiBold"/><TextBlock Text="Последние локальные результаты диагностики." FontSize="11" Foreground="#6F88A3"/></StackPanel><Button Grid.Column="1" Content="Очистить" Command="{Binding ClearDiagnosticHistoryCommand}" VerticalAlignment="Center"/></Grid><ItemsControl Grid.Row="1" Margin="0,20,0,0" ItemsSource="{Binding DiagnosticHistory}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:DiagnosticHistoryItemViewModel"><Border Classes="card" Margin="0,0,0,7" Padding="12"><Grid ColumnDefinitions="70,120,110,*"><TextBlock Text="{Binding TimeText}" Foreground="#55718E"/><TextBlock Grid.Column="1" Text="{Binding ResourceName}" FontWeight="SemiBold"/><TextBlock Grid.Column="2" Text="{Binding StateText}" Foreground="#82A0BD"/><TextBlock Grid.Column="3" Text="{Binding DetailsText}" Foreground="#617D99" TextWrapping="Wrap"/></Grid></Border></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></Grid>
+
+          <!-- Settings -->
+          <Grid x:Name="SettingsPanel" IsVisible="False" RowDefinitions="Auto,*"><StackPanel><TextBlock Text="Настройки" FontSize="22" FontWeight="SemiBold"/><TextBlock Text="Функции включаются только после реализации и проверки." FontSize="11" Foreground="#6F88A3"/></StackPanel><StackPanel Grid.Row="1" Margin="0,20,0,0" Spacing="9" MaxWidth="760" HorizontalAlignment="Left"><Border Classes="card" Padding="15"><Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock Text="Запуск с Windows" FontWeight="SemiBold"/><TextBlock Text="Пока не реализовано в alpha." FontSize="10" Foreground="#6F88A3"/></StackPanel><ToggleSwitch Grid.Column="1" IsEnabled="False"/></Grid></Border><Border Classes="card" Padding="15"><Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock Text="Сворачивать в трей" FontWeight="SemiBold"/><TextBlock Text="Пока не реализовано в alpha." FontSize="10" Foreground="#6F88A3"/></StackPanel><ToggleSwitch Grid.Column="1" IsEnabled="False"/></Grid></Border><Border Classes="card" Padding="15"><Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock Text="Автоматический выбор стратегии" FontWeight="SemiBold"/><TextBlock Text="Отключено до появления нескольких допущенных профилей." FontSize="10" Foreground="#6F88A3"/></StackPanel><ToggleSwitch Grid.Column="1" IsEnabled="False"/></Grid></Border><Border Classes="card" Padding="15"><Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock Text="Проверять обновления" FontWeight="SemiBold"/><TextBlock Text="Автообновление пока не включено в пользовательской alpha." FontSize="10" Foreground="#6F88A3"/></StackPanel><ToggleSwitch Grid.Column="1" IsEnabled="False"/></Grid></Border></StackPanel></Grid>
+
+          <!-- About -->
+          <Grid x:Name="AboutPanel" IsVisible="False" RowDefinitions="Auto,*"><StackPanel HorizontalAlignment="Center" Margin="0,20,0,18" Spacing="6"><Path Width="78" Height="78" Stretch="Uniform" Fill="#2D9CFF" Data="M2,1 L28,15 L2,29 L8,17 L18,15 L8,13 Z"/><TextBlock Text="NetPilot" FontSize="27" FontWeight="SemiBold" HorizontalAlignment="Center"/><TextBlock Text="Контроль. Доступ. Свобода." FontSize="11" Foreground="#7890AA" HorizontalAlignment="Center"/><TextBlock x:Name="AboutVersionText" Text="Версия неизвестна" FontSize="10" Foreground="#5F7893" HorizontalAlignment="Center"/></StackPanel><Border Grid.Row="1" Classes="card" Padding="18" MaxWidth="760" HorizontalAlignment="Center" VerticalAlignment="Top"><StackPanel Spacing="12"><TextBlock Text="Лицензия" FontSize="13" FontWeight="SemiBold"/><TextBlock Text="NetPilot распространяется под MIT. Компоненты третьих сторон имеют собственные уведомления." FontSize="10" Foreground="#7890AA" TextWrapping="Wrap"/><Separator Background="#173453"/><TextBlock Text="Используемые компоненты" FontSize="13" FontWeight="SemiBold"/><TextBlock Text="• ByeDPI — experimental TCP/SOCKS5" FontSize="10" Foreground="#7890AA"/><TextBlock Text="• Avalonia — интерфейс" FontSize="10" Foreground="#7890AA"/><TextBlock Text="• NetPilot.Service — защищённая Windows-служба" FontSize="10" Foreground="#7890AA"/><TextBlock Text="• WinDivert / zapret2 — не активированы в этой alpha" FontSize="10" Foreground="#7890AA"/></StackPanel></Border></Grid>
         </Grid>
-      </Grid>
+      </ScrollViewer>
     </Grid>
   </Grid>
 </Window>
