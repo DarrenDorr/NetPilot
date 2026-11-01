@@ -24,7 +24,7 @@ internal sealed class ExperimentalByeDpiRuntimePlanProvider :
                 "Experimental ByeDPI refuses to start when production native engine catalogs are non-empty.");
         }
 
-        var contract = ByeDpiR34LabContract.Create(ProxyPort);
+        var contract = ByeDpiWindowsUserSmokeContract.Create(ProxyPort);
         _verifiedPackage = WindowsImmutableEnginePackageVerifier.Verify(
             contract.LaunchIdentityBinding,
             contract.PackageLayout);
@@ -44,13 +44,14 @@ internal sealed class ExperimentalByeDpiRuntimePlanProvider :
             {
                 "-i", "127.0.0.1",
                 "-p", ProxyPort.ToString(CultureInfo.InvariantCulture),
-                "-N", "-U", "-c", "8", "-x", "0"
+                "-N", "-U", "-c", "8", "-x", "0",
+                "-s", "1+s", "-d", "3+s"
             };
 
             if (!_compiledPlan.Arguments.SequenceEqual(expectedArguments, StringComparer.Ordinal))
             {
                 throw new InvalidOperationException(
-                    "Experimental ByeDPI exact typed argv drifted from the R34-R40 evidence boundary.");
+                    "Experimental ByeDPI exact typed argv drifted from the fixed Windows user-smoke profile.");
             }
         }
         catch
