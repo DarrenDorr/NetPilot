@@ -1,0 +1,47 @@
+schema_version: 1
+scope: byedpi-r42.11.1-verified-promotion
+status: VERIFIED_ATOMIC_PROMOTION_BOUNDARY_ONLY
+parent_checkpoint: 6ed8736504bb2b675c67c04b19dafd5b34a9be51
+
+verified_staging_boundary:
+  requires_r42_11_staging_result: true
+  immutable_descriptor_revalidated: true
+  manifest_document_size_sha256_reverified: true
+  manifest_document_reparsed: true
+  manifest_identity_match_required: true
+  staged_manifest_digest_match_required: true
+  staged_verified_file_count_match_required: true
+
+promotion_boundary:
+  existing_r42_3_source_verifier_only: true
+  existing_r42_3_atomic_promoter_only: true
+  accepted_operations:
+    - Install
+    - Upgrade
+  repair_via_bridge: FORBIDDEN
+  rollback_via_bridge: FORBIDDEN
+  uninstall_via_bridge: FORBIDDEN
+  engine_lease_block_enforced_by_lifecycle_policy: true
+  exact_staging_journal_reverification_inherited: true
+  exact_staged_tree_reverification_inherited: true
+  same_volume_atomic_move_inherited: true
+  immutable_target_overwrite_forbidden_inherited: true
+  retained_previous_version_inherited: true
+  recovery_journal_inherited: true
+  new_filesystem_primitives_in_bridge: false
+
+runtime_boundary:
+  filesystem_write: EXISTING_R42_3_ATOMIC_PROMOTER_ONLY
+  arbitrary_filesystem_write: FORBIDDEN
+  network_client_construction: FORBIDDEN
+  service_ipc_wiring: ABSENT
+  installer_integration: ABSENT
+  native_execution: NOT_IMPLEMENTED
+  windivert_execution: NOT_IMPLEMENTED
+  production_admission: BLOCK
+
+result_contract:
+  returns_atomic_promotion_result: true
+  managed_package_is_runtime_admission: false
+  managed_package_is_execution_authorization: false
+  native_engine_started: false
