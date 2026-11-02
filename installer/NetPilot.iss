@@ -68,6 +68,8 @@ Name: "desktopicon"; Description: "Создать ярлык на рабочем
 [Dirs]
 Name: "{app}\Engines"
 Name: "{app}\Engines\Zapret"
+Name: "{commonappdata}\NetPilot"; Permissions: system-full admins-full users-readexec
+Name: "{commonappdata}\NetPilot\Logs"; Permissions: system-full admins-full users-readexec
 
 [Files]
 Source: "{#AppPublishDir}\*"; DestDir: "{app}\App"; Flags: ignoreversion recursesubdirs createallsubdirs notimestamp
@@ -77,6 +79,7 @@ Source: "..\docs\THIRD-PARTY-NOTICES.md"; DestDir: "{app}\Docs"; Flags: ignoreve
 
 [Icons]
 Name: "{autoprograms}\NetPilot"; Filename: "{app}\App\NetPilot.exe"; WorkingDir: "{app}\App"
+Name: "{autoprograms}\NetPilot — собрать диагностику"; Filename: "{app}\App\NetPilot.exe"; Parameters: "--collect-diagnostics"; WorkingDir: "{app}\App"
 Name: "{autodesktop}\NetPilot"; Filename: "{app}\App\NetPilot.exe"; WorkingDir: "{app}\App"; Tasks: desktopicon
 
 [Run]
