@@ -5,11 +5,17 @@ param(
     [string]$HostedEvidenceDir,
     [Parameter(Mandatory = $true)]
     [string]$TestVersion,
-    [string]$UserName = 'NetPilotR42124'
+    [string]$UserName = 'NetPilotR42124',
+    [string]$TaskName = 'NetPilot-R42.12.4-StandardUser'
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+# TaskName is kept only for workflow backward compatibility. R42.12.4 now uses
+# a direct credentialed process rather than Task Scheduler because the first
+# hosted run proved the scheduler boundary could fail before user code starts.
+$null = $TaskName
 
 $PackPath = [System.IO.Path]::GetFullPath($PackPath)
 $HostedEvidenceDir = [System.IO.Path]::GetFullPath($HostedEvidenceDir)
