@@ -16,6 +16,12 @@ public interface IDashboardService : IDisposable
 
     Task<StrategyRuntimeState> GetStrategyRuntimeStateAsync(
         CancellationToken cancellationToken = default);
+
+    Task StartDefaultStrategyAsync(
+        CancellationToken cancellationToken = default);
+
+    Task StopStrategyRuntimeAsync(
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class DashboardService : IDashboardService
@@ -66,6 +72,49 @@ public sealed class DashboardService : IDashboardService
         return _strategyRuntime.GetStateAsync(cancellationToken);
     }
 
+    public async Task StartDefaultStrategyAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        var current = await _strategyRuntime.GetStateAsync(cancellationToken);
+        if (current.IsRunning)
+        {
+            return;
+        }
+
+        var strategies = await _strategyRuntime.ListStrategiesAsync(cancellationToken);
+        var selected = strategies.FirstOrDefault()
+            ?? throw new StrategyRuntimeException(
+                "NoStrategiesAvailable",
+                "NetPilot не нашёл ни одной разрешённой стратегии сетевого движка.");
+
+        await _strategyRuntime.ActivateAsync(selected.Id, cancellationToken);
+        var confirmed = await _strategyRuntime.GetStateAsync(cancellationToken);
+        if (!confirmed.IsRunning
+            || !string.Equals(confirmed.StrategyId, selected.Id, StringComparison.Ordinal))
+        {
+            throw new StrategyRuntimeException(
+                "StartStateMismatch",
+                "Сетевой движок не подтвердил безопасный запуск выбранной стратегии.");
+        }
+    }
+
+    public async Task StopStrategyRuntimeAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        await _strategyRuntime.StopAsync(cancellationToken);
+        var confirmed = await _strategyRuntime.GetStateAsync(cancellationToken);
+        if (confirmed.IsRunning)
+        {
+            throw new StrategyRuntimeException(
+                "StopStateMismatch",
+                "Сетевой движок не подтвердил безопасную остановку.");
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -74,7 +123,17 @@ public sealed class DashboardService : IDashboardService
         }
 
         _disposed = true;
-        _healthChecker.Dispose();
+        try
+        {
+            if (_strategyRuntime is IDisposable disposableRuntime)
+            {
+                Task.Run(disposableRuntime.Dispose).GetAwaiter().GetResult();
+            }
+        }
+        finally
+        {
+            _healthChecker.Dispose();
+        }
     }
 
     private void ThrowIfDisposed() =>

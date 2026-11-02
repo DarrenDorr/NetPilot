@@ -51,6 +51,26 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Parse no-admin PowerShell harnesses
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($file in @(
+            'scripts\build-user-mode-installer.ps1',
+            'scripts\r42-12-4-hosted-standard-user.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file).Path,
+              [ref]$tokens,
+              [ref]$errors) | Out-Null
+            if (@($errors).Count -ne 0) {
+              $messages = @($errors | ForEach-Object { $_.Message }) -join '; '
+              throw "PowerShell parser rejected $file : $messages"
+            }
+          }
+
       - name: Restore Windows security tests
         run: dotnet restore tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj
 
@@ -60,6 +80,9 @@ jobs:
       - name: Restore real-PC ByeDPI validation tool
         run: dotnet restore tools/NetPilot.ByeDpiPcValidation/NetPilot.ByeDpiPcValidation.csproj
 
+      - name: Restore no-admin ByeDPI validation tool
+        run: dotnet restore tools/NetPilot.ByeDpiUserModeValidation/NetPilot.ByeDpiUserModeValidation.csproj
+
       - name: Build Windows security tests
         run: dotnet build tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj --configuration Release --no-restore
 
@@ -68,6 +91,9 @@ jobs:
 
       - name: Build real-PC ByeDPI validation tool
         run: dotnet build tools/NetPilot.ByeDpiPcValidation/NetPilot.ByeDpiPcValidation.csproj --configuration Release --no-restore
+
+      - name: Build no-admin ByeDPI validation tool
+        run: dotnet build tools/NetPilot.ByeDpiUserModeValidation/NetPilot.ByeDpiUserModeValidation.csproj --configuration Release --no-restore
 
       - name: Windows IPC security tests
         run: dotnet test tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj --configuration Release --no-build

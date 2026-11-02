@@ -129,9 +129,9 @@ internal static class Program
     private static MainWindowViewModel CreateMainWindowViewModel()
     {
         var healthChecker = new PublicHttpsHealthChecker();
-        var serviceClient = new WindowsPrivilegedServiceClient();
-        var strategyRuntime = new WindowsZapretStrategyRuntime(serviceClient);
-        var healthProbe = new PublicResourceHealthProbe(healthChecker);
+        var strategyRuntime = new WindowsByeDpiStrategyRuntime(
+            ByeDpiUserModeOptions.CreateInstalledDefault());
+        var healthProbe = new ByeDpiProxyResourceHealthProbe(strategyRuntime);
         var selectionEngine = new StrategySelectionEngine(strategyRuntime, healthProbe);
         var dashboardService = new DashboardService(
             healthChecker,
