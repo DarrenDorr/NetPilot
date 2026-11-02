@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Net;
-using System.Net.Sockets;
 using NetPilot.Automation;
 using NetPilot.Core.Models;
 using NetPilot.Health;
@@ -12,11 +11,25 @@ public sealed class ByeDpiProxyResourceHealthProbe(
 {
     private const int MaxRedirects = 3;
 
+    private static readonly IReadOnlyDictionary<string, ResourceDefinition> AllowedResources =
+        BuiltInResourceCatalog.All.ToDictionary(
+            static resource => resource.Id,
+            StringComparer.Ordinal);
+
     public async Task<ResourceHealth> CheckAsync(
         ResourceDefinition resource,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resource);
+
+        if (!IsCanonicalBuiltInResource(resource))
+        {
+            return CreateHealth(
+                resource.Id,
+                ResourceHealthState.Unavailable,
+                null,
+                "EndpointRejected");
+        }
 
         var port = runtime.ProxyPort;
         if (port is null)
@@ -61,10 +74,11 @@ public sealed class ByeDpiProxyResourceHealthProbe(
 
         try
         {
+            var allowedHost = initialUri.IdnHost;
             var currentUri = initialUri;
             for (var redirect = 0; redirect <= MaxRedirects; redirect++)
             {
-                await ValidatePublicEndpointAsync(currentUri, timeoutCts.Token);
+                ValidateProxyEndpoint(currentUri, allowedHost);
 
                 using var handler = new SocketsHttpHandler
                 {
@@ -137,10 +151,6 @@ public sealed class ByeDpiProxyResourceHealthProbe(
         {
             return CreateHealth(resourceId, ResourceHealthState.Unavailable, stopwatch.Elapsed, "EndpointRejected");
         }
-        catch (SocketException)
-        {
-            return CreateHealth(resourceId, ResourceHealthState.Unavailable, stopwatch.Elapsed, "DnsError");
-        }
         catch (HttpRequestException)
         {
             return CreateHealth(resourceId, ResourceHealthState.Unavailable, stopwatch.Elapsed, "ProxyNetworkError");
@@ -149,11 +159,39 @@ public sealed class ByeDpiProxyResourceHealthProbe(
         return CreateHealth(resourceId, ResourceHealthState.Unavailable, stopwatch.Elapsed, "ProxyHealthCheckFailed");
     }
 
-    private static async Task ValidatePublicEndpointAsync(Uri uri, CancellationToken cancellationToken)
+    private static bool IsCanonicalBuiltInResource(ResourceDefinition resource)
+    {
+        if (!AllowedResources.TryGetValue(resource.Id, out var canonical)
+            || resource.HealthCheckUris.Count != canonical.HealthCheckUris.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < canonical.HealthCheckUris.Count; index++)
+        {
+            if (Uri.Compare(
+                    resource.HealthCheckUris[index],
+                    canonical.HealthCheckUris[index],
+                    UriComponents.AbsoluteUri,
+                    UriFormat.SafeUnescaped,
+                    StringComparison.Ordinal) != 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static void ValidateProxyEndpoint(Uri uri, string allowedHost)
     {
         PublicEndpointPolicy.ValidateUri(uri);
-        var addresses = await Dns.GetHostAddressesAsync(uri.IdnHost, cancellationToken);
-        PublicEndpointPolicy.EnsureAllResolvedAddressesArePublic(addresses);
+        if (!string.Equals(uri.IdnHost, allowedHost, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new HealthCheckSecurityException(
+                "CrossHostRedirectRejected",
+                "ByeDPI health-check запрещает redirect на другой host.");
+        }
     }
 
     private static bool IsRedirect(HttpStatusCode statusCode) =>
