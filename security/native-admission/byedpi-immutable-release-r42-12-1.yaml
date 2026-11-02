@@ -1,0 +1,47 @@
+schema_version: 1
+scope: byedpi-r42.12.1-immutable-release-publication-readiness
+status: DRAFT_PUBLICATION_READY_PUBLISH_MANUAL
+parent_checkpoint: 10d94a33f32b281fae59b9fc0bd01d73d0cd8b84
+
+reviewed_release:
+  repository: DarrenDorr/NetPilot
+  tag: byedpi-v0.17.3
+  target_checkpoint: dc28fc4f0b635c34c63bbaed99ea7658d8a9c827
+  reviewed_source_commit: 7efde1b1296eaaa187b70e951894dde17527489c
+  reviewed_source_tree: 8d13f6f5939190cd27ee68696247073a00b3e7dc
+  assets_exactly: 3
+  payload:
+    name: NetPilot-ByeDPI-0.17.3-x64.zip
+    size_bytes: 496964
+    sha256: c0fe998e3d81ccb871f09d126e7b5ee0ab82d15daf78bc44bcd63b7762313db7
+  manifest:
+    name: NetPilot-ByeDPI-0.17.3-x64.manifest.json
+    size_bytes: 511
+    sha256: eaa6f063fcb8e012810f849ed08b6bd82d4d046d4796c2fb4b903c4195985f54
+  provenance:
+    name: NetPilot-ByeDPI-0.17.3-x64.provenance.json
+    size_bytes: 1726
+    sha256: e1f98760eed94f5daa7d37a868015755220cb17d389000bc49e031da511f7f31
+
+publication_boundary:
+  automatic_publish: FORBIDDEN
+  draft_creation: MANUAL_WORKFLOW_DISPATCH_ONLY
+  deterministic_rebuild_required: true
+  exact_size_hash_verification_required: true
+  draft_assets_required_before_publish: true
+  repository_immutable_releases_required_before_publish: true
+  publish_action: MANUAL_EXTERNAL_GATE
+  post_publish_immutable_field_required: true
+  post_publish_release_attestation_required: true
+  post_publish_exact_asset_download_verification_required: true
+
+runtime_boundary:
+  live_network_product_acquisition: NOT_ADMITTED
+  package_service_policy_enablement: NOT_ADMITTED
+  native_execution: NOT_IMPLEMENTED
+  windivert_execution: NOT_IMPLEMENTED
+  production_admission: BLOCK
+
+next_gate:
+  prerequisite: PUBLISHED_IMMUTABLE_RELEASE_VERIFIED
+  gate: R42.13_WINDOWS_LIVE_ACQUISITION_E2E
