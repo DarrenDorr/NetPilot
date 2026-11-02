@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Security.Principal;
 using NetPilot.Ipc;
+using NetPilot.Platform.Windows.Diagnostics;
 
 namespace NetPilot.Platform.Windows;
 
@@ -29,6 +30,20 @@ public sealed class WindowsPrivilegedServiceClient : IPrivilegedServiceClient
         IpcRequest request,
         CancellationToken cancellationToken)
     {
+        var correlationId = request.RequestId.ToString("N");
+        var properties = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["Command"] = request.Command.ToString()
+        };
+
+        SafeDiagnosticLog.WriteUser(
+            "app",
+            NetPilotDiagnosticLevel.Information,
+            "NP-IPC-REQ-001",
+            "Запрос к локальной службе NetPilot начат.",
+            correlationId,
+            properties: properties);
+
         using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         requestTimeout.CancelAfter(IpcProtocol.RequestTimeoutMilliseconds);
         var requestToken = requestTimeout.Token;
@@ -63,14 +78,56 @@ public sealed class WindowsPrivilegedServiceClient : IPrivilegedServiceClient
                     "Ответ службы NetPilot не соответствует отправленному запросу.");
             }
 
+            var responseProperties = new Dictionary<string, string>(properties, StringComparer.Ordinal)
+            {
+                ["ResultCode"] = response.Code
+            };
+
+            SafeDiagnosticLog.WriteUser(
+                "app",
+                response.Success ? NetPilotDiagnosticLevel.Information : NetPilotDiagnosticLevel.Warning,
+                response.Success ? "NP-IPC-OK-001" : "NP-IPC-FAIL-001",
+                response.Success
+                    ? "Локальная служба NetPilot успешно обработала запрос."
+                    : "Локальная служба NetPilot вернула диагностический отказ.",
+                correlationId,
+                properties: responseProperties);
+
             return response;
         }
         catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new IpcProtocolException(
+            var wrapped = new IpcProtocolException(
                 "RequestTimeout",
                 "Служба NetPilot не ответила за допустимое время.",
                 exception);
+            LogFailure(request.Command, correlationId, wrapped);
+            throw wrapped;
         }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            LogFailure(request.Command, correlationId, exception);
+            throw;
+        }
+    }
+
+    private static void LogFailure(IpcCommand command, string correlationId, Exception exception)
+    {
+        var code = exception is IpcProtocolException protocolException
+            ? protocolException.Code
+            : "UnhandledClientError";
+
+        SafeDiagnosticLog.WriteUser(
+            "app",
+            NetPilotDiagnosticLevel.Error,
+            "NP-IPC-ERR-001",
+            "Не удалось безопасно выполнить запрос к локальной службе NetPilot.",
+            correlationId,
+            exception,
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["Command"] = command.ToString(),
+                ["ResultCode"] = code
+            });
     }
 }
