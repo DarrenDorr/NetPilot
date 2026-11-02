@@ -1,0 +1,204 @@
+name: R42.12.1 Create Exact ByeDPI Draft Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  NETPILOT_R42_5_SHA: dc28fc4f0b635c34c63bbaed99ea7658d8a9c827
+  BYEDPI_SOURCE_SHA: 7efde1b1296eaaa187b70e951894dde17527489c
+  BYEDPI_SOURCE_TREE: 8d13f6f5939190cd27ee68696247073a00b3e7dc
+  BYEDPI_LICENSE_BLOB: 342905d38be83e9d540deae14987896826a74858
+  BYEDPI_LICENSE_SHA256: 18c854c6c25dffefe4b522cf1bdf5d15278a25ca785948258bddb94393f575eb
+  BYEDPI_WINDOWS_SHA256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+  RELEASE_TAG: byedpi-v0.17.3
+  PAYLOAD_NAME: NetPilot-ByeDPI-0.17.3-x64.zip
+  PAYLOAD_SIZE: '496964'
+  PAYLOAD_SHA256: c0fe998e3d81ccb871f09d126e7b5ee0ab82d15daf78bc44bcd63b7762313db7
+  MANIFEST_NAME: NetPilot-ByeDPI-0.17.3-x64.manifest.json
+  MANIFEST_SIZE: '511'
+  MANIFEST_SHA256: eaa6f063fcb8e012810f849ed08b6bd82d4d046d4796c2fb4b903c4195985f54
+  PROVENANCE_NAME: NetPilot-ByeDPI-0.17.3-x64.provenance.json
+  PROVENANCE_SIZE: '1726'
+  PROVENANCE_SHA256: e1f98760eed94f5daa7d37a868015755220cb17d389000bc49e031da511f7f31
+
+jobs:
+  create-draft-only:
+    name: Rebuild exact package and create draft only
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout exact NetPilot R42.5 checkpoint
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.NETPILOT_R42_5_SHA }}
+          path: netpilot
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Checkout exact reviewed ByeDPI source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: hufrea/byedpi
+          ref: ${{ env.BYEDPI_SOURCE_SHA }}
+          path: byedpi
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Require release tag and draft to be absent
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --tags "https://github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "release tag already exists: ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+
+          existing="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\") | .id")"
+          if [ -n "$existing" ]; then
+            echo "release or draft already exists for ${RELEASE_TAG}: ${existing}" >&2
+            exit 1
+          fi
+
+      - name: Verify exact source tree, LICENSE and reviewed patchset
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C netpilot rev-parse HEAD)" = "$NETPILOT_R42_5_SHA"
+          test "$(git -C byedpi rev-parse HEAD)" = "$BYEDPI_SOURCE_SHA"
+          test "$(git -C byedpi rev-parse 'HEAD^{tree}')" = "$BYEDPI_SOURCE_TREE"
+          test "$(git -C byedpi rev-parse 'HEAD:LICENSE')" = "$BYEDPI_LICENSE_BLOB"
+          test "$(sha256sum byedpi/LICENSE | awk '{print $1}')" = "$BYEDPI_LICENSE_SHA256"
+          test "$(wc -c < byedpi/LICENSE)" -eq 1063
+
+          cat > expected-patches.sha256 <<'EOF'
+          3e9a744830082d224592d730a816c4afcf9df15a2a6ab93870409ccf5c94c068  netpilot/security/native-admission/patches/byedpi-r28/0001-loopback-only-listener.patch
+          6701c48ef00f81ca7fa95f98a1e6406f657fbdfc028371f568c7918106cd5fb7  netpilot/security/native-admission/patches/byedpi-r28/0002-kavl-iterator-no-before-array-sentinel.patch
+          5d10702499581eeba2f632aa506b5d6c51ceb3e8e093bff25b8dcbc821bb3738  netpilot/security/native-admission/patches/byedpi-r28/0003-pid-file-fail-safe-write.patch
+          fdc13219be9cb9d654ce7995df825decb6ee0f05e63d72481560977bbf3b3c4a  netpilot/security/native-admission/patches/byedpi-r28/0004-kavl-empty-erase-guard.patch
+          7c8f4eee9ff2624346cb886027df66378773d0af04f5f84f54c30815104b4356  netpilot/security/native-admission/patches/byedpi-r28/0005-windows-socket-handle-narrowing-guard.patch
+          136b9fdf34b68a55f0f1a6ebf16e8b61c9b88e6d15eeb923594bdd7bf0fa2a3e  netpilot/security/native-admission/patches/byedpi-r28/0006-windows-wait-result-range.patch
+          778f47d3ecf2d0f6c8ce0152766c0eb51e2d6e460923227bed49844ba18c0d25  netpilot/security/native-admission/patches/byedpi-r28/0007-windows-aux-socket-probes.patch
+          EOF
+          sha256sum --check --strict expected-patches.sha256
+
+          for patch in \
+            0001-loopback-only-listener.patch \
+            0002-kavl-iterator-no-before-array-sentinel.patch \
+            0003-pid-file-fail-safe-write.patch \
+            0004-kavl-empty-erase-guard.patch \
+            0005-windows-socket-handle-narrowing-guard.patch \
+            0006-windows-wait-result-range.patch \
+            0007-windows-aux-socket-probes.patch; do
+            git -C byedpi apply --check "../netpilot/security/native-admission/patches/byedpi-r28/$patch"
+            git -C byedpi apply "../netpilot/security/native-admission/patches/byedpi-r28/$patch"
+          done
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install deterministic Windows cross compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mingw-w64 file
+
+      - name: Rebuild exact reviewed Windows candidate without execution
+        shell: bash
+        working-directory: byedpi
+        run: |
+          set -euo pipefail
+          make clean >/dev/null
+          make windows CC=x86_64-w64-mingw32-gcc WIN_LDFLAGS='-Wl,--no-insert-timestamp -lws2_32 -lmswsock'
+          test -f ciadpi.exe
+          test "$(sha256sum ciadpi.exe | awk '{print $1}')" = "$BYEDPI_WINDOWS_SHA256"
+          test "$(wc -c < ciadpi.exe)" -eq 495685
+
+      - name: Build package twice and require exact reviewed outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir package-a package-b evidence
+          dotnet run --project netpilot/tools/NetPilot.ByeDpiR42PackageBuilder/NetPilot.ByeDpiR42PackageBuilder.csproj --configuration Release -- byedpi/ciadpi.exe byedpi/LICENSE package-a
+          dotnet run --project netpilot/tools/NetPilot.ByeDpiR42PackageBuilder/NetPilot.ByeDpiR42PackageBuilder.csproj --configuration Release -- byedpi/ciadpi.exe byedpi/LICENSE package-b
+
+          for name in "$PAYLOAD_NAME" "$MANIFEST_NAME" "$PROVENANCE_NAME"; do
+            cmp --silent "package-a/$name" "package-b/$name"
+          done
+
+          test "$(wc -c < "package-a/$PAYLOAD_NAME")" -eq "$PAYLOAD_SIZE"
+          test "$(sha256sum "package-a/$PAYLOAD_NAME" | awk '{print $1}')" = "$PAYLOAD_SHA256"
+          test "$(wc -c < "package-a/$MANIFEST_NAME")" -eq "$MANIFEST_SIZE"
+          test "$(sha256sum "package-a/$MANIFEST_NAME" | awk '{print $1}')" = "$MANIFEST_SHA256"
+          test "$(wc -c < "package-a/$PROVENANCE_NAME")" -eq "$PROVENANCE_SIZE"
+          test "$(sha256sum "package-a/$PROVENANCE_NAME" | awk '{print $1}')" = "$PROVENANCE_SHA256"
+
+          test "$(unzip -Z1 "package-a/$PAYLOAD_NAME" | wc -l)" -eq 2
+          unzip -Z1 "package-a/$PAYLOAD_NAME" | grep -Fxq 'LICENSE'
+          unzip -Z1 "package-a/$PAYLOAD_NAME" | grep -Fxq 'bin/ciadpi.exe'
+
+          sha256sum package-a/* | sort | tee evidence/release-assets.sha256
+          wc -c package-a/* | tee evidence/release-assets.sizes
+
+      - name: Create exact draft release with all three assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<'EOF'
+          Reviewed NetPilot ByeDPI 0.17.3 x64 distribution package.
+
+          This draft contains the exact deterministic R42.5 artifacts only.
+          Publishing this draft is NOT native runtime admission.
+
+          Before publishing, repository release immutability must be enabled.
+          After publishing, the release must report `immutable=true` and all three asset
+          size/SHA-256 identities must match the R42.12.1 reviewed release catalog.
+          EOF
+
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$NETPILOT_R42_5_SHA" \
+            --title "NetPilot ByeDPI 0.17.3 x64 — reviewed package" \
+            --notes-file release-notes.md \
+            --draft \
+            "package-a/$PAYLOAD_NAME" \
+            "package-a/$MANIFEST_NAME" \
+            "package-a/$PROVENANCE_NAME"
+
+      - name: Verify created release remains draft with exactly three assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\")")"
+          test -n "$release_json"
+          test "$(jq -r '.draft' <<<"$release_json")" = 'true'
+          test "$(jq -r '.prerelease' <<<"$release_json")" = 'false'
+          test "$(jq '.assets | length' <<<"$release_json")" -eq 3
+
+          jq -r '.assets[] | [.name, .size, .digest] | @tsv' <<<"$release_json" | sort | tee evidence/draft-assets.tsv
+          grep -Fq "$PAYLOAD_NAME" evidence/draft-assets.tsv
+          grep -Fq "$MANIFEST_NAME" evidence/draft-assets.tsv
+          grep -Fq "$PROVENANCE_NAME" evidence/draft-assets.tsv
+          echo 'R42_12_1_DRAFT_RELEASE_CREATED=true' | tee evidence/draft-status.txt
+          echo 'R42_12_1_RELEASE_PUBLISHED=false' | tee -a evidence/draft-status.txt
+          echo 'R42_12_1_PRODUCTION_ADMISSION=BLOCK' | tee -a evidence/draft-status.txt
+
+      - name: Upload draft-creation text evidence only
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: byedpi-r42-12-1-draft-release-evidence
+          path: evidence/*
+          if-no-files-found: error
+          retention-days: 14
