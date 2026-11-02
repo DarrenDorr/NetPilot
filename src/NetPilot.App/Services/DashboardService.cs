@@ -127,7 +127,7 @@ public sealed class DashboardService : IDashboardService
         {
             if (_strategyRuntime is IDisposable disposableRuntime)
             {
-                disposableRuntime.Dispose();
+                Task.Run(disposableRuntime.Dispose).GetAwaiter().GetResult();
             }
         }
         finally
