@@ -54,6 +54,13 @@ builder.Services.AddSingleton<IWindowsByeDpiRuntimePlanProvider>(
 builder.Services.AddSingleton<WindowsByeDpiServiceOwnedProcessController>();
 builder.Services.AddSingleton<WindowsByeDpiRuntimeSession>();
 
+// R42.12: IPC знает о package status/apply, но production package mutation остаётся
+// double-blocked: OperationPolicy не разрешает EngineInstall, а injected provisioner
+// не содержит live HTTP transport и всегда fail-closed отклоняет mutation. Read-only
+// status идёт только через уже проверенное R42.3 managed-state API.
+builder.Services.AddSingleton<IWindowsByeDpiPackageProvisioner>(
+    NoAdmittedWindowsByeDpiPackageProvisioner.Instance);
+
 // R17/R20: release identity по-прежнему проходит только через admission-wrapper,
 // но при отсутствии ADMIT LocalSystem-служба даже не получает сетевой GitHub transport.
 // NoAdmittedZapretReleaseTransport не содержит HttpClient и всегда отказывает fail-closed.
