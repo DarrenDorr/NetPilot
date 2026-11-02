@@ -227,5 +227,11 @@ public sealed class WindowsZapretStrategyRuntimeTests
 
         public Task<IpcResponse> StopByeDpiAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(Failure("NotSupportedByZapretTestFake"));
+
+        public Task<IpcResponse> GetByeDpiPackageStatusAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Failure("NotSupportedByZapretTestFake"));
+
+        public Task<IpcResponse> ApplyReviewedByeDpiPackageAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Failure("NotSupportedByZapretTestFake"));
     }
 }
