@@ -160,18 +160,7 @@ public sealed class WindowsByeDpiStrategyRuntime : IStrategyRuntime, IDisposable
                 startInfo.ArgumentList.Add(argument);
             }
 
-            process = new Process
-            {
-                StartInfo = startInfo,
-                EnableRaisingEvents = true
-            };
-
-            if (!process.Start())
-            {
-                throw new StrategyRuntimeException(
-                    "ByeDpiProcessStartFailed",
-                    "Windows не смогла запустить проверенный ByeDPI-процесс.");
-            }
+            process = AuditedByeDpiUserModeProcessLauncher.Start(startInfo);
 
             try
             {
