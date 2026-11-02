@@ -36,6 +36,10 @@
           </StackPanel>
 
           <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="24,0,0,0" Spacing="10">
+            <Button Content="{Binding EngineActionText}"
+                    Command="{Binding ToggleEngineCommand}"
+                    Padding="18,10"
+                    HorizontalAlignment="Stretch" />
             <Button Content="Проверить сейчас"
                     Command="{Binding CheckCommand}"
                     Padding="18,10"
