@@ -39,6 +39,8 @@ public static class IpcRequestValidator
             IpcCommand.ByeDpiGetStatus => ValidateNoPayload(request),
             IpcCommand.ByeDpiStart => ValidateNoPayload(request),
             IpcCommand.ByeDpiStop => ValidateNoPayload(request),
+            IpcCommand.ByeDpiGetPackageStatus => ValidateNoPayload(request),
+            IpcCommand.ByeDpiApplyReviewedPackage => ValidateNoPayload(request),
             _ => IpcValidationResult.Invalid(
                 "UnknownCommand",
                 "Указана неизвестная IPC-команда.")
@@ -145,4 +147,6 @@ public interface IPrivilegedServiceClient
     Task<IpcResponse> GetByeDpiStatusAsync(CancellationToken cancellationToken = default);
     Task<IpcResponse> StartByeDpiAsync(CancellationToken cancellationToken = default);
     Task<IpcResponse> StopByeDpiAsync(CancellationToken cancellationToken = default);
+    Task<IpcResponse> GetByeDpiPackageStatusAsync(CancellationToken cancellationToken = default);
+    Task<IpcResponse> ApplyReviewedByeDpiPackageAsync(CancellationToken cancellationToken = default);
 }
