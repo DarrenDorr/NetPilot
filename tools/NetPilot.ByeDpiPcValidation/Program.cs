@@ -529,7 +529,7 @@ internal static class Program
                 [
                     "-i", "127.0.0.1",
                     "-p", port.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    "-N", "-U", "-c", "8", "-x", "0"
+                    "-U", "-c", "8", "-x", "0"
                 ],
                 redirect: true)
         };
