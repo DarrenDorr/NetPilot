@@ -150,7 +150,7 @@ public sealed class WindowsByeDpiLiveAcquisitionPipeline
             bundle,
             staged,
             operation,
-            engineLeaseActive: false,
+            false,
             cancellationToken);
 
         if (!string.Equals(promoted.CurrentVersion, descriptor.Version, StringComparison.Ordinal))
