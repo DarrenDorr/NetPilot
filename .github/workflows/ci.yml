@@ -102,7 +102,7 @@ jobs:
           if (Test-Path $expanded) { Remove-Item -LiteralPath $expanded -Recurse -Force }
           Expand-Archive -LiteralPath $bundle.FullName -DestinationPath $expanded
 
-          foreach ($required in @('diagnostics.json','environment.txt','privacy.txt','checksums.txt')) {
+          foreach ($required in @('diagnostics.json','environment.txt','engine-status.json','privacy.txt','checksums.txt')) {
             if (-not (Test-Path (Join-Path $expanded $required) -PathType Leaf)) {
               throw "Diagnostics bundle is missing $required"
             }
