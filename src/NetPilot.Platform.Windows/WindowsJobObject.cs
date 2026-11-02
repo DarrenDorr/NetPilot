@@ -114,22 +114,22 @@ internal sealed class WindowsJobObject : IDisposable
         public UIntPtr PeakJobMemoryUsed;
     }
 
-    private static partial class NativeMethods
+    private static class NativeMethods
     {
-        [LibraryImport("kernel32.dll", EntryPoint = "CreateJobObjectW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
-        public static partial SafeFileHandle CreateJobObject(IntPtr jobAttributes, string? name);
+        [DllImport("kernel32.dll", EntryPoint = "CreateJobObjectW", CharSet = CharSet.Unicode, SetLastError = true)]
+        public static extern SafeFileHandle CreateJobObject(IntPtr jobAttributes, string? name);
 
-        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static partial bool SetInformationJobObject(
+        public static extern bool SetInformationJobObject(
             SafeFileHandle job,
             JobObjectInfoType infoType,
             IntPtr jobObjectInfo,
             uint jobObjectInfoLength);
 
-        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static partial bool AssignProcessToJobObject(
+        public static extern bool AssignProcessToJobObject(
             SafeFileHandle job,
             IntPtr process);
     }
