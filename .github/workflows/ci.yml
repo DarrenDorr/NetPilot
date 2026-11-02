@@ -111,9 +111,13 @@ jobs:
           $metadata = Get-Content -LiteralPath (Join-Path $expanded 'diagnostics.json') -Raw | ConvertFrom-Json
           if ($metadata.AutomaticUpload -ne $false) { throw 'Diagnostics bundle must record AutomaticUpload=false.' }
           if ($metadata.DiagnosticCode -cne 'NP-DIAG-MANUAL-001') { throw 'Unexpected diagnostics code.' }
+          if ($metadata.ServiceLogsReadable -ne $true) { throw 'Installed user must have read-only access to service diagnostics.' }
 
           $appLogs = @(Get-ChildItem -LiteralPath (Join-Path $expanded 'logs\app') -Filter 'netpilot-*.jsonl' -File -ErrorAction SilentlyContinue)
           if ($appLogs.Count -lt 1) { throw 'Diagnostics bundle did not include the app JSONL log.' }
+
+          $serviceLogs = @(Get-ChildItem -LiteralPath (Join-Path $expanded 'logs\service') -Filter 'netpilot-*.jsonl' -File -ErrorAction SilentlyContinue)
+          if ($serviceLogs.Count -lt 1) { throw 'Diagnostics bundle did not include the service JSONL log.' }
 
       - name: Installer smoke test - uninstall and service removal
         if: always()
