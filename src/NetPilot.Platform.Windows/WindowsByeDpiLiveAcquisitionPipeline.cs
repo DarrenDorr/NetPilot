@@ -43,6 +43,8 @@ public sealed class WindowsByeDpiLiveAcquisitionPipeline
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        ThrowIfEngineLeaseActive(engineLeaseActive);
+
         var descriptor = ByeDpiReviewedReleaseCatalog.Current;
         var state = WindowsByeDpiAtomicPackagePromoter.GetState();
 
@@ -50,7 +52,7 @@ public sealed class WindowsByeDpiLiveAcquisitionPipeline
             descriptor,
             state.CurrentVersion,
             state.RetainedPreviousVersion,
-            engineLeaseActive,
+            engineLeaseActive: false,
             static (bundle, token) => WindowsByeDpiVerifiedBundleStager.StageAsync(bundle, token),
             static (bundle, staged, operation, leaseActive, token) =>
                 WindowsByeDpiVerifiedStagingPromoter.PromoteAsync(
@@ -72,13 +74,15 @@ public sealed class WindowsByeDpiLiveAcquisitionPipeline
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentException.ThrowIfNullOrWhiteSpace(stagingBase);
         ArgumentException.ThrowIfNullOrWhiteSpace(managedBase);
+        cancellationToken.ThrowIfCancellationRequested();
+        ThrowIfEngineLeaseActive(engineLeaseActive);
 
         var state = WindowsByeDpiAtomicPackagePromoter.GetStateForTesting(managedBase);
         return await ApplyCoreAsync(
             descriptor,
             state.CurrentVersion,
             state.RetainedPreviousVersion,
-            engineLeaseActive,
+            engineLeaseActive: false,
             (bundle, token) => WindowsByeDpiVerifiedBundleStager.StageForTestingAsync(
                 bundle,
                 stagingBase,
@@ -111,13 +115,7 @@ public sealed class WindowsByeDpiLiveAcquisitionPipeline
         CancellationToken cancellationToken)
     {
         _ = ByeDpiImmutableReleaseDocument.Serialize(descriptor);
-
-        if (engineLeaseActive)
-        {
-            throw new UpdateSecurityException(
-                "ByeDpiLiveAcquisitionActiveLease",
-                "ByeDPI package acquisition/promotion is blocked while an engine lease is active.");
-        }
+        ThrowIfEngineLeaseActive(engineLeaseActive);
 
         if (string.Equals(currentVersion, descriptor.Version, StringComparison.Ordinal))
         {
@@ -167,5 +165,15 @@ public sealed class WindowsByeDpiLiveAcquisitionPipeline
             promoted.CurrentVersion,
             promoted.RetainedPreviousVersion,
             Changed: true);
+    }
+
+    private static void ThrowIfEngineLeaseActive(bool engineLeaseActive)
+    {
+        if (engineLeaseActive)
+        {
+            throw new UpdateSecurityException(
+                "ByeDpiLiveAcquisitionActiveLease",
+                "ByeDPI package acquisition/promotion is blocked while an engine lease is active.");
+        }
     }
 }
