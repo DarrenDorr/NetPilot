@@ -121,7 +121,7 @@ internal static class Program
                 NetPilotDiagnosticLevel.Error,
                 "NP-DIAG-BUNDLE-ERR-001",
                 "Не удалось создать локальный диагностический пакет после сбоя.",
-                startupCorrelationId,
+                correlationId,
                 bundleException);
         }
     }
