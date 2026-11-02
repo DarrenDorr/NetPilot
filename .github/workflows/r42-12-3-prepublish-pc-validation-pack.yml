@@ -1,0 +1,364 @@
+name: R42.12.3 Pre-Publish Real-PC ByeDPI Validation Pack
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: netpilot-r42-12-3-prepublish-pc-validation
+  cancel-in-progress: false
+
+env:
+  R34_HARNESS_SHA: 42a7f467bf822f76f0a67a3b31d3c7b8174f3648
+  RELEASE_ID: '431054375'
+  RELEASE_TAG: byedpi-v0.17.3
+  RELEASE_TARGET: dc28fc4f0b635c34c63bbaed99ea7658d8a9c827
+  PAYLOAD_ASSET_ID: '700433235'
+  PAYLOAD_NAME: NetPilot-ByeDPI-0.17.3-x64.zip
+  PAYLOAD_SIZE: '496964'
+  PAYLOAD_SHA256: c0fe998e3d81ccb871f09d126e7b5ee0ab82d15daf78bc44bcd63b7762313db7
+  MANIFEST_ASSET_ID: '700433238'
+  MANIFEST_NAME: NetPilot-ByeDPI-0.17.3-x64.manifest.json
+  MANIFEST_SIZE: '511'
+  MANIFEST_SHA256: eaa6f063fcb8e012810f849ed08b6bd82d4d046d4796c2fb4b903c4195985f54
+  PROVENANCE_ASSET_ID: '700433234'
+  PROVENANCE_NAME: NetPilot-ByeDPI-0.17.3-x64.provenance.json
+  PROVENANCE_SIZE: '1726'
+  PROVENANCE_SHA256: e1f98760eed94f5daa7d37a868015755220cb17d389000bc49e031da511f7f31
+  BYEDPI_WINDOWS_SIZE: '495685'
+  BYEDPI_WINDOWS_SHA256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+  BYEDPI_LICENSE_SIZE: '1063'
+  BYEDPI_LICENSE_SHA256: 18c854c6c25dffefe4b522cf1bdf5d15278a25ca785948258bddb94393f575eb
+  TEST_VERSION: 0.1.0-alpha-r42-12-3
+
+jobs:
+  build-and-self-validate-pack:
+    name: Build exact-draft pack and execute the same validator on Windows
+    runs-on: windows-2025
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout current NetPilot main
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Require manual main-branch execution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REF -cne 'refs/heads/main') {
+            throw 'R42.12.3 pack may only be built manually from main.'
+          }
+          $head = (git rev-parse HEAD).Trim()
+          if ($head -cne $env:GITHUB_SHA) {
+            throw 'Checked-out NetPilot commit does not match GITHUB_SHA.'
+          }
+          New-Item -ItemType Directory -Force -Path hosted-evidence | Out-Null
+          "NETPILOT_COMMIT=$head" | Set-Content hosted-evidence\boundary.txt
+          'VALIDATION_SCOPE=PREPUBLISH_PC_ONLY' | Add-Content hosted-evidence\boundary.txt
+          'PRODUCTION_ADMISSION=BLOCK' | Add-Content hosted-evidence\boundary.txt
+
+      - name: Checkout exact previously-green R34 functional harness
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.R34_HARNESS_SHA }}
+          path: r34
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Require exact unpublished draft metadata
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/$env:RELEASE_ID" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to query exact draft release.' }
+          if ([string]$release.id -cne $env:RELEASE_ID) { throw 'Release ID drift.' }
+          if ($release.tag_name -cne $env:RELEASE_TAG) { throw 'Release tag drift.' }
+          if ($release.target_commitish -cne $env:RELEASE_TARGET) { throw 'Release target drift.' }
+          if ($release.draft -ne $true) { throw 'R42.12.3 requires the release to remain a draft.' }
+          if ($release.prerelease -ne $false) { throw 'R42.12.3 refuses prerelease state.' }
+          if ($null -ne $release.published_at) { throw 'R42.12.3 refuses an already-published release.' }
+          if (@($release.assets).Count -ne 3) { throw 'Exact draft must contain three assets.' }
+
+          $expected = @(
+            @{ Id=$env:PAYLOAD_ASSET_ID; Name=$env:PAYLOAD_NAME; Size=[long]$env:PAYLOAD_SIZE; Digest="sha256:$env:PAYLOAD_SHA256" },
+            @{ Id=$env:MANIFEST_ASSET_ID; Name=$env:MANIFEST_NAME; Size=[long]$env:MANIFEST_SIZE; Digest="sha256:$env:MANIFEST_SHA256" },
+            @{ Id=$env:PROVENANCE_ASSET_ID; Name=$env:PROVENANCE_NAME; Size=[long]$env:PROVENANCE_SIZE; Digest="sha256:$env:PROVENANCE_SHA256" }
+          )
+          foreach ($item in $expected) {
+            $asset = @($release.assets | Where-Object { [string]$_.id -ceq $item.Id })
+            if ($asset.Count -ne 1) { throw "Draft asset ID cardinality mismatch: $($item.Id)" }
+            if ($asset[0].name -cne $item.Name) { throw "Draft asset name drift: $($item.Name)" }
+            if ($asset[0].state -cne 'uploaded') { throw "Draft asset is not uploaded: $($item.Name)" }
+            if ([long]$asset[0].size -ne $item.Size) { throw "Draft asset size drift: $($item.Name)" }
+            if ($asset[0].digest -cne $item.Digest) { throw "Draft asset digest drift: $($item.Name)" }
+          }
+
+          'DRAFT_METADATA=PASS' | Add-Content hosted-evidence\boundary.txt
+          'RELEASE_PUBLISHED=False' | Add-Content hosted-evidence\boundary.txt
+
+      - name: Download exact draft assets as binary bytes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p draft-assets
+          gh api -H 'Accept: application/octet-stream' "repos/${GITHUB_REPOSITORY}/releases/assets/${PAYLOAD_ASSET_ID}" > "draft-assets/${PAYLOAD_NAME}"
+          gh api -H 'Accept: application/octet-stream' "repos/${GITHUB_REPOSITORY}/releases/assets/${MANIFEST_ASSET_ID}" > "draft-assets/${MANIFEST_NAME}"
+          gh api -H 'Accept: application/octet-stream' "repos/${GITHUB_REPOSITORY}/releases/assets/${PROVENANCE_ASSET_ID}" > "draft-assets/${PROVENANCE_NAME}"
+
+      - name: Re-verify exact downloaded draft package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Assert-File([string]$Path, [long]$Size, [string]$Sha256) {
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Missing file: $Path" }
+            if ((Get-Item -LiteralPath $Path).Length -ne $Size) { throw "Size mismatch: $Path" }
+            $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+            if ($actual -cne $Sha256) { throw "SHA-256 mismatch: $Path" }
+          }
+
+          Assert-File "draft-assets\$env:PAYLOAD_NAME" ([long]$env:PAYLOAD_SIZE) $env:PAYLOAD_SHA256
+          Assert-File "draft-assets\$env:MANIFEST_NAME" ([long]$env:MANIFEST_SIZE) $env:MANIFEST_SHA256
+          Assert-File "draft-assets\$env:PROVENANCE_NAME" ([long]$env:PROVENANCE_SIZE) $env:PROVENANCE_SHA256
+          Expand-Archive -LiteralPath "draft-assets\$env:PAYLOAD_NAME" -DestinationPath exact-candidate
+          $files = @(Get-ChildItem -LiteralPath exact-candidate -File -Recurse)
+          if ($files.Count -ne 2) { throw 'Exact draft ZIP must contain exactly two files.' }
+          Assert-File 'exact-candidate\bin\ciadpi.exe' ([long]$env:BYEDPI_WINDOWS_SIZE) $env:BYEDPI_WINDOWS_SHA256
+          Assert-File 'exact-candidate\LICENSE' ([long]$env:BYEDPI_LICENSE_SIZE) $env:BYEDPI_LICENSE_SHA256
+          'EXACT_DRAFT_BYTES=PASS' | Add-Content hosted-evidence\boundary.txt
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build current diagnostic-enabled NetPilot installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pwsh -NoLogo -NoProfile -File scripts/build-installer.ps1 -Version $env:TEST_VERSION -VersionInfoVersion 0.1.0.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $setup = "artifacts\installer\NetPilot-Setup-$env:TEST_VERSION-x64.exe"
+          if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) { throw 'Expected NetPilot test installer was not built.' }
+
+      - name: Publish real-PC validator as self-contained x64 EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish tools\NetPilot.ByeDpiPcValidation\NetPilot.ByeDpiPcValidation.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            --output build\pc-validator
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path -LiteralPath 'build\pc-validator\NetPilot.ByeDpiPcValidation.exe' -PathType Leaf)) {
+            throw 'Self-contained PC validator EXE was not produced.'
+          }
+
+      - name: Publish pinned R34 harness as self-contained x64 EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C r34 rev-parse HEAD).Trim() -cne $env:R34_HARNESS_SHA) { throw 'R34 harness checkpoint drift.' }
+          dotnet publish r34\tools\NetPilot.ByeDpiR34Lab\NetPilot.ByeDpiR34Lab.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            --output build\r34-validator
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path -LiteralPath 'build\r34-validator\NetPilot.ByeDpiR34Lab.exe' -PathType Leaf)) {
+            throw 'Pinned R34 harness EXE was not produced.'
+          }
+
+      - name: Assemble deterministic pre-publication PC validation pack
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pack = Join-Path $PWD 'pack'
+          New-Item -ItemType Directory -Force -Path $pack | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $pack 'candidate\bin') | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $pack 'validator') | Out-Null
+
+          $setupSource = "artifacts\installer\NetPilot-Setup-$env:TEST_VERSION-x64.exe"
+          Copy-Item -LiteralPath $setupSource -Destination (Join-Path $pack "NetPilot-Setup-$env:TEST_VERSION-x64.exe")
+          Copy-Item -LiteralPath 'build\pc-validator\NetPilot.ByeDpiPcValidation.exe' -Destination (Join-Path $pack 'NetPilot-ByeDPI-PC-Validation.exe')
+          Copy-Item -LiteralPath 'build\r34-validator\NetPilot.ByeDpiR34Lab.exe' -Destination (Join-Path $pack 'validator\NetPilot.ByeDpiR34Lab.exe')
+          Copy-Item -LiteralPath 'exact-candidate\bin\ciadpi.exe' -Destination (Join-Path $pack 'candidate\bin\ciadpi.exe')
+          Copy-Item -LiteralPath 'exact-candidate\LICENSE' -Destination (Join-Path $pack 'candidate\LICENSE')
+          Copy-Item -LiteralPath 'docs\R42.12.3-PC-VALIDATION.md' -Destination (Join-Path $pack 'README.md')
+
+          $setup = Get-Item -LiteralPath (Join-Path $pack "NetPilot-Setup-$env:TEST_VERSION-x64.exe")
+          $runner = Get-Item -LiteralPath (Join-Path $pack 'NetPilot-ByeDPI-PC-Validation.exe')
+          $harness = Get-Item -LiteralPath (Join-Path $pack 'validator\NetPilot.ByeDpiR34Lab.exe')
+          $head = (git rev-parse HEAD).Trim()
+
+          [ordered]@{
+            schema = 1
+            purpose = 'R42.12.3 pre-publication real-PC validation only'
+            netpilot_commit = $head
+            draft_release_id = [long]$env:RELEASE_ID
+            draft_tag = $env:RELEASE_TAG
+            draft_target_commit = $env:RELEASE_TARGET
+            release_published = $false
+            production_admission = 'BLOCK'
+            candidate = [ordered]@{
+              path = 'candidate/bin/ciadpi.exe'
+              size = [long]$env:BYEDPI_WINDOWS_SIZE
+              sha256 = $env:BYEDPI_WINDOWS_SHA256
+            }
+            license = [ordered]@{
+              path = 'candidate/LICENSE'
+              size = [long]$env:BYEDPI_LICENSE_SIZE
+              sha256 = $env:BYEDPI_LICENSE_SHA256
+            }
+            installer = [ordered]@{
+              path = $setup.Name
+              size = $setup.Length
+              sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $setup.FullName).Hash.ToLowerInvariant()
+            }
+            validator = [ordered]@{
+              path = $runner.Name
+              size = $runner.Length
+              sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $runner.FullName).Hash.ToLowerInvariant()
+            }
+            r34_harness = [ordered]@{
+              checkpoint = $env:R34_HARNESS_SHA
+              path = 'validator/NetPilot.ByeDpiR34Lab.exe'
+              size = $harness.Length
+              sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $harness.FullName).Hash.ToLowerInvariant()
+            }
+          } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $pack 'package-manifest.json') -Encoding utf8NoBOM
+
+          $candidateActual = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $pack 'candidate\bin\ciadpi.exe')).Hash.ToLowerInvariant()
+          if ($candidateActual -cne $env:BYEDPI_WINDOWS_SHA256) { throw 'Candidate hash drift inside validation pack.' }
+          'VALIDATION_PACK_ASSEMBLED=PASS' | Add-Content hosted-evidence\boundary.txt
+
+      - name: Install the same NetPilot build contained in the pack
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Resolve-Path "pack\NetPilot-Setup-$env:TEST_VERSION-x64.exe"
+          $process = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Setup failed with exit code $($process.ExitCode)" }
+          $service = Get-Service -Name 'NetPilot.Service' -ErrorAction Stop
+          if ($service.Status -ne 'Running') { throw "NetPilot.Service is not running: $($service.Status)" }
+          'PACK_INSTALL=PASS' | Add-Content hosted-evidence\boundary.txt
+
+      - name: Execute the same real-PC validator shipped to the user
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $support = Join-Path $env:LOCALAPPDATA 'NetPilot\Support'
+          if (Test-Path -LiteralPath $support) { Remove-Item -LiteralPath $support -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $support | Out-Null
+
+          $runner = Resolve-Path 'pack\NetPilot-ByeDPI-PC-Validation.exe'
+          & $runner 2>&1 | Tee-Object -FilePath hosted-evidence\validator-console.txt
+          $exit = $LASTEXITCODE
+          if ($exit -ne 0) { throw "Real-PC validator failed with exit code $exit" }
+
+          $bundle = Get-ChildItem -LiteralPath $support -Filter 'NetPilot-ByeDPI-PC-Validation-*-UTC.zip' -File |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
+          if ($null -eq $bundle) { throw 'Combined validation evidence ZIP was not created.' }
+
+          $expanded = Join-Path $env:RUNNER_TEMP 'r42-12-3-hosted-evidence'
+          if (Test-Path -LiteralPath $expanded) { Remove-Item -LiteralPath $expanded -Recurse -Force }
+          Expand-Archive -LiteralPath $bundle.FullName -DestinationPath $expanded
+          $evidenceFile = Get-ChildItem -LiteralPath $expanded -Filter 'ByeDPI-PrePublish-Validation-*-UTC.txt' -File | Select-Object -First 1
+          if ($null -eq $evidenceFile) { throw 'Combined evidence is missing validation text.' }
+          $content = Get-Content -LiteralPath $evidenceFile.FullName -Raw
+          foreach ($marker in @(
+            "CANDIDATE_SHA256=$env:BYEDPI_WINDOWS_SHA256",
+            'SYNTHETIC_R34_RUNTIME=PASS',
+            'EXTERNAL_SOCKS5_HTTPS=PASS',
+            'SUPPORT_BUNDLE_ENGINE_SHA256=PASS',
+            'CANDIDATE_CLEANUP=PASS',
+            'RUNTIME_RESIDUE=NONE',
+            'SYSTEM_PROXY_UNCHANGED=PASS',
+            'WINDIVERT_UNCHANGED=PASS',
+            'PRODUCTION_ADMISSION=BLOCK',
+            'RESULT=R42_12_3_REAL_PC_VALIDATION_PASS_BLOCK'
+          )) {
+            if (-not $content.Contains($marker, [StringComparison]::Ordinal)) {
+              throw "Hosted self-validation evidence marker missing: $marker"
+            }
+          }
+
+          Copy-Item -LiteralPath $evidenceFile.FullName -Destination hosted-evidence\real-pc-validator-evidence.txt
+          Copy-Item -LiteralPath $bundle.FullName -Destination hosted-evidence\hosted-combined-evidence.zip
+
+          $versionRoot = Join-Path $env:ProgramFiles 'NetPilot\Engines\Managed\byedpi\0.17.3-netpilot-r34-lab'
+          if (Test-Path -LiteralPath $versionRoot) { throw 'Validation candidate remained staged after hosted run.' }
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) { throw 'ciadpi process remained after hosted run.' }
+          'HOSTED_SELF_VALIDATION=PASS' | Add-Content hosted-evidence\boundary.txt
+
+      - name: Re-require draft remains unpublished and unchanged
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/$env:RELEASE_ID" | ConvertFrom-Json
+          if ($release.draft -ne $true -or $release.prerelease -ne $false -or $null -ne $release.published_at) {
+            throw 'Draft publication state changed during R42.12.3 packaging.'
+          }
+          if (@($release.assets).Count -ne 3) { throw 'Draft asset count changed during R42.12.3 packaging.' }
+          $digestMap = @{}
+          foreach ($asset in $release.assets) { $digestMap[[string]$asset.id] = $asset.digest }
+          if ($digestMap[$env:PAYLOAD_ASSET_ID] -cne "sha256:$env:PAYLOAD_SHA256") { throw 'Payload digest changed.' }
+          if ($digestMap[$env:MANIFEST_ASSET_ID] -cne "sha256:$env:MANIFEST_SHA256") { throw 'Manifest digest changed.' }
+          if ($digestMap[$env:PROVENANCE_ASSET_ID] -cne "sha256:$env:PROVENANCE_SHA256") { throw 'Provenance digest changed.' }
+          'DRAFT_UNCHANGED_AFTER_PACKAGING=PASS' | Add-Content hosted-evidence\boundary.txt
+          'PRODUCTION_ADMISSION=BLOCK' | Add-Content hosted-evidence\boundary.txt
+          'RESULT=R42_12_3_HOSTED_PACK_SELF_VALIDATION_PASS_BLOCK' | Add-Content hosted-evidence\boundary.txt
+
+      - name: Upload one-day pre-publication PC validation pack
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: netpilot-r42-12-3-prepublish-pc-validation-pack
+          path: pack
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6
+
+      - name: Upload text-first hosted validation evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: netpilot-r42-12-3-hosted-validation-evidence
+          path: hosted-evidence
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 6
+
+      - name: Uninstall hosted test copy and require service removal
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) {
+            Get-Process -Name ciadpi | Stop-Process -Force
+          }
+          $uninstaller = Join-Path $env:ProgramFiles 'NetPilot\unins000.exe'
+          if (Test-Path -LiteralPath $uninstaller) {
+            $process = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+            if ($process.ExitCode -ne 0) { Write-Error "Uninstall failed with exit code $($process.ExitCode)" }
+          }
+          if (Get-Service -Name 'NetPilot.Service' -ErrorAction SilentlyContinue) {
+            Write-Error 'NetPilot.Service remained registered after hosted cleanup.'
+          }
