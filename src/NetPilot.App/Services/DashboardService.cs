@@ -74,7 +74,17 @@ public sealed class DashboardService : IDashboardService
         }
 
         _disposed = true;
-        _healthChecker.Dispose();
+        try
+        {
+            if (_strategyRuntime is IDisposable disposableRuntime)
+            {
+                disposableRuntime.Dispose();
+            }
+        }
+        finally
+        {
+            _healthChecker.Dispose();
+        }
     }
 
     private void ThrowIfDisposed() =>
