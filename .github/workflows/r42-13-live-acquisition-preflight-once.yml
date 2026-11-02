@@ -89,16 +89,32 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path evidence | Out-Null
-          $response = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/byedpi-v0.17.3" 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            $release = $response | ConvertFrom-Json
-            if ($release.draft -ne $false -or $release.prerelease -ne $false -or $release.immutable -ne $true) {
-              throw 'Published R42.13 prerequisite exists but is not stable immutable release metadata.'
-            }
-            'R42_13_IMMUTABLE_RELEASE_PREREQUISITE=READY' | Set-Content evidence\release-prerequisite.txt
-          } else {
-            'R42_13_IMMUTABLE_RELEASE_PREREQUISITE=BLOCKED_RELEASE_ABSENT' | Set-Content evidence\release-prerequisite.txt
+
+          $headers = @{
+            Accept = 'application/vnd.github+json'
+            Authorization = "Bearer $env:GH_TOKEN"
+            'X-GitHub-Api-Version' = '2022-11-28'
           }
+          $uri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/byedpi-v0.17.3"
+          $response = Invoke-WebRequest -Uri $uri -Headers $headers -Method Get -SkipHttpErrorCheck
+          $statusCode = [int]$response.StatusCode
+
+          switch ($statusCode) {
+            200 {
+              $release = $response.Content | ConvertFrom-Json
+              if ($release.draft -ne $false -or $release.prerelease -ne $false -or $release.immutable -ne $true) {
+                throw 'Published R42.13 prerequisite exists but is not stable immutable release metadata.'
+              }
+              'R42_13_IMMUTABLE_RELEASE_PREREQUISITE=READY' | Set-Content evidence\release-prerequisite.txt
+            }
+            404 {
+              'R42_13_IMMUTABLE_RELEASE_PREREQUISITE=BLOCKED_RELEASE_ABSENT' | Set-Content evidence\release-prerequisite.txt
+            }
+            default {
+              throw "Unexpected GitHub API status while checking R42.13 prerequisite: HTTP $statusCode."
+            }
+          }
+
           'R42_13_LIVE_NETWORK_E2E=NOT_RUN_IN_PREFLIGHT' | Add-Content evidence\release-prerequisite.txt
           'R42_13_SERVICE_PRODUCTION_WIRING=ABSENT' | Add-Content evidence\release-prerequisite.txt
           'R42_13_NATIVE_EXECUTION=NOT_PERFORMED' | Add-Content evidence\release-prerequisite.txt
