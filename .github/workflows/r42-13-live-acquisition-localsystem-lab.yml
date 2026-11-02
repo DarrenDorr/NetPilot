@@ -1,0 +1,232 @@
+name: R42.13 ByeDPI Live Acquisition LocalSystem Lab
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: netpilot-r42-13-live-acquisition-lab
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: byedpi-v0.17.3
+  PAYLOAD_NAME: NetPilot-ByeDPI-0.17.3-x64.zip
+  PAYLOAD_SIZE: '496964'
+  PAYLOAD_SHA256: c0fe998e3d81ccb871f09d126e7b5ee0ab82d15daf78bc44bcd63b7762313db7
+  MANIFEST_NAME: NetPilot-ByeDPI-0.17.3-x64.manifest.json
+  MANIFEST_SIZE: '511'
+  MANIFEST_SHA256: eaa6f063fcb8e012810f849ed08b6bd82d4d046d4796c2fb4b903c4195985f54
+  PROVENANCE_NAME: NetPilot-ByeDPI-0.17.3-x64.provenance.json
+  PROVENANCE_SIZE: '1726'
+  PROVENANCE_SHA256: e1f98760eed94f5daa7d37a868015755220cb17d389000bc49e031da511f7f31
+
+jobs:
+  live-acquisition-localsystem:
+    runs-on: windows-2025
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout exact dispatched R42.13 checkpoint
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Require exact published immutable release before live acquisition
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path evidence | Out-Null
+          if ((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'R42.13 checkout drift.' }
+
+          $release = (gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json)
+          if ($release.tag_name -ne $env:RELEASE_TAG) { throw 'R42.13 release tag mismatch.' }
+          if ($release.draft -ne $false) { throw 'R42.13 refuses a draft release.' }
+          if ($release.prerelease -ne $false) { throw 'R42.13 refuses a prerelease.' }
+          if ($release.immutable -ne $true) { throw 'R42.13 requires immutable=true.' }
+          if (@($release.assets).Count -ne 3) { throw 'R42.13 requires exactly three release assets.' }
+
+          function Assert-Asset([string]$Name, [long]$Size, [string]$Sha256) {
+            $matches = @($release.assets | Where-Object { $_.name -ceq $Name })
+            if ($matches.Count -ne 1) { throw "R42.13 asset cardinality mismatch: $Name" }
+            $asset = $matches[0]
+            if ($asset.state -cne 'uploaded') { throw "R42.13 asset is not uploaded: $Name" }
+            if ([long]$asset.size -ne $Size) { throw "R42.13 asset size mismatch: $Name" }
+            if ($asset.digest -cne "sha256:$Sha256") { throw "R42.13 asset digest mismatch: $Name" }
+          }
+
+          Assert-Asset $env:PAYLOAD_NAME ([long]$env:PAYLOAD_SIZE) $env:PAYLOAD_SHA256
+          Assert-Asset $env:MANIFEST_NAME ([long]$env:MANIFEST_SIZE) $env:MANIFEST_SHA256
+          Assert-Asset $env:PROVENANCE_NAME ([long]$env:PROVENANCE_SIZE) $env:PROVENANCE_SHA256
+
+          gh release verify $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY | Tee-Object -FilePath evidence\immutable-release-verification.txt | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub immutable release verification failed.' }
+
+          $release | Select-Object id, tag_name, draft, prerelease, immutable, target_commitish | ConvertTo-Json | Set-Content evidence\release-metadata.json
+          'IMMUTABLE_RELEASE_PREREQUISITE=PASS' | Set-Content evidence\boundary.txt
+          "R42_13_CHECKPOINT=$env:GITHUB_SHA" | Add-Content evidence\boundary.txt
+          'NATIVE_EXECUTION_TESTED=False' | Add-Content evidence\boundary.txt
+          'PRODUCTION_ADMISSION=BLOCK' | Add-Content evidence\boundary.txt
+
+      - name: Assert clean hosted boundary and create lab ownership marker
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) { throw 'Unexpected ciadpi process before R42.13 lab.' }
+
+          $productRoot = Join-Path $env:ProgramFiles 'NetPilot'
+          if (Test-Path -LiteralPath $productRoot) { throw 'R42.13 refuses a pre-existing Program Files\NetPilot tree.' }
+
+          $token = "r42-13-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          New-Item -ItemType Directory -Force -Path $productRoot | Out-Null
+          Set-Content -LiteralPath (Join-Path $productRoot '.r42-13-lab-owned') -Value $token -NoNewline
+          "LAB_OWNERSHIP_TOKEN=$token" | Add-Content evidence\boundary.txt
+          'PREEXISTING_PRODUCT_ROOT=False' | Add-Content evidence\boundary.txt
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build isolated live acquisition lab host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish tools\NetPilot.ByeDpiR42_13LiveAcquisitionLab\NetPilot.ByeDpiR42_13LiveAcquisitionLab.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            --output .labpublish
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $published = Resolve-Path '.labpublish\NetPilot.ByeDpiR42_13LiveAcquisitionLab.exe'
+          $tempExe = "C:\Windows\Temp\NetPilotR4213Lab-$env:GITHUB_RUN_ID.exe"
+          Copy-Item -LiteralPath $published -Destination $tempExe -Force
+          "LAB_EXE_SHA256=$((Get-FileHash -Algorithm SHA256 -LiteralPath $tempExe).Hash.ToLowerInvariant())" | Add-Content evidence\boundary.txt
+
+      - name: Execute real acquisition staging and promotion as LocalSystem
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $taskName = "NetPilot-R42-13-$env:GITHUB_RUN_ID"
+          $labExe = "C:\Windows\Temp\NetPilotR4213Lab-$env:GITHUB_RUN_ID.exe"
+          $resultPath = "C:\Windows\Temp\NetPilotR4213Result-$env:GITHUB_RUN_ID.txt"
+          $token = "r42-13-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $start = (Get-Date).AddMinutes(5).ToString('HH:mm')
+          $taskCommand = "`"$labExe`" `"$resultPath`" `"$token`""
+
+          & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC ONCE /ST $start /RU SYSTEM /RL HIGHEST /F | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to create R42.13 LocalSystem scheduled task.' }
+          & schtasks.exe /Run /TN $taskName | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to start R42.13 LocalSystem scheduled task.' }
+
+          $content = $null
+          foreach ($attempt in 1..180) {
+            if (Test-Path -LiteralPath $resultPath) {
+              $content = Get-Content -LiteralPath $resultPath -Raw
+              if ($content -match 'RESULT=') { break }
+            }
+            Start-Sleep -Seconds 1
+          }
+
+          if ([string]::IsNullOrWhiteSpace($content) -or $content -notmatch 'RESULT=') {
+            $info = Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction SilentlyContinue
+            if ($null -ne $info) { $info | Format-List * | Out-String | Write-Host }
+            throw 'R42.13 LocalSystem lab did not produce terminal evidence.'
+          }
+
+          $content | Write-Host
+          Copy-Item -LiteralPath $resultPath -Destination evidence\localsystem-result.txt -Force
+
+          foreach ($marker in @(
+            'IDENTITY_LOCALSYSTEM=PASS',
+            'CIADPI_PROCESS_ABSENT_BEFORE=PASS',
+            'LAB_OWNERSHIP_MARKER=PASS',
+            'INITIAL_MANAGED_STATE_EMPTY=PASS',
+            'LIVE_EXACT_TAG_ACQUISITION=PASS',
+            'VERIFIED_DOWNLOADER=PASS',
+            'PROTECTED_STAGING=PASS',
+            'ATOMIC_INSTALL_PROMOTION=PASS',
+            'PROTECTED_MANAGED_STATE=PASS',
+            'MANAGED_CIADPI_EXACT_IDENTITY=PASS',
+            'MANAGED_LICENSE_EXACT_IDENTITY=PASS',
+            'CIADPI_PROCESS_ABSENT_AFTER=PASS',
+            'NATIVE_EXECUTION_TESTED=False',
+            'SERVICE_PRODUCTION_WIRING=ABSENT',
+            'PRODUCTION_ADMISSION=BLOCK',
+            'RESULT=R42_13_LIVE_ACQUISITION_LOCALSYSTEM_PASS_BLOCK'
+          )) {
+            if (-not $content.Contains($marker, [StringComparison]::Ordinal)) {
+              throw "Missing required R42.13 evidence marker: $marker"
+            }
+          }
+
+          $info = Get-ScheduledTaskInfo -TaskName $taskName
+          if ($info.LastTaskResult -ne 0) { throw "R42.13 LocalSystem task exit code was $($info.LastTaskResult)." }
+
+      - name: Verify real managed package evidence without execution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) { throw 'R42.13 unexpectedly launched ciadpi.' }
+
+          $managedRoot = Join-Path $env:ProgramFiles 'NetPilot\Engines\Managed\byedpi\0.17.3\x64'
+          $exe = Join-Path $managedRoot 'bin\ciadpi.exe'
+          $license = Join-Path $managedRoot 'LICENSE'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Managed ciadpi.exe missing.' }
+          if (-not (Test-Path -LiteralPath $license -PathType Leaf)) { throw 'Managed LICENSE missing.' }
+          if ((Get-Item -LiteralPath $exe).Length -ne 495685) { throw 'Managed ciadpi.exe size mismatch.' }
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash.ToLowerInvariant() -ne '866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd') { throw 'Managed ciadpi.exe SHA-256 mismatch.' }
+          if ((Get-Item -LiteralPath $license).Length -ne 1063) { throw 'Managed LICENSE size mismatch.' }
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $license).Hash.ToLowerInvariant() -ne '18c854c6c25dffefe4b522cf1bdf5d15278a25ca785948258bddb94393f575eb') { throw 'Managed LICENSE SHA-256 mismatch.' }
+
+          & icacls.exe (Join-Path $env:ProgramFiles 'NetPilot\Engines\Managed\byedpi') | Tee-Object -FilePath evidence\acl-managed.txt | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to capture R42.13 managed ACL evidence.' }
+          & icacls.exe (Join-Path $env:ProgramFiles 'NetPilot\Engines\Staging\ByeDPI') | Tee-Object -FilePath evidence\acl-staging.txt | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to capture R42.13 staging ACL evidence.' }
+
+          'REAL_REVIEWED_PACKAGE_AT_REST=PASS' | Add-Content evidence\boundary.txt
+          'CIADPI_PROCESS_ABSENT=PASS' | Add-Content evidence\boundary.txt
+          'RESULT=R42_13_HOSTED_EVIDENCE_PASS_BLOCK' | Add-Content evidence\boundary.txt
+
+      - name: Cleanup owned R42.13 lab state
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $taskName = "NetPilot-R42-13-$env:GITHUB_RUN_ID"
+          & schtasks.exe /End /TN $taskName 2>$null | Out-Null
+          & schtasks.exe /Delete /TN $taskName /F 2>$null | Out-Null
+          Remove-Item -LiteralPath "C:\Windows\Temp\NetPilotR4213Lab-$env:GITHUB_RUN_ID.exe" -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath "C:\Windows\Temp\NetPilotR4213Result-$env:GITHUB_RUN_ID.txt" -Force -ErrorAction SilentlyContinue
+
+          $productRoot = Join-Path $env:ProgramFiles 'NetPilot'
+          if (Test-Path -LiteralPath $productRoot) {
+            $marker = Join-Path $productRoot '.r42-13-lab-owned'
+            $expected = "r42-13-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+            if ((Test-Path -LiteralPath $marker) -and ((Get-Content -LiteralPath $marker -Raw).Trim() -eq $expected)) {
+              Remove-Item -LiteralPath $productRoot -Recurse -Force
+            } else {
+              Write-Error 'Refusing to delete Program Files\NetPilot because the R42.13 ownership marker is missing or mismatched.'
+            }
+          }
+
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) {
+            Write-Error 'ciadpi process exists after R42.13 cleanup.'
+          }
+
+      - name: Upload R42.13 live acquisition evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: byedpi-r42-13-live-acquisition-evidence
+          path: evidence
+          if-no-files-found: error
+          retention-days: 14

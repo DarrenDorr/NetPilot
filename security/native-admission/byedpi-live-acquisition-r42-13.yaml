@@ -1,0 +1,65 @@
+schema_version: 1
+scope: byedpi-r42.13-live-acquisition-lab
+status: LAB_ONLY_BLOCKED_UNTIL_IMMUTABLE_RELEASE
+parent_checkpoint: 6c0fe041f8236b5cf472669864cf55f4a348a315
+
+live_http_boundary:
+  handler: SocketsHttpHandler
+  automatic_redirects: false
+  cookies: false
+  ambient_proxy: false
+  credentials: false
+  preauthenticate: false
+  automatic_decompression: false
+  connect_timeout_seconds: 10
+  total_transport_timeout_seconds: 20
+  max_connections_per_server: 2
+  custom_connect_callback: false
+  custom_tls_validation_callback: false
+  activity_header_propagation: false
+
+reviewed_release_boundary:
+  descriptor: ByeDpiReviewedReleaseCatalog.Current
+  repository: DarrenDorr/NetPilot
+  tag: byedpi-v0.17.3
+  requires_published: true
+  requires_draft_false: true
+  requires_prerelease_false: true
+  requires_immutable_true: true
+  exact_three_assets_required: true
+
+pipeline_boundary:
+  downloader: R42.10_VERIFIED_IN_MEMORY
+  staging: R42.11_EXISTING_PROTECTED_TRANSACTION
+  promotion: R42.11.1_EXISTING_ATOMIC_PROMOTER
+  active_engine_lease_blocks_before_network: true
+  exact_current_version_noop_before_network: true
+  install_upgrade_only: true
+  repair: NOT_IMPLEMENTED
+  rollback: NOT_IMPLEMENTED
+  uninstall: NOT_IMPLEMENTED
+
+lab_boundary:
+  workflow_dispatch_only: true
+  windows_runner: true
+  localsystem_required: true
+  program_files_lab_ownership_marker_required: true
+  actual_reviewed_binary_downloaded: true
+  actual_reviewed_binary_executed: false
+  exact_managed_binary_identity_reverified: true
+  cleanup_owned_tree: true
+
+production_boundary:
+  service_registration: ABSENT
+  service_provisioner: NoAdmittedWindowsByeDpiPackageProvisioner
+  engine_install_policy: BLOCK
+  native_process_launcher: NO_ADMITTED
+  runtime_plan_provider: NO_ADMITTED
+  package_mutation: BLOCK
+  native_execution: NOT_IMPLEMENTED
+  windivert_execution: NOT_IMPLEMENTED
+  production_admission: BLOCK
+
+next_gate:
+  prerequisite: R42_13_LIVE_LOCALSYSTEM_EVIDENCE_GREEN
+  gate: R42_14_FIRST_INSTALLABLE_TEST_BUILD

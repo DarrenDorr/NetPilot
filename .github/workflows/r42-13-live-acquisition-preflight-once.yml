@@ -1,0 +1,138 @@
+name: R42.13 ByeDPI Live Acquisition Lab Preflight Once
+
+on:
+  push:
+    branches:
+      - feature/byedpi-live-acquisition-lab-r42-13
+    paths:
+      - 'src/NetPilot.Updater/ByeDpiLiveHttpHandlerFactory.cs'
+      - 'src/NetPilot.Platform.Windows/WindowsByeDpiLiveAcquisitionPipeline.cs'
+      - 'tests/NetPilot.Core.Tests/ByeDpiLiveHttpHandlerFactoryTests.cs'
+      - 'tests/NetPilot.Platform.Windows.Tests/WindowsByeDpiLiveAcquisitionPipelineTests.cs'
+      - 'tools/NetPilot.ByeDpiR42_13LiveAcquisitionLab/**'
+      - 'security/native-admission/byedpi-live-acquisition-r42-13.yaml'
+      - 'scripts/security/r42-13-byedpi-live-acquisition-check.sh'
+      - 'docs/BYEDPI-LIVE-ACQUISITION-R42-13.md'
+      - '.github/workflows/r42-13-live-acquisition-localsystem-lab.yml'
+      - '.github/workflows/r42-13-live-acquisition-preflight-once.yml'
+  pull_request:
+    branches:
+      - feature/byedpi-immutable-release-r42-12-1
+    paths:
+      - 'src/NetPilot.Updater/ByeDpiLiveHttpHandlerFactory.cs'
+      - 'src/NetPilot.Platform.Windows/WindowsByeDpiLiveAcquisitionPipeline.cs'
+      - 'tests/NetPilot.Core.Tests/ByeDpiLiveHttpHandlerFactoryTests.cs'
+      - 'tests/NetPilot.Platform.Windows.Tests/WindowsByeDpiLiveAcquisitionPipelineTests.cs'
+      - 'tools/NetPilot.ByeDpiR42_13LiveAcquisitionLab/**'
+      - 'security/native-admission/byedpi-live-acquisition-r42-13.yaml'
+      - 'scripts/security/r42-13-byedpi-live-acquisition-check.sh'
+      - 'docs/BYEDPI-LIVE-ACQUISITION-R42-13.md'
+      - '.github/workflows/r42-13-live-acquisition-localsystem-lab.yml'
+      - '.github/workflows/r42-13-live-acquisition-preflight-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  managed-and-synthetic-preflight:
+    name: Compile live lab boundary without production admission
+    runs-on: windows-2022
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout exact branch or PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Run parent and R42.13 fail-closed guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/security/r42-12-1-byedpi-immutable-release-check.sh
+          bash scripts/security/r42-13-byedpi-live-acquisition-check.sh
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore solution
+        run: dotnet restore NetPilot.sln
+
+      - name: Build full solution
+        run: dotnet build NetPilot.sln --configuration Release --no-restore
+
+      - name: Build isolated R42.13 LocalSystem lab host
+        run: >-
+          dotnet build tools/NetPilot.ByeDpiR42_13LiveAcquisitionLab/NetPilot.ByeDpiR42_13LiveAcquisitionLab.csproj
+          --configuration Release
+
+      - name: Run hardened handler and parent acquisition tests
+        run: >-
+          dotnet test tests/NetPilot.Core.Tests/NetPilot.Core.Tests.csproj
+          --configuration Release
+          --no-build
+          --filter 'FullyQualifiedName~ByeDpiLiveHttpHandlerFactoryTests|FullyQualifiedName~ByeDpiReviewedReleaseCatalogTests|FullyQualifiedName~ByeDpiIsolatedHttpTransportTests|FullyQualifiedName~ByeDpiAcquisitionTrustPolicyTests'
+
+      - name: Run synthetic full R42.13 package pipeline tests
+        run: >-
+          dotnet test tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj
+          --configuration Release
+          --no-build
+          --filter 'FullyQualifiedName~WindowsByeDpiLiveAcquisitionPipelineTests|FullyQualifiedName~WindowsByeDpiVerifiedBundleStagerTests|FullyQualifiedName~WindowsByeDpiVerifiedStagingPromoterTests'
+
+      - name: Record immutable-release prerequisite state without performing live acquisition
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path evidence | Out-Null
+
+          $headers = @{
+            Accept = 'application/vnd.github+json'
+            Authorization = "Bearer $env:GH_TOKEN"
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $uri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/byedpi-v0.17.3"
+          $response = Invoke-WebRequest -Uri $uri -Headers $headers -Method Get -SkipHttpErrorCheck
+          $statusCode = [int]$response.StatusCode
+
+          switch ($statusCode) {
+            200 {
+              $release = $response.Content | ConvertFrom-Json
+              if ($release.draft -ne $false -or $release.prerelease -ne $false -or $release.immutable -ne $true) {
+                throw 'Published R42.13 prerequisite exists but is not stable immutable release metadata.'
+              }
+              'R42_13_IMMUTABLE_RELEASE_PREREQUISITE=READY' | Set-Content evidence\release-prerequisite.txt
+            }
+            404 {
+              'R42_13_IMMUTABLE_RELEASE_PREREQUISITE=BLOCKED_RELEASE_ABSENT' | Set-Content evidence\release-prerequisite.txt
+            }
+            default {
+              throw "Unexpected GitHub API status while checking R42.13 prerequisite: HTTP $statusCode."
+            }
+          }
+
+          'R42_13_LIVE_NETWORK_E2E=NOT_RUN_IN_PREFLIGHT' | Add-Content evidence\release-prerequisite.txt
+          'R42_13_SERVICE_PRODUCTION_WIRING=ABSENT' | Add-Content evidence\release-prerequisite.txt
+          'R42_13_NATIVE_EXECUTION=NOT_PERFORMED' | Add-Content evidence\release-prerequisite.txt
+          'R42_13_PRODUCTION_ADMISSION=BLOCK' | Add-Content evidence\release-prerequisite.txt
+
+      - name: Boundary marker
+        shell: bash
+        run: |
+          cat r42-13-live-acquisition-guard-evidence.txt
+          cat evidence/release-prerequisite.txt
+          echo 'RESULT=R42_13_PREFLIGHT_PASS_BLOCK'
+
+      - name: Upload text-only R42.13 preflight evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: byedpi-r42-13-preflight-evidence
+          path: |
+            r42-13-live-acquisition-guard-evidence.txt
+            evidence/release-prerequisite.txt
+          if-no-files-found: error
+          retention-days: 14
