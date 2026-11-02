@@ -12,9 +12,8 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-# TaskName is kept only for workflow backward compatibility. R42.12.4 now uses
-# a direct credentialed process rather than Task Scheduler because the first
-# hosted run proved the scheduler boundary could fail before user code starts.
+# TaskName is retained only for workflow-call compatibility. The hosted boundary
+# deliberately avoids Task Scheduler and runs a direct credentialed process.
 $null = $TaskName
 
 $PackPath = [System.IO.Path]::GetFullPath($PackPath)
@@ -88,6 +87,7 @@ try {
         -PasswordNeverExpires `
         -UserMayNotChangePassword
     $createdUserSid = $createdUser.SID.Value
+    $testSidPrincipal = "*$createdUserSid"
 
     $usersSid = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-545')
     $usersGroup = Get-LocalGroup -SID $usersSid
@@ -104,7 +104,6 @@ try {
         Copy-Item -LiteralPath $_.FullName -Destination $publicPack -Recurse -Force
     }
 
-    $runner = Join-Path $publicPack 'run-standard-user-validation.ps1'
     $runnerTemplate = @'
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -180,39 +179,42 @@ catch {
     exit 1
 }
 '@
-    $runnerTemplate.Replace('__VERSION__', $TestVersion).Replace('__USER_SID__', $createdUserSid) |
-        Set-Content -LiteralPath $runner -Encoding utf8NoBOM
+
+    $runnerCommand = $runnerTemplate.Replace('__VERSION__', $TestVersion).Replace('__USER_SID__', $createdUserSid)
+    $encodedRunner = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($runnerCommand))
 
     & icacls.exe `
         $publicPack `
         /inheritance:r `
         /grant:r `
-        "${userAccount}:(OI)(CI)RX" `
+        "${testSidPrincipal}:(OI)(CI)RX" `
         '*S-1-5-18:(OI)(CI)F' `
         '*S-1-5-32-544:(OI)(CI)F' `
         /T `
         /C | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        throw 'Could not apply read-only pack ACL for the standard user.'
+        throw 'Could not apply read-only pack ACL for the exact standard-user SID.'
     }
 
     & icacls.exe `
         $publicEvidence `
         /inheritance:r `
         /grant:r `
-        "${userAccount}:(OI)(CI)M" `
+        "${testSidPrincipal}:(OI)(CI)M" `
         '*S-1-5-18:(OI)(CI)F' `
         '*S-1-5-32-544:(OI)(CI)F' `
         /T `
         /C | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        throw 'Could not apply evidence ACL for the standard user.'
+        throw 'Could not apply evidence ACL for the exact standard-user SID.'
     }
 
     'STANDARD_USER_CREATED=PASS' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     'STANDARD_USER_ADMIN_GROUP=False' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
-    'STANDARD_USER_LAUNCH_METHOD=DirectCredential' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    'STANDARD_USER_LAUNCH_METHOD=DirectCredentialEncodedCommand' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    'PACK_ACL_PRINCIPAL=EXACT_TEST_USER_SID' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     'PACK_ACL_STANDARD_USER=RX' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    'EVIDENCE_ACL_PRINCIPAL=EXACT_TEST_USER_SID' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     'EVIDENCE_ACL_STANDARD_USER=M' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
 
     $credential = [pscredential]::new($userAccount, $passwordSecure)
@@ -223,8 +225,7 @@ catch {
         '-NoLogo',
         '-NoProfile',
         '-NonInteractive',
-        '-ExecutionPolicy', 'Bypass',
-        '-File', "`"$runner`""
+        '-EncodedCommand', $encodedRunner
     )
 
     $childProcess = Start-Process `
@@ -232,7 +233,7 @@ catch {
         -ArgumentList $arguments `
         -Credential $credential `
         -LoadUserProfile `
-        -WorkingDirectory $publicPack `
+        -WorkingDirectory $env:SystemRoot `
         -WindowStyle Hidden `
         -RedirectStandardOutput $stdoutPath `
         -RedirectStandardError $stderrPath `
