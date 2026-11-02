@@ -1,0 +1,100 @@
+name: R42.12.1 ByeDPI Immutable Release Readiness Preflight Once
+
+on:
+  push:
+    branches:
+      - feature/byedpi-immutable-release-r42-12-1
+    paths:
+      - 'src/NetPilot.Updater/ByeDpiReviewedReleaseCatalog.cs'
+      - 'tests/NetPilot.Core.Tests/ByeDpiReviewedReleaseCatalogTests.cs'
+      - 'security/native-admission/byedpi-immutable-release-r42-12-1.yaml'
+      - 'scripts/security/r42-12-1-byedpi-immutable-release-check.sh'
+      - 'docs/BYEDPI-IMMUTABLE-RELEASE-R42-12-1.md'
+      - '.github/workflows/r42-12-1-create-draft-byedpi-release.yml'
+      - '.github/workflows/r42-12-1-verify-immutable-byedpi-release.yml'
+      - '.github/workflows/r42-12-1-immutable-release-preflight-once.yml'
+  pull_request:
+    branches:
+      - feature/byedpi-package-ipc-r42-12
+    paths:
+      - 'src/NetPilot.Updater/ByeDpiReviewedReleaseCatalog.cs'
+      - 'tests/NetPilot.Core.Tests/ByeDpiReviewedReleaseCatalogTests.cs'
+      - 'security/native-admission/byedpi-immutable-release-r42-12-1.yaml'
+      - 'scripts/security/r42-12-1-byedpi-immutable-release-check.sh'
+      - 'docs/BYEDPI-IMMUTABLE-RELEASE-R42-12-1.md'
+      - '.github/workflows/r42-12-1-create-draft-byedpi-release.yml'
+      - '.github/workflows/r42-12-1-verify-immutable-byedpi-release.yml'
+      - '.github/workflows/r42-12-1-immutable-release-preflight-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  publication-readiness:
+    name: Enforce exact reviewed release and manual-publish boundary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout exact branch or PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: R42.12 parent fail-closed package IPC guard
+        run: bash scripts/security/r42-12-byedpi-package-ipc-check.sh
+
+      - name: R42.12.1 immutable release readiness guard
+        run: bash scripts/security/r42-12-1-byedpi-immutable-release-check.sh
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore solution
+        run: dotnet restore NetPilot.sln
+
+      - name: Build full solution
+        run: dotnet build NetPilot.sln --configuration Release --no-restore
+
+      - name: Run exact reviewed release catalog tests
+        run: >-
+          dotnet test tests/NetPilot.Core.Tests/NetPilot.Core.Tests.csproj
+          --configuration Release
+          --no-build
+          --filter 'FullyQualifiedName~ByeDpiReviewedReleaseCatalogTests|FullyQualifiedName~ByeDpiImmutableReleaseDocumentTests|FullyQualifiedName~ByeDpiAcquisitionTrustPolicyTests'
+
+      - name: Confirm reviewed release is not already publicly published
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl -sS -o release.json -w '%{http_code}' \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/byedpi-v0.17.3")"
+          if [ "$status" = '200' ]; then
+            echo 'R42.12.1 expected publication to remain a later manual gate, but the release is already public.' >&2
+            cat release.json >&2
+            exit 1
+          fi
+          test "$status" = '404'
+          echo 'R42_12_1_PUBLIC_RELEASE=ABSENT_EXPECTED'
+
+      - name: Boundary marker
+        run: |
+          cat r42-12-1-immutable-release-guard-evidence.txt
+          echo 'R42_12_1_DRAFT_PUBLICATION_READY=true'
+          echo 'R42_12_1_AUTOMATIC_PUBLISH=FORBIDDEN'
+          echo 'R42_12_1_PUBLISHED_IMMUTABLE_RELEASE=NOT_YET_VERIFIED'
+          echo 'R42_12_1_LIVE_PRODUCT_ACQUISITION=NOT_ADMITTED'
+          echo 'R42_12_1_PRODUCTION_ADMISSION=BLOCK'
+          echo 'RESULT=R42_12_1_PUBLICATION_READINESS_PASS_BLOCK'
+
+      - name: Upload text-only R42.12.1 readiness evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: byedpi-r42-12-1-publication-readiness-evidence
+          path: r42-12-1-immutable-release-guard-evidence.txt
+          if-no-files-found: error
+          retention-days: 14
