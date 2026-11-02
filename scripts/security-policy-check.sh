@@ -25,7 +25,7 @@ check_pattern \
   "обнаружена запрещённая OpenAI/ChatGPT-интеграция в исполняемом коде" \
   'api\.openai\.com|auth\.openai\.com|chatgpt\.com|chat\.openai\.com|OPENAI_API_KEY|Azure\.AI\.OpenAI|OpenAIClient'
 
-# Привилегированная часть не должна выполнять произвольный shell-код.
+# Исполняемый код не должен выполнять произвольный shell-код.
 check_pattern \
   "обнаружен запрещённый запуск shell" \
   'cmd\.exe|powershell\.exe|pwsh(\.exe)?|bash[[:space:]]+-c|sh[[:space:]]+-c'
@@ -71,6 +71,32 @@ for launcher in "${allowed_process_launchers[@]}"; do
     fail=1
   fi
 done
+
+# Первый пользовательский путь обязан оставаться непривилегированным ByeDPI user-mode.
+default_composition='src/NetPilot.App.Windows/Program.cs'
+if grep -qE 'WindowsPrivilegedServiceClient|WindowsZapretStrategyRuntime' "$default_composition"; then
+  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: default GUI снова зависит от privileged service/Zapret path."
+  fail=1
+fi
+if ! grep -q 'WindowsByeDpiStrategyRuntime' "$default_composition"; then
+  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: default GUI не использует ByeDPI user-mode runtime."
+  fail=1
+fi
+
+user_mode_installer='installer/NetPilot.UserMode.iss'
+if [[ ! -f "$user_mode_installer" ]]; then
+  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: no-admin user-mode installer отсутствует."
+  fail=1
+else
+  if ! grep -qE '^PrivilegesRequired=lowest$' "$user_mode_installer"; then
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: user-mode installer обязан использовать PrivilegesRequired=lowest."
+    fail=1
+  fi
+  if grep -qiE 'ServicePublishDir|NetPilot\.Service|sc\.exe|LocalSystem|runas' "$user_mode_installer"; then
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: user-mode installer содержит privileged/service semantics."
+    fail=1
+  fi
+fi
 
 if [[ "$fail" -ne 0 ]]; then
   echo "Проверка политики безопасности NetPilot завершилась ошибкой."
