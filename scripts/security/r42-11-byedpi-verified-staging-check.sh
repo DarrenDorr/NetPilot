@@ -58,8 +58,8 @@ forbid_regex "$SOURCE" 'FileStream|\bFile\.|\bDirectory\.|\bPath\.|SafeZipExtrac
 # No new network stack, retry layer, service/IPC or native process surface.
 forbid_regex "$SOURCE" 'SocketsHttpHandler|HttpClientHandler|new[[:space:]]+HttpClient|WebRequest|WebClient|TcpClient|UdpClient|Dns\.|Polly|Retry|NamedPipe|ServiceController|Process(Start|\.)'
 
-# Production mutation is allowed only through the exact inherited staging call.
-count="$(grep -Fc 'WindowsByeDpiProtectedStagingTransaction.StageAndVerifyAsync' "$SOURCE")"
+# Production mutation is allowed only through one executable call site. Ignore XML/doc mentions.
+count="$(grep -Ec '^[[:space:]]*return await WindowsByeDpiProtectedStagingTransaction\.StageAndVerifyAsync\(' "$SOURCE")"
 if [[ "$count" != '1' ]]; then
   echo "R42.11 guard requires exactly one production protected staging invocation; found $count" >&2
   exit 1
