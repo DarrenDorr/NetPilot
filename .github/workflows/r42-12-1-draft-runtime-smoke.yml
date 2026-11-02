@@ -1,0 +1,311 @@
+name: R42.12.1 Exact Draft ByeDPI Runtime Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: netpilot-r42-12-1-draft-runtime-smoke
+  cancel-in-progress: false
+
+env:
+  R34_HARNESS_SHA: 42a7f467bf822f76f0a67a3b31d3c7b8174f3648
+  RELEASE_TAG: byedpi-v0.17.3
+  RELEASE_TARGET: dc28fc4f0b635c34c63bbaed99ea7658d8a9c827
+  PAYLOAD_NAME: NetPilot-ByeDPI-0.17.3-x64.zip
+  PAYLOAD_SIZE: '496964'
+  PAYLOAD_SHA256: c0fe998e3d81ccb871f09d126e7b5ee0ab82d15daf78bc44bcd63b7762313db7
+  MANIFEST_NAME: NetPilot-ByeDPI-0.17.3-x64.manifest.json
+  MANIFEST_SIZE: '511'
+  MANIFEST_SHA256: eaa6f063fcb8e012810f849ed08b6bd82d4d046d4796c2fb4b903c4195985f54
+  PROVENANCE_NAME: NetPilot-ByeDPI-0.17.3-x64.provenance.json
+  PROVENANCE_SIZE: '1726'
+  PROVENANCE_SHA256: e1f98760eed94f5daa7d37a868015755220cb17d389000bc49e031da511f7f31
+  BYEDPI_WINDOWS_SIZE: '495685'
+  BYEDPI_WINDOWS_SHA256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+  BYEDPI_LICENSE_SIZE: '1063'
+  BYEDPI_LICENSE_SHA256: 18c854c6c25dffefe4b522cf1bdf5d15278a25ca785948258bddb94393f575eb
+  R34_PACKAGE_VERSION: 0.17.3-netpilot-r34-lab
+
+jobs:
+  exact-draft-runtime-smoke:
+    name: Execute exact draft bytes through pinned Windows SOCKS HTTP lab
+    runs-on: windows-2025
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout exact previously-green R34 functional harness
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.R34_HARNESS_SHA }}
+          path: r34
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Require exact unpublished draft metadata and capture asset IDs
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          New-Item -ItemType Directory -Force -Path evidence | Out-Null
+
+          if ((git -C r34 rev-parse HEAD).Trim() -ne $env:R34_HARNESS_SHA) {
+            throw 'Pinned R34 harness checkpoint drift.'
+          }
+
+          $all = @(gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" | ConvertFrom-Json)
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to query repository releases.' }
+          $matches = @($all | Where-Object { $_.tag_name -ceq $env:RELEASE_TAG })
+          if ($matches.Count -ne 1) { throw "Expected exactly one release/draft for $env:RELEASE_TAG." }
+          $release = $matches[0]
+
+          if ($release.draft -ne $true) { throw 'Runtime smoke requires the release to remain a draft.' }
+          if ($release.prerelease -ne $false) { throw 'Runtime smoke refuses a prerelease draft.' }
+          if ($null -ne $release.published_at) { throw 'Runtime smoke refuses an already-published release.' }
+          if ($release.target_commitish -cne $env:RELEASE_TARGET) { throw 'Draft target commit drift.' }
+          if (@($release.assets).Count -ne 3) { throw 'Draft must contain exactly three reviewed assets.' }
+
+          function Assert-Asset([string]$Name, [long]$Size, [string]$Sha256) {
+            $items = @($release.assets | Where-Object { $_.name -ceq $Name })
+            if ($items.Count -ne 1) { throw "Draft asset cardinality mismatch: $Name" }
+            $asset = $items[0]
+            if ($asset.state -cne 'uploaded') { throw "Draft asset not uploaded: $Name" }
+            if ([long]$asset.size -ne $Size) { throw "Draft asset size mismatch: $Name" }
+            if ($asset.digest -cne "sha256:$Sha256") { throw "Draft asset digest mismatch: $Name" }
+            return $asset
+          }
+
+          $payload = Assert-Asset $env:PAYLOAD_NAME ([long]$env:PAYLOAD_SIZE) $env:PAYLOAD_SHA256
+          $manifest = Assert-Asset $env:MANIFEST_NAME ([long]$env:MANIFEST_SIZE) $env:MANIFEST_SHA256
+          $provenance = Assert-Asset $env:PROVENANCE_NAME ([long]$env:PROVENANCE_SIZE) $env:PROVENANCE_SHA256
+
+          "PAYLOAD_ASSET_ID=$($payload.id)" | Add-Content $env:GITHUB_ENV
+          "MANIFEST_ASSET_ID=$($manifest.id)" | Add-Content $env:GITHUB_ENV
+          "PROVENANCE_ASSET_ID=$($provenance.id)" | Add-Content $env:GITHUB_ENV
+
+          [ordered]@{
+            tag = $release.tag_name
+            release_id = $release.id
+            draft = $release.draft
+            prerelease = $release.prerelease
+            published_at = $release.published_at
+            target_commitish = $release.target_commitish
+            asset_count = @($release.assets).Count
+          } | ConvertTo-Json | Set-Content evidence\draft-metadata.json
+
+          'DRAFT_METADATA=PASS' | Set-Content evidence\boundary.txt
+          'RELEASE_PUBLISHED=False' | Add-Content evidence\boundary.txt
+          'PRODUCTION_ADMISSION=BLOCK' | Add-Content evidence\boundary.txt
+
+      - name: Download exact draft assets as binary bytes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p draft-assets
+          gh api -H 'Accept: application/octet-stream' "repos/${GITHUB_REPOSITORY}/releases/assets/${PAYLOAD_ASSET_ID}" > "draft-assets/${PAYLOAD_NAME}"
+          gh api -H 'Accept: application/octet-stream' "repos/${GITHUB_REPOSITORY}/releases/assets/${MANIFEST_ASSET_ID}" > "draft-assets/${MANIFEST_NAME}"
+          gh api -H 'Accept: application/octet-stream' "repos/${GITHUB_REPOSITORY}/releases/assets/${PROVENANCE_ASSET_ID}" > "draft-assets/${PROVENANCE_NAME}"
+
+      - name: Re-verify downloaded draft assets and exact package contents
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+
+          function Assert-File([string]$Path, [long]$Size, [string]$Sha256) {
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Missing file: $Path" }
+            if ((Get-Item -LiteralPath $Path).Length -ne $Size) { throw "File size mismatch: $Path" }
+            $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+            if ($actual -cne $Sha256) { throw "File SHA-256 mismatch: $Path" }
+          }
+
+          Assert-File "draft-assets\$env:PAYLOAD_NAME" ([long]$env:PAYLOAD_SIZE) $env:PAYLOAD_SHA256
+          Assert-File "draft-assets\$env:MANIFEST_NAME" ([long]$env:MANIFEST_SIZE) $env:MANIFEST_SHA256
+          Assert-File "draft-assets\$env:PROVENANCE_NAME" ([long]$env:PROVENANCE_SIZE) $env:PROVENANCE_SHA256
+
+          Expand-Archive -LiteralPath "draft-assets\$env:PAYLOAD_NAME" -DestinationPath draft-package
+          $files = @(Get-ChildItem -LiteralPath draft-package -File -Recurse)
+          if ($files.Count -ne 2) { throw 'Draft package must contain exactly two files.' }
+
+          $relative = @($files | ForEach-Object {
+            [IO.Path]::GetRelativePath((Resolve-Path 'draft-package').Path, $_.FullName).Replace('\','/')
+          } | Sort-Object)
+          if (($relative -join '|') -cne 'bin/ciadpi.exe|LICENSE' -and ($relative -join '|') -cne 'LICENSE|bin/ciadpi.exe') {
+            throw "Unexpected draft package tree: $($relative -join ',')"
+          }
+
+          Assert-File 'draft-package\bin\ciadpi.exe' ([long]$env:BYEDPI_WINDOWS_SIZE) $env:BYEDPI_WINDOWS_SHA256
+          Assert-File 'draft-package\LICENSE' ([long]$env:BYEDPI_LICENSE_SIZE) $env:BYEDPI_LICENSE_SHA256
+
+          "DRAFT_PAYLOAD_SHA256=$env:PAYLOAD_SHA256" | Add-Content evidence\boundary.txt
+          "DRAFT_CIADPI_SHA256=$env:BYEDPI_WINDOWS_SHA256" | Add-Content evidence\boundary.txt
+          'DRAFT_EXACT_PACKAGE_TREE=PASS' | Add-Content evidence\boundary.txt
+
+      - name: Setup .NET 10 for pinned R34 functional harness
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Stage exact draft binary under isolated protected R34 lab root
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) {
+            throw 'Unexpected ciadpi process before draft runtime smoke.'
+          }
+
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            throw 'Draft runtime smoke requires elevated Windows hosted runner.'
+          }
+
+          $root = Join-Path $env:ProgramFiles 'NetPilot'
+          if (Test-Path -LiteralPath $root) { throw 'Refusing to reuse pre-existing Program Files\NetPilot tree.' }
+
+          $token = "r42-12-1-draft-runtime-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $engineRoot = Join-Path $root "Engines\Managed\byedpi\$env:R34_PACKAGE_VERSION\x64"
+          $bin = Join-Path $engineRoot 'bin'
+          New-Item -ItemType Directory -Force -Path $bin | Out-Null
+          Set-Content -LiteralPath (Join-Path $root '.r42-12-1-draft-runtime-owned') -Value $token -NoNewline
+          Copy-Item -LiteralPath 'draft-package\bin\ciadpi.exe' -Destination (Join-Path $bin 'ciadpi.exe')
+
+          & icacls.exe $root /inheritance:r | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to protect lab root inheritance.' }
+          & icacls.exe $root /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to set lab root ACL.' }
+          & icacls.exe $root /setowner '*S-1-5-32-544' /T /C | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to set privileged lab owner.' }
+          & icacls.exe $root /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' /T /C | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to normalize lab tree ACL.' }
+
+          $staged = Join-Path $bin 'ciadpi.exe'
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $staged).Hash.ToLowerInvariant()
+          if ($actual -cne $env:BYEDPI_WINDOWS_SHA256) { throw 'Staged draft binary hash drift.' }
+
+          "LAB_OWNERSHIP_TOKEN=$token" | Add-Content evidence\boundary.txt
+          'PROTECTED_PROGRAM_FILES_TREE=PASS' | Add-Content evidence\boundary.txt
+
+      - name: Capture system proxy and WinDivert baseline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $internet = Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -ErrorAction SilentlyContinue
+          [ordered]@{
+            ProxyEnable = if ($null -eq $internet) { $null } else { $internet.ProxyEnable }
+            ProxyServer = if ($null -eq $internet) { $null } else { $internet.ProxyServer }
+            AutoConfigURL = if ($null -eq $internet) { $null } else { $internet.AutoConfigURL }
+            WinHttp = ((& netsh winhttp show proxy) -join "`n").Trim()
+          } | ConvertTo-Json -Compress | Set-Content evidence\proxy-before.txt
+
+          $drivers = @(Get-CimInstance Win32_SystemDriver | Where-Object { $_.Name -match 'WinDivert' -or $_.PathName -match 'WinDivert' } | Sort-Object Name | Select-Object Name,State,StartMode,PathName)
+          $services = @(Get-Service | Where-Object { $_.Name -match 'WinDivert' } | Sort-Object Name | Select-Object Name,Status,StartType)
+          [ordered]@{ Drivers = $drivers; Services = $services } | ConvertTo-Json -Compress -Depth 5 | Set-Content evidence\windivert-before.txt
+
+      - name: Build pinned R34 SOCKS HTTP functional harness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet restore r34\tools\NetPilot.ByeDpiR34Lab\NetPilot.ByeDpiR34Lab.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build r34\tools\NetPilot.ByeDpiR34Lab\NetPilot.ByeDpiR34Lab.csproj --configuration Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Execute exact draft binary through SOCKS5 HTTP and lifecycle tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $log = Join-Path $PWD 'evidence\draft-runtime.txt'
+          & dotnet run --project r34\tools\NetPilot.ByeDpiR34Lab\NetPilot.ByeDpiR34Lab.csproj --configuration Release --no-build 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { throw "Pinned R34 functional harness failed with exit code $LASTEXITCODE." }
+
+          $content = Get-Content -LiteralPath $log -Raw
+          foreach ($marker in @(
+            'TYPED_ARGV=PASS',
+            'ROUND1_SOCKS_HTTP=PASS',
+            'ROUND1_CLEANUP=PASS',
+            'ROUND2_SOCKS_HTTP=PASS',
+            'ROUND2_CLEANUP=PASS',
+            'CRASH_RECONCILE=PASS',
+            'FINAL_STATE=STOPPED',
+            'SYSTEM_PROXY_MUTATION=NOT_REQUESTED',
+            'WINDIVERT=NOT_REQUESTED',
+            'PRODUCTION_ADMISSION=BLOCK',
+            'RESULT=BYEDPI_SERVICE_OWNED_FUNCTIONAL_R34_PASS'
+          )) {
+            if (-not $content.Contains($marker, [StringComparison]::Ordinal)) {
+              throw "Missing required draft runtime evidence marker: $marker"
+            }
+          }
+
+          'EXACT_DRAFT_RUNTIME=PASS' | Add-Content evidence\boundary.txt
+          'SOCKS5_HTTP_ROUNDTRIP=PASS' | Add-Content evidence\boundary.txt
+          'NATIVE_EXECUTION_TESTED=True_LAB_ONLY' | Add-Content evidence\boundary.txt
+          'SERVICE_INSTALLATION=NOT_PERFORMED' | Add-Content evidence\boundary.txt
+          'SYSTEM_PROXY_MUTATION=NOT_PERFORMED' | Add-Content evidence\boundary.txt
+          'WINDIVERT=NOT_PERFORMED' | Add-Content evidence\boundary.txt
+          'PRODUCTION_ADMISSION=BLOCK' | Add-Content evidence\boundary.txt
+          'RESULT=R42_12_1_EXACT_DRAFT_RUNTIME_SMOKE_PASS_BLOCK' | Add-Content evidence\boundary.txt
+
+      - name: Verify no runtime or system residue
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) { throw 'ciadpi process remained after draft runtime smoke.' }
+
+          $internet = Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -ErrorAction SilentlyContinue
+          $proxyAfter = [ordered]@{
+            ProxyEnable = if ($null -eq $internet) { $null } else { $internet.ProxyEnable }
+            ProxyServer = if ($null -eq $internet) { $null } else { $internet.ProxyServer }
+            AutoConfigURL = if ($null -eq $internet) { $null } else { $internet.AutoConfigURL }
+            WinHttp = ((& netsh winhttp show proxy) -join "`n").Trim()
+          } | ConvertTo-Json -Compress
+          $proxyAfter | Set-Content evidence\proxy-after.txt
+          if ((Get-Content evidence\proxy-before.txt -Raw).Trim() -cne $proxyAfter.Trim()) { throw 'System proxy state changed during draft runtime smoke.' }
+
+          $drivers = @(Get-CimInstance Win32_SystemDriver | Where-Object { $_.Name -match 'WinDivert' -or $_.PathName -match 'WinDivert' } | Sort-Object Name | Select-Object Name,State,StartMode,PathName)
+          $services = @(Get-Service | Where-Object { $_.Name -match 'WinDivert' } | Sort-Object Name | Select-Object Name,Status,StartType)
+          $windivertAfter = [ordered]@{ Drivers = $drivers; Services = $services } | ConvertTo-Json -Compress -Depth 5
+          $windivertAfter | Set-Content evidence\windivert-after.txt
+          if ((Get-Content evidence\windivert-before.txt -Raw).Trim() -cne $windivertAfter.Trim()) { throw 'WinDivert state changed during draft runtime smoke.' }
+
+          'RUNTIME_RESIDUE=NONE' | Add-Content evidence\boundary.txt
+          'SYSTEM_PROXY_UNCHANGED=PASS' | Add-Content evidence\boundary.txt
+          'WINDIVERT_UNCHANGED=PASS' | Add-Content evidence\boundary.txt
+
+      - name: Cleanup only workflow-owned Program Files lab tree
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $root = Join-Path $env:ProgramFiles 'NetPilot'
+          if (Test-Path -LiteralPath $root) {
+            $marker = Join-Path $root '.r42-12-1-draft-runtime-owned'
+            $expected = "r42-12-1-draft-runtime-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+            if ((Test-Path -LiteralPath $marker) -and ((Get-Content -LiteralPath $marker -Raw).Trim() -ceq $expected)) {
+              Remove-Item -LiteralPath $root -Recurse -Force
+            } else {
+              Write-Error 'Refusing cleanup because draft-runtime ownership marker is absent or mismatched.'
+            }
+          }
+
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) {
+            Write-Error 'ciadpi process exists after cleanup.'
+          }
+
+      - name: Upload text-only draft runtime evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: byedpi-r42-12-1-exact-draft-runtime-evidence
+          path: evidence
+          if-no-files-found: error
+          retention-days: 30
