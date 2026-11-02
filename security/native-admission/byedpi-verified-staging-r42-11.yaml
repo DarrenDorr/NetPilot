@@ -1,0 +1,42 @@
+schema_version: 1
+scope: byedpi-r42.11-verified-staging
+status: VERIFIED_PROTECTED_STAGING_BOUNDARY_ONLY
+parent_checkpoint: 462064d565f7707df320a5d9a73253b8e9006ddb
+
+verified_bundle_boundary:
+  requires_r42_10_verified_bundle: true
+  immutable_descriptor_revalidated: true
+  payload_size_sha256_reverified: true
+  manifest_size_sha256_reverified: true
+  provenance_size_sha256_reverified: true
+  aggregate_identity_rechecked: true
+  package_manifest_reparsed: true
+  package_manifest_identity_rechecked: true
+
+staging_boundary:
+  existing_r42_2_transaction_only: true
+  production_api: WindowsByeDpiProtectedStagingTransaction.StageAndVerifyAsync
+  safe_zip_extraction_inherited: true
+  exact_manifest_tree_verification_inherited: true
+  path_free_recovery_journal_inherited: true
+  deterministic_failure_cleanup_inherited: true
+  production_local_system_required: true
+  new_filesystem_primitives_in_bridge: false
+  package_promotion: NOT_IMPLEMENTED
+
+runtime_boundary:
+  filesystem_write: EXISTING_PROTECTED_STAGING_TRANSACTION_ONLY
+  arbitrary_filesystem_write: FORBIDDEN
+  network_client_construction: FORBIDDEN
+  service_ipc_wiring: ABSENT
+  installer_integration: ABSENT
+  managed_package_activation: NOT_IMPLEMENTED
+  native_execution: NOT_IMPLEMENTED
+  windivert_execution: NOT_IMPLEMENTED
+  production_admission: BLOCK
+
+result_contract:
+  returns_verified_staging_transaction: true
+  staging_tree_is_managed_package: false
+  staging_tree_is_admission_token: false
+  staging_tree_is_execution_authorization: false

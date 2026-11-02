@@ -1,0 +1,115 @@
+name: R42.11 ByeDPI Verified Protected Staging Preflight Once
+
+on:
+  push:
+    branches:
+      - feature/byedpi-verified-staging-r42-11
+    paths:
+      - 'src/NetPilot.Platform.Windows/WindowsByeDpiVerifiedBundleStager.cs'
+      - 'tests/NetPilot.Platform.Windows.Tests/WindowsByeDpiVerifiedBundleStagerTests.cs'
+      - 'security/native-admission/byedpi-verified-staging-r42-11.yaml'
+      - 'scripts/security/r42-11-byedpi-verified-staging-check.sh'
+      - 'docs/BYEDPI-VERIFIED-STAGING-R42-11.md'
+      - '.github/workflows/r42-11-verified-staging-preflight-once.yml'
+  pull_request:
+    branches:
+      - feature/byedpi-verified-downloader-r42-10
+    paths:
+      - 'src/NetPilot.Platform.Windows/WindowsByeDpiVerifiedBundleStager.cs'
+      - 'tests/NetPilot.Platform.Windows.Tests/WindowsByeDpiVerifiedBundleStagerTests.cs'
+      - 'security/native-admission/byedpi-verified-staging-r42-11.yaml'
+      - 'scripts/security/r42-11-byedpi-verified-staging-check.sh'
+      - 'docs/BYEDPI-VERIFIED-STAGING-R42-11.md'
+      - '.github/workflows/r42-11-verified-staging-preflight-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  managed-boundary:
+    name: Enforce verified bundle to protected staging boundary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout exact branch or PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: R42.10 parent fail-closed guard
+        run: bash scripts/security/r42-10-byedpi-verified-downloader-check.sh
+
+      - name: R42.11 fail-closed verified staging guard
+        run: bash scripts/security/r42-11-byedpi-verified-staging-check.sh
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore solution
+        run: dotnet restore NetPilot.sln
+
+      - name: Build full solution
+        run: dotnet build NetPilot.sln --configuration Release --no-restore
+
+      - name: Boundary marker
+        run: |
+          cat r42-11-verified-staging-guard-evidence.txt
+          echo 'R42_11_VERIFIED_STAGING=EXISTING_PROTECTED_TRANSACTION_ONLY'
+          echo 'R42_11_PACKAGE_PROMOTION=NOT_IMPLEMENTED'
+          echo 'R42_11_SERVICE_IPC_WIRING=ABSENT'
+          echo 'R42_11_NATIVE_EXECUTION=NOT_IMPLEMENTED'
+          echo 'R42_11_PRODUCTION_ADMISSION=BLOCK'
+          echo 'RESULT=R42_11_MANAGED_BOUNDARY_PASS_BLOCK'
+
+      - name: Upload text-only R42.11 guard evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: byedpi-r42-11-verified-staging-evidence
+          path: r42-11-verified-staging-guard-evidence.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  windows-staging-integration:
+    name: Verify synthetic verified-download to protected-staging chain
+    runs-on: windows-2022
+    timeout-minutes: 20
+    needs: managed-boundary
+
+    steps:
+      - name: Checkout exact branch or PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore solution
+        run: dotnet restore NetPilot.sln
+
+      - name: Build Windows platform tests
+        run: >-
+          dotnet build tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj
+          --configuration Release
+          --no-restore
+
+      - name: Run focused R42.11 and inherited R42.2 staging tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet test tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj `
+            --configuration Release `
+            --no-build `
+            --filter "FullyQualifiedName~WindowsByeDpiVerifiedBundleStagerTests|FullyQualifiedName~WindowsByeDpiProtectedStagingTransactionTests"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (Get-Process -Name ciadpi -ErrorAction SilentlyContinue) {
+            throw 'R42.11 unexpectedly launched ciadpi.'
+          }
+          Write-Host 'R42_11_SYNTHETIC_WINDOWS_STAGING=PASS'
+          Write-Host 'R42_11_NATIVE_EXECUTION=NOT_PERFORMED'
+          Write-Host 'R42_11_PRODUCTION_ADMISSION=BLOCK'
