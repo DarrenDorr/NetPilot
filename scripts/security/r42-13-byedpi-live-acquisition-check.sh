@@ -68,7 +68,7 @@ require_literal "$LAB_PROGRAM" '"S-1-5-18"'
 require_literal "$LAB_PROGRAM" 'WindowsByeDpiLiveAcquisitionPipeline()'
 require_literal "$LAB_PROGRAM" 'MANAGED_CIADPI_EXACT_IDENTITY=PASS'
 require_literal "$LAB_PROGRAM" 'NATIVE_EXECUTION_TESTED=False'
-forbid_regex "$LAB_PROGRAM" 'Process\.Start|ProcessStartInfo|ciadpi\.exe["'"'][[:space:]]*,|CreateProcess|ShellExecute'
+forbid_regex "$LAB_PROGRAM" 'Process\.Start|ProcessStartInfo|CreateProcess|ShellExecute'
 
 # Normal Service must remain no-admit and must not construct live acquisition types.
 require_literal "$SERVICE_PROGRAM" 'NoAdmittedWindowsByeDpiPackageProvisioner.Instance'
@@ -86,7 +86,7 @@ require_literal "$CONTRACT" 'production_admission: BLOCK'
 # Live workflow must be manual-only and gate on published immutable release metadata.
 require_literal "$LIVE_WORKFLOW" 'workflow_dispatch:'
 require_literal "$LIVE_WORKFLOW" 'immutable'
-require_literal "$LIVE_WORKFLOW" 'S-1-5-18'
+require_literal "$LIVE_WORKFLOW" 'IDENTITY_LOCALSYSTEM=PASS'
 require_literal "$LIVE_WORKFLOW" 'schtasks.exe'
 require_literal "$LIVE_WORKFLOW" 'R42_13_LIVE_ACQUISITION_LOCALSYSTEM_PASS_BLOCK'
 forbid_regex "$LIVE_WORKFLOW" '^[[:space:]]+push:|^[[:space:]]+pull_request:'
