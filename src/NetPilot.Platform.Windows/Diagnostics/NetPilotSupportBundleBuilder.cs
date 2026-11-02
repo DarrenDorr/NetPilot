@@ -183,74 +183,31 @@ public static class NetPilotSupportBundleBuilder
 
     private static void WriteEngineStatus(string staging)
     {
-        var root = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-            "NetPilot",
-            "Engines",
-            "Managed",
-            "byedpi");
-
+        var roots = GetManagedByeDpiRoots();
         var engines = new List<object>();
-        string? error = null;
+        var errors = new List<string>();
 
-        try
+        foreach (var root in roots)
         {
-            if (Directory.Exists(root))
+            try
             {
-                foreach (var versionDirectory in new DirectoryInfo(root)
-                             .EnumerateDirectories("*", SearchOption.TopDirectoryOnly)
-                             .OrderBy(static directory => directory.Name, StringComparer.Ordinal))
-                {
-                    if ((versionDirectory.Attributes & FileAttributes.ReparsePoint) != 0)
-                    {
-                        continue;
-                    }
-
-                    foreach (var architectureDirectory in versionDirectory
-                                 .EnumerateDirectories("*", SearchOption.TopDirectoryOnly)
-                                 .OrderBy(static directory => directory.Name, StringComparer.Ordinal))
-                    {
-                        if ((architectureDirectory.Attributes & FileAttributes.ReparsePoint) != 0)
-                        {
-                            continue;
-                        }
-
-                        var executable = new FileInfo(
-                            Path.Combine(architectureDirectory.FullName, "bin", "ciadpi.exe"));
-                        if (!executable.Exists || (executable.Attributes & FileAttributes.ReparsePoint) != 0)
-                        {
-                            continue;
-                        }
-
-                        using var stream = executable.OpenRead();
-                        var sha256 = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
-                        engines.Add(new
-                        {
-                            Engine = "ByeDPI",
-                            Version = SafeDiagnosticLog.Sanitize(versionDirectory.Name, 128),
-                            Architecture = SafeDiagnosticLog.Sanitize(architectureDirectory.Name, 32),
-                            Executable = "bin/ciadpi.exe",
-                            executable.Length,
-                            Sha256 = sha256
-                        });
-                    }
-                }
+                ScanByeDpiRoot(root.Path, root.Scope, engines);
             }
-        }
-        catch (UnauthorizedAccessException)
-        {
-            error = "EngineMetadataAccessDenied";
-        }
-        catch (IOException)
-        {
-            error = "EngineMetadataIoError";
+            catch (UnauthorizedAccessException)
+            {
+                errors.Add($"{root.Scope}:EngineMetadataAccessDenied");
+            }
+            catch (IOException)
+            {
+                errors.Add($"{root.Scope}:EngineMetadataIoError");
+            }
         }
 
         var payload = new
         {
-            Schema = 1,
-            ManagedByeDpiRootPresent = Directory.Exists(root),
-            Error = error,
+            Schema = 2,
+            ManagedByeDpiRootPresent = roots.Any(root => Directory.Exists(root.Path)),
+            Errors = errors,
             Engines = engines
         };
 
@@ -258,6 +215,86 @@ public static class NetPilotSupportBundleBuilder
             Path.Combine(staging, "engine-status.json"),
             JsonSerializer.Serialize(payload, JsonOptions),
             Encoding.UTF8);
+    }
+
+    private static IReadOnlyList<(string Path, string Scope)> GetManagedByeDpiRoots()
+    {
+        var appDirectory = Path.GetFullPath(AppContext.BaseDirectory)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var installRoot = Directory.GetParent(appDirectory)?.FullName ?? appDirectory;
+        var userModeRoot = Path.Combine(installRoot, "Engines", "Managed", "byedpi");
+        var legacyRoot = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            "NetPilot",
+            "Engines",
+            "Managed",
+            "byedpi");
+
+        var result = new List<(string Path, string Scope)>
+        {
+            (userModeRoot, "AppInstall")
+        };
+
+        if (!string.Equals(userModeRoot, legacyRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            result.Add((legacyRoot, "LegacyProgramFiles"));
+        }
+
+        return result;
+    }
+
+    private static void ScanByeDpiRoot(string root, string scope, List<object> engines)
+    {
+        if (!Directory.Exists(root))
+        {
+            return;
+        }
+
+        var rootInfo = new DirectoryInfo(root);
+        if ((rootInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+        {
+            return;
+        }
+
+        foreach (var versionDirectory in rootInfo
+                     .EnumerateDirectories("*", SearchOption.TopDirectoryOnly)
+                     .OrderBy(static directory => directory.Name, StringComparer.Ordinal))
+        {
+            if ((versionDirectory.Attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                continue;
+            }
+
+            foreach (var architectureDirectory in versionDirectory
+                         .EnumerateDirectories("*", SearchOption.TopDirectoryOnly)
+                         .OrderBy(static directory => directory.Name, StringComparer.Ordinal))
+            {
+                if ((architectureDirectory.Attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    continue;
+                }
+
+                var executable = new FileInfo(
+                    Path.Combine(architectureDirectory.FullName, "bin", "ciadpi.exe"));
+                if (!executable.Exists || (executable.Attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    continue;
+                }
+
+                using var stream = executable.OpenRead();
+                var sha256 = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+                engines.Add(new
+                {
+                    Engine = "ByeDPI",
+                    Scope = scope,
+                    Version = SafeDiagnosticLog.Sanitize(versionDirectory.Name, 128),
+                    Architecture = SafeDiagnosticLog.Sanitize(architectureDirectory.Name, 32),
+                    Executable = "bin/ciadpi.exe",
+                    executable.Length,
+                    Sha256 = sha256
+                });
+            }
+        }
     }
 
     private static void WritePrivacyNotice(string staging, bool serviceLogsReadable)
@@ -269,7 +306,7 @@ public static class NetPilotSupportBundleBuilder
             "The bundle is created locally and is never uploaded automatically.",
             "It intentionally excludes cookies, passwords, API keys, environment-variable dumps, IPC message bodies, browser data and user network traffic.",
             "Local user name, machine name and user-profile paths are redacted from diagnostic text. Network addresses are not intentionally collected.",
-            $"Service logs included: {serviceLogsReadable}.",
+            $"Legacy service logs readable if present: {serviceLogsReadable}.",
             "Review the ZIP before sharing it with a developer.",
             "");
 
