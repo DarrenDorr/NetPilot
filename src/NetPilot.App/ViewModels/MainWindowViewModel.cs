@@ -13,12 +13,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly IDashboardService _dashboardService;
     private readonly Dictionary<string, ResourceStatusViewModel> _resourceById;
+    private readonly AsyncCommand _toggleEngineCommand;
     private readonly AsyncCommand _checkCommand;
     private readonly AsyncCommand _findStrategyCommand;
 
     private string _overallStatus = "Готов к проверке";
     private string _overallDetails = "Проверьте доступность сервисов одной кнопкой.";
     private string _engineStatus = "Состояние сетевого движка ещё не получено.";
+    private string _engineActionText = "Запустить ByeDPI";
     private string _lastAction = "Действий ещё не выполнялось.";
     private bool _isBusy;
     private bool _isAdvancedMode;
@@ -39,6 +41,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _resourceById = Resources
             .Where(resource => !string.Equals(resource.Id, "telegram", StringComparison.Ordinal))
             .ToDictionary(resource => resource.Id, StringComparer.Ordinal);
+
+        _toggleEngineCommand = new AsyncCommand(
+            ToggleEngineAsync,
+            () => !IsBusy,
+            HandleUnexpectedError);
 
         _checkCommand = new AsyncCommand(
             CheckNowAsync,
@@ -77,6 +84,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         private set => SetField(ref _engineStatus, value);
     }
 
+    public string EngineActionText
+    {
+        get => _engineActionText;
+        private set => SetField(ref _engineActionText, value);
+    }
+
     public string LastAction
     {
         get => _lastAction;
@@ -90,6 +103,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             if (SetField(ref _isBusy, value))
             {
+                _toggleEngineCommand.RaiseCanExecuteChanged();
                 _checkCommand.RaiseCanExecuteChanged();
                 _findStrategyCommand.RaiseCanExecuteChanged();
             }
@@ -102,6 +116,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         set => SetField(ref _isAdvancedMode, value);
     }
 
+    public ICommand ToggleEngineCommand => _toggleEngineCommand;
     public ICommand CheckCommand => _checkCommand;
     public ICommand FindStrategyCommand => _findStrategyCommand;
 
@@ -120,6 +135,48 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         _disposed = true;
         _dashboardService.Dispose();
+    }
+
+    private async Task ToggleEngineAsync()
+    {
+        ThrowIfDisposed();
+        IsBusy = true;
+
+        try
+        {
+            var state = await _dashboardService.GetStrategyRuntimeStateAsync();
+            if (state.IsRunning)
+            {
+                OverallStatus = "Останавливаем ByeDPI…";
+                OverallDetails = "NetPilot завершает только принадлежащий ему user-mode процесс.";
+                await _dashboardService.StopStrategyRuntimeAsync();
+                OverallStatus = "ByeDPI остановлен";
+                OverallDetails = "Локальный SOCKS5-процесс завершён; системные сетевые настройки не изменялись.";
+                LastAction = "ByeDPI остановлен штатно.";
+            }
+            else
+            {
+                OverallStatus = "Запускаем ByeDPI…";
+                OverallDetails = "Проверяем точный SHA-256 и запускаем локальный SOCKS5 без повышения прав.";
+                await _dashboardService.StartDefaultStrategyAsync();
+                OverallStatus = "ByeDPI запущен";
+                OverallDetails = "Проверенный user-mode движок работает только на loopback без WinDivert.";
+                LastAction = "ByeDPI запущен без службы и без повышения прав.";
+            }
+
+            await RefreshEngineStatusAsync(CancellationToken.None);
+        }
+        catch (Exception exception) when (IsExpectedOperationalException(exception))
+        {
+            OverallStatus = "Операция с ByeDPI остановлена";
+            OverallDetails = GetUserMessage(exception);
+            LastAction = "NetPilot завершил операцию fail-closed.";
+            await RefreshEngineStatusAsync(CancellationToken.None);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     private async Task CheckNowAsync()
@@ -158,7 +215,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ThrowIfDisposed();
         IsBusy = true;
         OverallStatus = "Подбираем рабочую стратегию…";
-        OverallDetails = "NetPilot сначала подтверждает проблему, затем проверяет ограниченное число альтернатив.";
+        OverallDetails = "NetPilot сначала подтверждает проблему, затем проверяет ограниченное число альтернатив через локальный ByeDPI SOCKS5.";
 
         foreach (var resource in _resourceById.Values)
         {
@@ -206,7 +263,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         else if (results.Any(result => result.State == ResourceHealthState.Unavailable))
         {
             OverallStatus = "Есть недоступные сервисы";
-            OverallDetails = "Можно запустить подбор стратегии или повторить проверку позже.";
+            OverallDetails = "Можно запустить ByeDPI, подобрать стратегию или повторить проверку позже.";
         }
         else
         {
@@ -239,7 +296,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             case StrategySelectionStatus.NotRunning:
                 LastAction = "ByeDPI сейчас не запущен. Автоматический запуск не выполнялся.";
                 OverallStatus = "Сетевой движок не запущен";
-                OverallDetails = "После запуска ByeDPI станет доступен автоматический подбор.";
+                OverallDetails = "Сначала запустите ByeDPI, затем станет доступен автоматический подбор.";
                 break;
 
             case StrategySelectionStatus.OriginalRestoreFailed:
@@ -259,13 +316,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             var state = await _dashboardService.GetStrategyRuntimeStateAsync(cancellationToken);
-            EngineStatus = state.IsRunning && !string.IsNullOrWhiteSpace(state.StrategyId)
+            var running = state.IsRunning && !string.IsNullOrWhiteSpace(state.StrategyId);
+            EngineStatus = running
                 ? $"ByeDPI: запущен · стратегия {state.StrategyId}"
                 : "ByeDPI: остановлен";
+            EngineActionText = running ? "Остановить ByeDPI" : "Запустить ByeDPI";
         }
         catch (Exception exception) when (IsExpectedOperationalException(exception))
         {
             EngineStatus = "Проверенный пакет ByeDPI недоступен или ещё не установлен.";
+            EngineActionText = "Запустить ByeDPI";
         }
     }
 
