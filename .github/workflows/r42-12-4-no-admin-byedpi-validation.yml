@@ -1,0 +1,438 @@
+name: R42.12.4 No-Admin ByeDPI Standard-User Validation Pack
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: netpilot-r42-12-4-no-admin-byedpi-validation
+  cancel-in-progress: false
+
+env:
+  RELEASE_ID: '431054375'
+  RELEASE_TAG: byedpi-v0.17.3
+  RELEASE_TARGET: dc28fc4f0b635c34c63bbaed99ea7658d8a9c827
+  PAYLOAD_ASSET_ID: '700433235'
+  PAYLOAD_NAME: NetPilot-ByeDPI-0.17.3-x64.zip
+  PAYLOAD_SIZE: '496964'
+  PAYLOAD_SHA256: c0fe998e3d81ccb871f09d126e7b5ee0ab82d15daf78bc44bcd63b7762313db7
+  MANIFEST_ASSET_ID: '700433238'
+  MANIFEST_NAME: NetPilot-ByeDPI-0.17.3-x64.manifest.json
+  MANIFEST_SIZE: '511'
+  MANIFEST_SHA256: eaa6f063fcb8e012810f849ed08b6bd82d4d046d4796c2fb4b903c4195985f54
+  PROVENANCE_ASSET_ID: '700433234'
+  PROVENANCE_NAME: NetPilot-ByeDPI-0.17.3-x64.provenance.json
+  PROVENANCE_SIZE: '1726'
+  PROVENANCE_SHA256: e1f98760eed94f5daa7d37a868015755220cb17d389000bc49e031da511f7f31
+  BYEDPI_WINDOWS_SIZE: '495685'
+  BYEDPI_WINDOWS_SHA256: 866e99c3c7690326cc6e365fe02980f06ae2b394c045555674fb95db52b0dbdd
+  BYEDPI_LICENSE_SIZE: '1063'
+  BYEDPI_LICENSE_SHA256: 18c854c6c25dffefe4b522cf1bdf5d15278a25ca785948258bddb94393f575eb
+  TEST_VERSION: 0.1.0-alpha-r42-12-4
+  TEST_USER: NetPilotR42124
+  TEST_TASK: NetPilot-R42.12.4-StandardUser
+
+jobs:
+  build-and-standard-user-validate:
+    name: Build exact-draft user-mode pack and validate under Limited token
+    runs-on: windows-2025
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout current NetPilot main
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Require manual main-branch execution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REF -cne 'refs/heads/main') {
+            throw 'R42.12.4 may only be built manually from main.'
+          }
+          $head = (git rev-parse HEAD).Trim()
+          if ($head -cne $env:GITHUB_SHA) {
+            throw 'Checked-out NetPilot commit does not match GITHUB_SHA.'
+          }
+          New-Item -ItemType Directory -Force -Path hosted-evidence | Out-Null
+          "NETPILOT_COMMIT=$head" | Set-Content hosted-evidence\boundary.txt
+          'VALIDATION_SCOPE=STANDARD_USER_BYEDPI_ONLY' | Add-Content hosted-evidence\boundary.txt
+          'PRODUCTION_ADMISSION=BLOCK' | Add-Content hosted-evidence\boundary.txt
+
+      - name: Require exact unpublished draft metadata
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/$env:RELEASE_ID" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to query exact draft release.' }
+          if ([string]$release.id -cne $env:RELEASE_ID) { throw 'Release ID drift.' }
+          if ($release.tag_name -cne $env:RELEASE_TAG) { throw 'Release tag drift.' }
+          if ($release.target_commitish -cne $env:RELEASE_TARGET) { throw 'Release target drift.' }
+          if ($release.draft -ne $true) { throw 'R42.12.4 requires the release to remain a draft.' }
+          if ($release.prerelease -ne $false) { throw 'R42.12.4 refuses prerelease state.' }
+          if ($null -ne $release.published_at) { throw 'R42.12.4 refuses an already-published release.' }
+          if (@($release.assets).Count -ne 3) { throw 'Exact draft must contain three assets.' }
+
+          $expected = @(
+            @{ Id=$env:PAYLOAD_ASSET_ID; Name=$env:PAYLOAD_NAME; Size=[long]$env:PAYLOAD_SIZE; Digest="sha256:$env:PAYLOAD_SHA256" },
+            @{ Id=$env:MANIFEST_ASSET_ID; Name=$env:MANIFEST_NAME; Size=[long]$env:MANIFEST_SIZE; Digest="sha256:$env:MANIFEST_SHA256" },
+            @{ Id=$env:PROVENANCE_ASSET_ID; Name=$env:PROVENANCE_NAME; Size=[long]$env:PROVENANCE_SIZE; Digest="sha256:$env:PROVENANCE_SHA256" }
+          )
+          foreach ($item in $expected) {
+            $asset = @($release.assets | Where-Object { [string]$_.id -ceq $item.Id })
+            if ($asset.Count -ne 1) { throw "Draft asset ID cardinality mismatch: $($item.Id)" }
+            if ($asset[0].name -cne $item.Name) { throw "Draft asset name drift: $($item.Name)" }
+            if ($asset[0].state -cne 'uploaded') { throw "Draft asset is not uploaded: $($item.Name)" }
+            if ([long]$asset[0].size -ne $item.Size) { throw "Draft asset size drift: $($item.Name)" }
+            if ($asset[0].digest -cne $item.Digest) { throw "Draft asset digest drift: $($item.Name)" }
+          }
+
+          'DRAFT_METADATA=PASS' | Add-Content hosted-evidence\boundary.txt
+          'RELEASE_PUBLISHED=False' | Add-Content hosted-evidence\boundary.txt
+
+      - name: Download exact draft assets as binary bytes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p draft-assets
+          gh api -H 'Accept: application/octet-stream' "repos/${GITHUB_REPOSITORY}/releases/assets/${PAYLOAD_ASSET_ID}" > "draft-assets/${PAYLOAD_NAME}"
+          gh api -H 'Accept: application/octet-stream' "repos/${GITHUB_REPOSITORY}/releases/assets/${MANIFEST_ASSET_ID}" > "draft-assets/${MANIFEST_NAME}"
+          gh api -H 'Accept: application/octet-stream' "repos/${GITHUB_REPOSITORY}/releases/assets/${PROVENANCE_ASSET_ID}" > "draft-assets/${PROVENANCE_NAME}"
+
+      - name: Re-verify exact downloaded draft package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Assert-File([string]$Path, [long]$Size, [string]$Sha256) {
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Missing file: $Path" }
+            $item = Get-Item -LiteralPath $Path -Force
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Reparse point rejected: $Path" }
+            if ($item.Length -ne $Size) { throw "Size mismatch: $Path" }
+            $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+            if ($actual -cne $Sha256) { throw "SHA-256 mismatch: $Path" }
+          }
+
+          Assert-File "draft-assets\$env:PAYLOAD_NAME" ([long]$env:PAYLOAD_SIZE) $env:PAYLOAD_SHA256
+          Assert-File "draft-assets\$env:MANIFEST_NAME" ([long]$env:MANIFEST_SIZE) $env:MANIFEST_SHA256
+          Assert-File "draft-assets\$env:PROVENANCE_NAME" ([long]$env:PROVENANCE_SIZE) $env:PROVENANCE_SHA256
+          Expand-Archive -LiteralPath "draft-assets\$env:PAYLOAD_NAME" -DestinationPath exact-candidate
+          $files = @(Get-ChildItem -LiteralPath exact-candidate -File -Recurse)
+          if ($files.Count -ne 2) { throw 'Exact draft ZIP must contain exactly two files.' }
+          Assert-File 'exact-candidate\bin\ciadpi.exe' ([long]$env:BYEDPI_WINDOWS_SIZE) $env:BYEDPI_WINDOWS_SHA256
+          Assert-File 'exact-candidate\LICENSE' ([long]$env:BYEDPI_LICENSE_SIZE) $env:BYEDPI_LICENSE_SHA256
+          'EXACT_DRAFT_BYTES=PASS' | Add-Content hosted-evidence\boundary.txt
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build exact-candidate no-admin per-user installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidateRoot = (Resolve-Path 'exact-candidate').Path
+          pwsh -NoLogo -NoProfile -File scripts/build-user-mode-installer.ps1 `
+            -Version $env:TEST_VERSION `
+            -VersionInfoVersion 0.1.0.0 `
+            -ByeDpiPackageDir $candidateRoot
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $setup = "artifacts\installer-user-mode\NetPilot-UserMode-Setup-$env:TEST_VERSION-x64.exe"
+          if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) { throw 'Expected user-mode installer was not built.' }
+          'USER_MODE_INSTALLER_BUILT=PASS' | Add-Content hosted-evidence\boundary.txt
+
+      - name: Publish no-admin validator as self-contained x64 EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish tools\NetPilot.ByeDpiUserModeValidation\NetPilot.ByeDpiUserModeValidation.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            --output build\no-admin-validator
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path -LiteralPath 'build\no-admin-validator\NetPilot.ByeDpiUserModeValidation.exe' -PathType Leaf)) {
+            throw 'Self-contained no-admin validator EXE was not produced.'
+          }
+          'NO_ADMIN_VALIDATOR_BUILT=PASS' | Add-Content hosted-evidence\boundary.txt
+
+      - name: Assemble one-day physical-PC no-admin validation pack
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pack = Join-Path $PWD 'pack'
+          New-Item -ItemType Directory -Force -Path $pack | Out-Null
+
+          $setupSource = "artifacts\installer-user-mode\NetPilot-UserMode-Setup-$env:TEST_VERSION-x64.exe"
+          Copy-Item -LiteralPath $setupSource -Destination (Join-Path $pack "NetPilot-UserMode-Setup-$env:TEST_VERSION-x64.exe")
+          Copy-Item -LiteralPath 'build\no-admin-validator\NetPilot.ByeDpiUserModeValidation.exe' -Destination (Join-Path $pack 'NetPilot-ByeDPI-NoAdmin-Validation.exe')
+          Copy-Item -LiteralPath 'docs\R42.12.4-NO-ADMIN-BYEDPI.md' -Destination (Join-Path $pack 'README.md')
+
+          $setup = Get-Item -LiteralPath (Join-Path $pack "NetPilot-UserMode-Setup-$env:TEST_VERSION-x64.exe")
+          $validator = Get-Item -LiteralPath (Join-Path $pack 'NetPilot-ByeDPI-NoAdmin-Validation.exe')
+          $head = (git rev-parse HEAD).Trim()
+          [ordered]@{
+            schema = 1
+            purpose = 'R42.12.4 no-admin physical-PC validation only'
+            netpilot_commit = $head
+            draft_release_id = [long]$env:RELEASE_ID
+            draft_tag = $env:RELEASE_TAG
+            draft_target_commit = $env:RELEASE_TARGET
+            release_published = $false
+            production_admission = 'BLOCK'
+            candidate = [ordered]@{
+              version = '0.17.3'
+              size = [long]$env:BYEDPI_WINDOWS_SIZE
+              sha256 = $env:BYEDPI_WINDOWS_SHA256
+            }
+            installer = [ordered]@{
+              name = $setup.Name
+              size = $setup.Length
+              sha256 = (Get-FileHash -LiteralPath $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              requires_admin = $false
+              install_scope = 'CurrentUserLocalAppData'
+            }
+            validator = [ordered]@{
+              name = $validator.Name
+              size = $validator.Length
+              sha256 = (Get-FileHash -LiteralPath $validator.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              execution_level = 'asInvoker'
+            }
+          } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $pack 'package-manifest.json') -Encoding utf8NoBOM
+          'VALIDATION_PACK_ASSEMBLED=PASS' | Add-Content hosted-evidence\boundary.txt
+
+      - name: Create isolated standard Windows user and Limited scheduled task
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $user = $env:TEST_USER
+          $existing = Get-LocalUser -Name $user -ErrorAction SilentlyContinue
+          if ($null -ne $existing) { Remove-LocalUser -Name $user }
+
+          $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%'
+          $passwordPlain = -join (1..32 | ForEach-Object { $alphabet[(Get-Random -Maximum $alphabet.Length)] })
+          Write-Output "::add-mask::$passwordPlain"
+          $passwordSecure = ConvertTo-SecureString $passwordPlain -AsPlainText -Force
+          New-LocalUser -Name $user -Password $passwordSecure -PasswordNeverExpires -UserMayNotChangePassword | Out-Null
+
+          $adminSid = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')
+          $adminGroup = Get-LocalGroup -SID $adminSid
+          $adminMembers = @(Get-LocalGroupMember -Group $adminGroup -ErrorAction Stop)
+          if ($adminMembers.Name -contains "$env:COMPUTERNAME\$user") {
+            throw 'Standard test user unexpectedly belongs to Administrators.'
+          }
+
+          $publicPack = 'C:\Users\Public\NetPilot-R42.12.4-Pack'
+          $publicEvidence = 'C:\Users\Public\NetPilot-R42.12.4-Evidence'
+          if (Test-Path -LiteralPath $publicPack) { Remove-Item -LiteralPath $publicPack -Recurse -Force }
+          if (Test-Path -LiteralPath $publicEvidence) { Remove-Item -LiteralPath $publicEvidence -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $publicPack, $publicEvidence | Out-Null
+          Copy-Item -LiteralPath 'pack\*' -Destination $publicPack -Recurse -Force
+
+          $userAccount = "$env:COMPUTERNAME\$user"
+          & icacls.exe $publicPack /inheritance:r /grant:r "$userAccount:(OI)(CI)RX" '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' /T /C | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Could not apply read-only pack ACL for the standard user.' }
+          & icacls.exe $publicEvidence /inheritance:r /grant:r "$userAccount:(OI)(CI)M" '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' /T /C | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Could not apply evidence ACL for the standard user.' }
+
+          $runner = Join-Path $publicEvidence 'run-standard-user-validation.ps1'
+          @'
+          $ErrorActionPreference = 'Stop'
+          $pack = 'C:\Users\Public\NetPilot-R42.12.4-Pack'
+          $evidence = 'C:\Users\Public\NetPilot-R42.12.4-Evidence'
+          $result = Join-Path $evidence 'standard-user-boundary.txt'
+          try {
+            "USER=$env:USERNAME" | Set-Content -LiteralPath $result -Encoding utf8NoBOM
+            "USERPROFILE_SCOPE=$env:USERPROFILE" | Add-Content -LiteralPath $result
+            $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+            $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
+            if ($principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
+              throw 'Scheduled task received an Administrator token.'
+            }
+            'SCHEDULED_TASK_ADMIN_ROLE=False' | Add-Content -LiteralPath $result
+
+            $setup = Join-Path $pack 'NetPilot-UserMode-Setup-0.1.0-alpha-r42-12-4-x64.exe'
+            $install = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' -Wait -PassThru
+            "INSTALLER_EXIT_CODE=$($install.ExitCode)" | Add-Content -LiteralPath $result
+            if ($install.ExitCode -ne 0) { throw "User-mode installer failed: $($install.ExitCode)" }
+
+            $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\NetPilot'
+            if (-not (Test-Path -LiteralPath (Join-Path $installRoot 'App\NetPilot.exe') -PathType Leaf)) {
+              throw 'Per-user NetPilot.exe was not installed beneath LocalAppData.'
+            }
+            if (Get-Service -Name 'NetPilot.Service' -ErrorAction SilentlyContinue) {
+              throw 'NetPilot.Service unexpectedly exists during no-admin validation.'
+            }
+            'PER_USER_INSTALL=PASS' | Add-Content -LiteralPath $result
+            'NETPILOT_SERVICE_PRESENT=False' | Add-Content -LiteralPath $result
+
+            $validator = Join-Path $pack 'NetPilot-ByeDPI-NoAdmin-Validation.exe'
+            $validation = Start-Process -FilePath $validator -ArgumentList '--install-root',$installRoot,'--evidence-dir',$evidence -Wait -PassThru
+            "VALIDATOR_EXIT_CODE=$($validation.ExitCode)" | Add-Content -LiteralPath $result
+            if ($validation.ExitCode -ne 0) { throw "No-admin validator failed: $($validation.ExitCode)" }
+            'STANDARD_USER_VALIDATION=PASS' | Add-Content -LiteralPath $result
+
+            $uninstaller = Join-Path $installRoot 'unins000.exe'
+            if (Test-Path -LiteralPath $uninstaller -PathType Leaf) {
+              $uninstall = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+              "UNINSTALLER_EXIT_CODE=$($uninstall.ExitCode)" | Add-Content -LiteralPath $result
+              if ($uninstall.ExitCode -ne 0) { throw "Per-user uninstall failed: $($uninstall.ExitCode)" }
+            }
+            'DONE=PASS' | Add-Content -LiteralPath $result
+          }
+          catch {
+            "RUNNER_FAILURE_TYPE=$($_.Exception.GetType().FullName)" | Add-Content -LiteralPath $result
+            'DONE=FAIL' | Add-Content -LiteralPath $result
+            exit 1
+          }
+          '@ | Set-Content -LiteralPath $runner -Encoding utf8NoBOM
+
+          $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$runner`""
+          $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2)
+          Register-ScheduledTask -TaskName $env:TEST_TASK -Action $action -Trigger $trigger -User $userAccount -Password $passwordPlain -RunLevel Limited -Force | Out-Null
+          $task = Get-ScheduledTask -TaskName $env:TEST_TASK
+          if ($task.Principal.RunLevel -ne 'Limited') { throw 'Scheduled task is not configured with RunLevel Limited.' }
+          'STANDARD_USER_CREATED=PASS' | Add-Content hosted-evidence\boundary.txt
+          'SCHEDULED_TASK_RUNLEVEL=Limited' | Add-Content hosted-evidence\boundary.txt
+
+          Start-ScheduledTask -TaskName $env:TEST_TASK
+
+      - name: Wait for and verify standard-user validation evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $publicEvidence = 'C:\Users\Public\NetPilot-R42.12.4-Evidence'
+          $boundary = Join-Path $publicEvidence 'standard-user-boundary.txt'
+          $deadline = (Get-Date).AddMinutes(10)
+          while ((Get-Date) -lt $deadline) {
+            if (Test-Path -LiteralPath $boundary -PathType Leaf) {
+              $text = Get-Content -LiteralPath $boundary -Raw
+              if ($text -match 'DONE=(PASS|FAIL)') { break }
+            }
+            Start-Sleep -Seconds 2
+          }
+          if (-not (Test-Path -LiteralPath $boundary -PathType Leaf)) { throw 'Standard-user boundary evidence was not created.' }
+          $boundaryText = Get-Content -LiteralPath $boundary -Raw
+          Copy-Item -LiteralPath $boundary -Destination 'hosted-evidence\standard-user-boundary.txt'
+          if ($boundaryText -notmatch '(?m)^SCHEDULED_TASK_ADMIN_ROLE=False$') { throw 'Standard-user token boundary was not proven.' }
+          if ($boundaryText -notmatch '(?m)^INSTALLER_EXIT_CODE=0$') { throw 'Per-user installer did not succeed.' }
+          if ($boundaryText -notmatch '(?m)^PER_USER_INSTALL=PASS$') { throw 'Per-user install scope was not proven.' }
+          if ($boundaryText -notmatch '(?m)^NETPILOT_SERVICE_PRESENT=False$') { throw 'Service-free boundary was not proven.' }
+          if ($boundaryText -notmatch '(?m)^VALIDATOR_EXIT_CODE=0$') { throw 'No-admin validator did not succeed.' }
+          if ($boundaryText -notmatch '(?m)^STANDARD_USER_VALIDATION=PASS$') { throw 'Standard-user validator PASS marker missing.' }
+          if ($boundaryText -notmatch '(?m)^DONE=PASS$') { throw 'Standard-user runner did not finish successfully.' }
+
+          $validationTxt = Get-ChildItem -LiteralPath $publicEvidence -Filter 'ByeDPI-NoAdmin-Validation-*-UTC.txt' -File |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
+          if ($null -eq $validationTxt) { throw 'Detailed no-admin validation evidence is missing.' }
+          Copy-Item -LiteralPath $validationTxt.FullName -Destination 'hosted-evidence\no-admin-validator-evidence.txt'
+          $text = Get-Content -LiteralPath $validationTxt.FullName -Raw
+          foreach ($marker in @(
+            'CURRENT_TOKEN_NON_ELEVATED=PASS',
+            'INSTALL_SCOPE=CURRENT_USER_LOCALAPPDATA',
+            "CANDIDATE_SHA256=$env:BYEDPI_WINDOWS_SHA256",
+            'INSTALLED_EXACT_CANDIDATE=PASS',
+            'NETPILOT_SERVICE_PRESENT_BEFORE=False',
+            'BYEDPI_USER_MODE_START=PASS',
+            'BYEDPI_LISTENER_LOOPBACK_ONLY=PASS',
+            'CIADPI_OWNER_MATCH=PASS',
+            'CIADPI_TOKEN_NON_ELEVATED=PASS',
+            'EXTERNAL_SOCKS5_HTTPS=PASS',
+            'NORMAL_STOP_CLEANUP=PASS',
+            'RUNTIME_RESIDUE_AFTER_NORMAL_STOP=NONE',
+            'JOB_OBJECT_CRASH_CLEANUP=PASS',
+            'RUNTIME_RESIDUE_AFTER_OWNER_CRASH=NONE',
+            'SUPPORT_BUNDLE_ENGINE_SHA256=PASS',
+            'SUPPORT_BUNDLE_USER_MODE_SCOPE=PASS',
+            'NETPILOT_SERVICE_PRESENT_AFTER=False',
+            'SYSTEM_PROXY_UNCHANGED=PASS',
+            'WINDIVERT_UNCHANGED=PASS',
+            'SYSTEM_PROXY_MUTATION=NOT_REQUESTED',
+            'WINDIVERT=NOT_REQUESTED',
+            'FINAL_RUNTIME_RESIDUE=NONE',
+            'FINAL_SERVICE_BOUNDARY=PASS',
+            'FINAL_SYSTEM_PROXY_UNCHANGED=PASS',
+            'FINAL_WINDIVERT_UNCHANGED=PASS',
+            'PRODUCTION_ADMISSION=BLOCK',
+            'RESULT=R42_12_4_NO_ADMIN_BYEDPI_PASS_BLOCK'
+          )) {
+            if (-not $text.Contains($marker, [StringComparison]::Ordinal)) { throw "Required no-admin evidence marker missing: $marker" }
+          }
+
+          $combined = Get-ChildItem -LiteralPath $publicEvidence -Filter 'NetPilot-ByeDPI-NoAdmin-Validation-*-UTC.zip' -File |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
+          if ($null -eq $combined) { throw 'Combined no-admin evidence ZIP is missing.' }
+          Copy-Item -LiteralPath $combined.FullName -Destination 'hosted-evidence\hosted-no-admin-combined-evidence.zip'
+
+          if (Get-Service -Name 'NetPilot.Service' -ErrorAction SilentlyContinue) { throw 'NetPilot.Service exists after no-admin validation.' }
+          if (@(Get-Process -Name ciadpi -ErrorAction SilentlyContinue).Count -ne 0) { throw 'ciadpi residue exists after no-admin validation.' }
+          'HOSTED_STANDARD_USER_VALIDATION=PASS' | Add-Content hosted-evidence\boundary.txt
+          'HOSTED_CIADPI_RESIDUE=NONE' | Add-Content hosted-evidence\boundary.txt
+          'HOSTED_SERVICE_BOUNDARY=PASS' | Add-Content hosted-evidence\boundary.txt
+
+      - name: Re-require draft remains unpublished and unchanged
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/$env:RELEASE_ID" | ConvertFrom-Json
+          if ($release.draft -ne $true -or $null -ne $release.published_at) { throw 'Draft release state changed during R42.12.4.' }
+          if (@($release.assets).Count -ne 3) { throw 'Draft asset cardinality changed during R42.12.4.' }
+          $expected = @(
+            @{ Id=$env:PAYLOAD_ASSET_ID; Size=[long]$env:PAYLOAD_SIZE; Digest="sha256:$env:PAYLOAD_SHA256" },
+            @{ Id=$env:MANIFEST_ASSET_ID; Size=[long]$env:MANIFEST_SIZE; Digest="sha256:$env:MANIFEST_SHA256" },
+            @{ Id=$env:PROVENANCE_ASSET_ID; Size=[long]$env:PROVENANCE_SIZE; Digest="sha256:$env:PROVENANCE_SHA256" }
+          )
+          foreach ($item in $expected) {
+            $asset = @($release.assets | Where-Object { [string]$_.id -ceq $item.Id })
+            if ($asset.Count -ne 1 -or [long]$asset[0].size -ne $item.Size -or $asset[0].digest -cne $item.Digest) {
+              throw "Draft asset changed: $($item.Id)"
+            }
+          }
+          'DRAFT_UNCHANGED_AFTER_VALIDATION=PASS' | Add-Content hosted-evidence\boundary.txt
+          'RELEASE_PUBLISHED=False' | Add-Content hosted-evidence\boundary.txt
+          'RESULT=R42_12_4_HOSTED_STANDARD_USER_PASS_BLOCK' | Add-Content hosted-evidence\boundary.txt
+
+      - name: Upload one-day no-admin physical-PC validation pack
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: netpilot-r42-12-4-no-admin-pc-validation-pack
+          path: pack
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Upload hosted no-admin validation evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: netpilot-r42-12-4-hosted-standard-user-evidence
+          path: hosted-evidence
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Cleanup standard-user validation boundary
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Stop-ScheduledTask -TaskName $env:TEST_TASK -ErrorAction SilentlyContinue
+          Unregister-ScheduledTask -TaskName $env:TEST_TASK -Confirm:$false -ErrorAction SilentlyContinue
+          Get-Process -Name ciadpi -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          $user = Get-LocalUser -Name $env:TEST_USER -ErrorAction SilentlyContinue
+          if ($null -ne $user) { Remove-LocalUser -Name $env:TEST_USER -ErrorAction SilentlyContinue }
+          Remove-Item -LiteralPath 'C:\Users\Public\NetPilot-R42.12.4-Pack' -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath 'C:\Users\Public\NetPilot-R42.12.4-Evidence' -Recurse -Force -ErrorAction SilentlyContinue
