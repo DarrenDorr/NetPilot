@@ -23,11 +23,11 @@ public interface IStrategyRuntime
     Task ActivateAsync(
         string strategyId,
         CancellationToken cancellationToken = default);
-}
 
-public interface IStoppableStrategyRuntime : IStrategyRuntime
-{
-    Task StopAsync(CancellationToken cancellationToken = default);
+    Task StopAsync(CancellationToken cancellationToken = default) =>
+        throw new StrategyRuntimeException(
+            "StopUnsupported",
+            "Этот сетевой runtime не поддерживает безопасную остановку через общий контракт.");
 }
 
 public interface IResourceHealthProbe
