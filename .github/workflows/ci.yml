@@ -82,6 +82,39 @@ jobs:
           if (-not (Test-Path "$env:ProgramFiles\NetPilot\App\NetPilot.exe")) { throw 'NetPilot.exe was not installed.' }
           if (-not (Test-Path "$env:ProgramFiles\NetPilot\Service\NetPilot.Service.exe")) { throw 'NetPilot.Service.exe was not installed.' }
 
+      - name: Installed diagnostics support bundle smoke
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $app = "$env:ProgramFiles\NetPilot\App\NetPilot.exe"
+          $support = "$env:LOCALAPPDATA\NetPilot\Support"
+          if (Test-Path $support) { Remove-Item -LiteralPath $support -Recurse -Force }
+
+          $process = Start-Process -FilePath $app -ArgumentList '--collect-diagnostics' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Diagnostics mode failed with exit code $($process.ExitCode)" }
+
+          $bundle = Get-ChildItem -LiteralPath $support -Filter 'NetPilot-Diagnostics-*-UTC.zip' -File |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
+          if ($null -eq $bundle) { throw 'Diagnostics ZIP was not created.' }
+
+          $expanded = Join-Path $env:RUNNER_TEMP 'netpilot-diagnostics-smoke'
+          if (Test-Path $expanded) { Remove-Item -LiteralPath $expanded -Recurse -Force }
+          Expand-Archive -LiteralPath $bundle.FullName -DestinationPath $expanded
+
+          foreach ($required in @('diagnostics.json','environment.txt','privacy.txt','checksums.txt')) {
+            if (-not (Test-Path (Join-Path $expanded $required) -PathType Leaf)) {
+              throw "Diagnostics bundle is missing $required"
+            }
+          }
+
+          $metadata = Get-Content -LiteralPath (Join-Path $expanded 'diagnostics.json') -Raw | ConvertFrom-Json
+          if ($metadata.AutomaticUpload -ne $false) { throw 'Diagnostics bundle must record AutomaticUpload=false.' }
+          if ($metadata.DiagnosticCode -cne 'NP-DIAG-MANUAL-001') { throw 'Unexpected diagnostics code.' }
+
+          $appLogs = @(Get-ChildItem -LiteralPath (Join-Path $expanded 'logs\app') -Filter 'netpilot-*.jsonl' -File -ErrorAction SilentlyContinue)
+          if ($appLogs.Count -lt 1) { throw 'Diagnostics bundle did not include the app JSONL log.' }
+
       - name: Installer smoke test - uninstall and service removal
         if: always()
         shell: pwsh
