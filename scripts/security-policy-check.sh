@@ -88,12 +88,24 @@ if [[ ! -f "$user_mode_installer" ]]; then
   echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: no-admin user-mode installer отсутствует."
   fail=1
 else
-  if ! grep -qE '^PrivilegesRequired=lowest$' "$user_mode_installer"; then
+  if ! grep -qxF 'PrivilegesRequired=lowest' "$user_mode_installer"; then
     echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: user-mode installer обязан использовать PrivilegesRequired=lowest."
     fail=1
   fi
-  if grep -qiE 'ServicePublishDir|NetPilot\.Service|sc\.exe|LocalSystem|runas' "$user_mode_installer"; then
-    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: user-mode installer содержит privileged/service semantics."
+  if ! grep -qxF 'PrivilegesRequiredOverridesAllowed=' "$user_mode_installer"; then
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: user-mode installer не должен разрешать override уровня привилегий."
+    fail=1
+  fi
+  if ! grep -qxF 'DefaultDirName={localappdata}\Programs\NetPilot' "$user_mode_installer"; then
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: user-mode installer обязан устанавливаться только в LocalAppData текущего пользователя."
+    fail=1
+  fi
+  if grep -qiE 'ServicePublishDir|NetPilot\.Service|sc\.exe|LocalSystem|runas|\{autopf\}|\{commonappdata\}|^\[Registry\]' "$user_mode_installer"; then
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: user-mode installer содержит privileged/service/machine-wide semantics."
+    fail=1
+  fi
+  if grep -qiE '^PrivilegesRequiredOverridesAllowed=.*(commandline|dialog)' "$user_mode_installer"; then
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: user-mode installer разрешает переключение в elevated install mode."
     fail=1
   fi
 fi
