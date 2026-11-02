@@ -1,0 +1,31 @@
+schema_version: 1
+scope: byedpi-r42.10-verified-downloader
+status: VERIFIED_IN_MEMORY_BOUNDARY_ONLY
+parent_checkpoint: dffaaae2b427955bc6bc60306defea64d7abc69f
+
+acquisition:
+  exact_release_tag_only: true
+  immutable_release_required: true
+  expected_asset_count: 3
+  aggregate_byte_cap: 67108864
+  transport_hash_verification: true
+  downloader_reverification: true
+  package_manifest_parse_required: true
+  package_manifest_identity_match_required: true
+  anti_downgrade_required: true
+
+runtime_boundary:
+  live_handler_construction: FORBIDDEN
+  filesystem_write: NOT_IMPLEMENTED
+  staging_invocation: NOT_IMPLEMENTED
+  service_ipc_wiring: ABSENT
+  installer_integration: ABSENT
+  native_execution: NOT_IMPLEMENTED
+  windivert_execution: NOT_IMPLEMENTED
+  production_admission: BLOCK
+
+result_contract:
+  returns_verified_in_memory_bundle: true
+  bundle_is_staging_token: false
+  bundle_is_admission_token: false
+  bundle_is_execution_authorization: false

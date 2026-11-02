@@ -1,0 +1,81 @@
+name: R42.10 ByeDPI Verified Downloader Preflight Once
+
+on:
+  push:
+    branches:
+      - feature/byedpi-verified-downloader-r42-10
+    paths:
+      - 'src/NetPilot.Updater/ByeDpiVerifiedReleaseDownloader.cs'
+      - 'tests/NetPilot.Core.Tests/ByeDpiVerifiedReleaseDownloaderTests.cs'
+      - 'security/native-admission/byedpi-verified-downloader-r42-10.yaml'
+      - 'scripts/security/r42-10-byedpi-verified-downloader-check.sh'
+      - 'docs/BYEDPI-VERIFIED-DOWNLOADER-R42-10.md'
+      - '.github/workflows/r42-10-verified-downloader-preflight-once.yml'
+  pull_request:
+    branches:
+      - feature/byedpi-isolated-http-r42-9
+    paths:
+      - 'src/NetPilot.Updater/ByeDpiVerifiedReleaseDownloader.cs'
+      - 'tests/NetPilot.Core.Tests/ByeDpiVerifiedReleaseDownloaderTests.cs'
+      - 'security/native-admission/byedpi-verified-downloader-r42-10.yaml'
+      - 'scripts/security/r42-10-byedpi-verified-downloader-check.sh'
+      - 'docs/BYEDPI-VERIFIED-DOWNLOADER-R42-10.md'
+      - '.github/workflows/r42-10-verified-downloader-preflight-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  managed-preflight:
+    name: Enforce verified in-memory downloader boundary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout exact branch or PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: R42.9 parent fail-closed guard
+        run: bash scripts/security/r42-9-byedpi-isolated-http-check.sh
+
+      - name: R42.10 fail-closed verified downloader guard
+        run: bash scripts/security/r42-10-byedpi-verified-downloader-check.sh
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore solution
+        run: dotnet restore NetPilot.sln
+
+      - name: Build full solution
+        run: dotnet build NetPilot.sln --configuration Release --no-restore
+
+      - name: Run focused R42.10 downloader and parent transport tests
+        run: >-
+          dotnet test tests/NetPilot.Core.Tests/NetPilot.Core.Tests.csproj
+          --configuration Release
+          --no-build
+          --filter 'FullyQualifiedName~ByeDpiVerifiedReleaseDownloaderTests|FullyQualifiedName~ByeDpiIsolatedHttpTransportTests|FullyQualifiedName~ByeDpiTransportResponsePolicyTests|FullyQualifiedName~GithubByeDpiReleaseParserTests'
+
+      - name: Boundary marker
+        run: |
+          cat r42-10-verified-downloader-guard-evidence.txt
+          echo 'R42_10_VERIFIED_BUNDLE=IN_MEMORY_ONLY'
+          echo 'R42_10_FILESYSTEM_WRITE=NOT_IMPLEMENTED'
+          echo 'R42_10_STAGING_INVOCATION=NOT_IMPLEMENTED'
+          echo 'R42_10_SERVICE_IPC_WIRING=ABSENT'
+          echo 'R42_10_NATIVE_EXECUTION=NOT_IMPLEMENTED'
+          echo 'R42_10_PRODUCTION_ADMISSION=BLOCK'
+          echo 'RESULT=R42_10_PREFLIGHT_PASS_BLOCK'
+
+      - name: Upload text-only R42.10 guard evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: byedpi-r42-10-verified-downloader-evidence
+          path: r42-10-verified-downloader-guard-evidence.txt
+          if-no-files-found: error
+          retention-days: 14
