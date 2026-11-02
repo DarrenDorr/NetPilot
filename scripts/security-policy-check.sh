@@ -38,28 +38,39 @@ check_pattern \
   "строковое ProcessStartInfo.Arguments запрещено; используйте ArgumentList" \
   '\.Arguments[[:space:]]*='
 
-# Реальный Process.Start разрешён только в одной отдельно проверяемой точке.
-allowed_process_launcher='src/NetPilot.Engine.Zapret.Windows/SystemZapretProcessLauncher.cs'
+# Реальный Process.Start разрешён только в двух отдельно проверяемых launchers:
+# privileged Zapret и непривилегированный ByeDPI user-mode.
+allowed_process_launchers=(
+  'src/NetPilot.Engine.Zapret.Windows/SystemZapretProcessLauncher.cs'
+  'src/NetPilot.Platform.Windows/AuditedByeDpiUserModeProcessLauncher.cs'
+)
 process_pattern='Process[[:space:]]*\.Start[[:space:]]*\('
 process_matches="$(grep -RniE --include='*.cs' --exclude-dir=bin --exclude-dir=obj "$process_pattern" src 2>/dev/null || true)"
-unexpected_process_matches="$(printf '%s\n' "$process_matches" | grep -v "^${allowed_process_launcher}:" || true)"
+unexpected_process_matches="$process_matches"
+
+for launcher in "${allowed_process_launchers[@]}"; do
+  unexpected_process_matches="$(printf '%s\n' "$unexpected_process_matches" | grep -v "^${launcher}:" || true)"
+done
 
 if [[ -n "$unexpected_process_matches" ]]; then
   printf '%s\n' "$unexpected_process_matches"
-  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: Process.Start разрешён только в audited SystemZapretProcessLauncher."
+  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: Process.Start обнаружен вне audited launchers."
   fail=1
 fi
 
-if [[ ! -f "$allowed_process_launcher" ]]; then
-  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: audited SystemZapretProcessLauncher отсутствует."
-  fail=1
-else
-  allowed_process_count="$(grep -cE "$process_pattern" "$allowed_process_launcher" || true)"
+for launcher in "${allowed_process_launchers[@]}"; do
+  if [[ ! -f "$launcher" ]]; then
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: audited launcher отсутствует: $launcher"
+    fail=1
+    continue
+  fi
+
+  allowed_process_count="$(grep -ciE "$process_pattern" "$launcher" || true)"
   if [[ "$allowed_process_count" -ne 1 ]]; then
-    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: audited launcher должен содержать ровно одну точку Process.Start."
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: audited launcher должен содержать ровно одну точку Process.Start: $launcher"
     fail=1
   fi
-fi
+done
 
 if [[ "$fail" -ne 0 ]]; then
   echo "Проверка политики безопасности NetPilot завершилась ошибкой."
