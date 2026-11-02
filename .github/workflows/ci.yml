@@ -51,6 +51,26 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Parse no-admin PowerShell harnesses
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($file in @(
+            'scripts\build-user-mode-installer.ps1',
+            'scripts\r42-12-4-hosted-standard-user.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file).Path,
+              [ref]$tokens,
+              [ref]$errors) | Out-Null
+            if (@($errors).Count -ne 0) {
+              $messages = @($errors | ForEach-Object { $_.Message }) -join '; '
+              throw "PowerShell parser rejected $file : $messages"
+            }
+          }
+
       - name: Restore Windows security tests
         run: dotnet restore tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj
 
