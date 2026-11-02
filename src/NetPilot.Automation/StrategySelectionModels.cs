@@ -25,6 +25,11 @@ public interface IStrategyRuntime
         CancellationToken cancellationToken = default);
 }
 
+public interface IStoppableStrategyRuntime : IStrategyRuntime
+{
+    Task StopAsync(CancellationToken cancellationToken = default);
+}
+
 public interface IResourceHealthProbe
 {
     Task<ResourceHealth> CheckAsync(
