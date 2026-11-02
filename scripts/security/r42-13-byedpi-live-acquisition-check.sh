@@ -11,8 +11,9 @@ CONTRACT='security/native-admission/byedpi-live-acquisition-r42-13.yaml'
 DOC='docs/BYEDPI-LIVE-ACQUISITION-R42-13.md'
 SERVICE_PROGRAM='src/NetPilot.Service/Program.cs'
 LIVE_WORKFLOW='.github/workflows/r42-13-live-acquisition-localsystem-lab.yml'
+PREFLIGHT_WORKFLOW='.github/workflows/r42-13-live-acquisition-preflight-once.yml'
 
-for path in "$HANDLER" "$PIPELINE" "$HANDLER_TESTS" "$PIPELINE_TESTS" "$LAB_PROJECT" "$LAB_PROGRAM" "$CONTRACT" "$DOC" "$SERVICE_PROGRAM" "$LIVE_WORKFLOW"; do
+for path in "$HANDLER" "$PIPELINE" "$HANDLER_TESTS" "$PIPELINE_TESTS" "$LAB_PROJECT" "$LAB_PROGRAM" "$CONTRACT" "$DOC" "$SERVICE_PROGRAM" "$LIVE_WORKFLOW" "$PREFLIGHT_WORKFLOW"; do
   test -f "$path" || { echo "missing required R42.13 file: $path" >&2; exit 1; }
 done
 
@@ -90,6 +91,15 @@ require_literal "$LIVE_WORKFLOW" 'IDENTITY_LOCALSYSTEM=PASS'
 require_literal "$LIVE_WORKFLOW" 'schtasks.exe'
 require_literal "$LIVE_WORKFLOW" 'R42_13_LIVE_ACQUISITION_LOCALSYSTEM_PASS_BLOCK'
 forbid_regex "$LIVE_WORKFLOW" '^[[:space:]]+push:|^[[:space:]]+pull_request:'
+
+# Ordinary preflight may observe release state, but only an exact 404 is a normal blocked prerequisite.
+# Any other GitHub/API failure must remain fail-closed instead of being mislabeled as "release absent".
+require_literal "$PREFLIGHT_WORKFLOW" 'Invoke-WebRequest -Uri $uri -Headers $headers -Method Get -SkipHttpErrorCheck'
+require_literal "$PREFLIGHT_WORKFLOW" '200 {'
+require_literal "$PREFLIGHT_WORKFLOW" '404 {'
+require_literal "$PREFLIGHT_WORKFLOW" 'default {'
+require_literal "$PREFLIGHT_WORKFLOW" 'R42_13_IMMUTABLE_RELEASE_PREREQUISITE=BLOCKED_RELEASE_ABSENT'
+require_literal "$PREFLIGHT_WORKFLOW" 'Unexpected GitHub API status while checking R42.13 prerequisite:'
 
 printf '%s\n' \
   'schema_version=1' \
