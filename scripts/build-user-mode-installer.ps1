@@ -59,10 +59,10 @@ Assert-ExactFile -Path $license -Size $expectedLicenseSize -Sha256 $expectedLice
 
 $appPublishDir = Join-Path $repoRoot "artifacts\publish\app-user-mode-win-x64"
 $toolsDir = Join-Path $repoRoot "artifacts\tools"
-$innoInstallDir = Join-Path $toolsDir "inno-7.1.0"
-$innoInstaller = Join-Path $toolsDir "innosetup-7.1.0-x64.exe"
-$innoUrl = "https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe"
-$innoSha256 = "0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f"
+$innoInstallDir = Join-Path $toolsDir "inno-7.1.1"
+$innoInstaller = Join-Path $toolsDir "innosetup-7.1.1-x64.exe"
+$innoUrl = "https://github.com/jrsoftware/issrc/releases/download/is-7_1_1/innosetup-7.1.1-x64.exe"
+$innoSha256 = "8a5a6711c3766a6e5fb74f280ba0e3551e719ce94538d901fdbd1f8f9920b3f0"
 
 New-Item -ItemType Directory -Force -Path $appPublishDir, $toolsDir, $OutputDir | Out-Null
 
@@ -89,7 +89,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if (-not (Test-Path $innoInstaller)) {
-    Write-Host "Загрузка закреплённого Inno Setup 7.1.0 x64..."
+    Write-Host "Загрузка закреплённого Inno Setup 7.1.1 x64..."
     Invoke-WebRequest -Uri $innoUrl -OutFile $innoInstaller -UseBasicParsing
 }
 
