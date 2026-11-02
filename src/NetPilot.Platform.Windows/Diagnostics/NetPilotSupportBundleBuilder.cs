@@ -63,6 +63,7 @@ public static class NetPilotSupportBundleBuilder
 
             WriteDiagnosticsJson(staging, now, context, userLogCount, serviceLogCount, serviceLogsReadable);
             WriteEnvironment(staging);
+            WriteEngineStatus(staging);
             WritePrivacyNotice(staging, serviceLogsReadable);
             WriteChecksums(staging);
 
@@ -133,14 +134,16 @@ public static class NetPilotSupportBundleBuilder
         int serviceLogCount,
         bool serviceLogsReadable)
     {
-        var safeProperties = context?.SafeProperties is null
-            ? null
-            : context.SafeProperties
-                .Take(16)
-                .ToDictionary(
-                    static pair => SafeDiagnosticLog.Sanitize(pair.Key, 64),
-                    static pair => SafeDiagnosticLog.Sanitize(pair.Value, 512),
-                    StringComparer.Ordinal);
+        Dictionary<string, string>? safeProperties = null;
+        if (context?.SafeProperties is { Count: > 0 })
+        {
+            safeProperties = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var pair in context.SafeProperties.Take(16))
+            {
+                safeProperties[SafeDiagnosticLog.Sanitize(pair.Key, 64)] =
+                    SafeDiagnosticLog.Sanitize(pair.Value, 512);
+            }
+        }
 
         var payload = new
         {
@@ -178,6 +181,85 @@ public static class NetPilotSupportBundleBuilder
         File.WriteAllLines(Path.Combine(staging, "environment.txt"), lines, Encoding.UTF8);
     }
 
+    private static void WriteEngineStatus(string staging)
+    {
+        var root = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            "NetPilot",
+            "Engines",
+            "Managed",
+            "byedpi");
+
+        var engines = new List<object>();
+        string? error = null;
+
+        try
+        {
+            if (Directory.Exists(root))
+            {
+                foreach (var versionDirectory in new DirectoryInfo(root)
+                             .EnumerateDirectories("*", SearchOption.TopDirectoryOnly)
+                             .OrderBy(static directory => directory.Name, StringComparer.Ordinal))
+                {
+                    if ((versionDirectory.Attributes & FileAttributes.ReparsePoint) != 0)
+                    {
+                        continue;
+                    }
+
+                    foreach (var architectureDirectory in versionDirectory
+                                 .EnumerateDirectories("*", SearchOption.TopDirectoryOnly)
+                                 .OrderBy(static directory => directory.Name, StringComparer.Ordinal))
+                    {
+                        if ((architectureDirectory.Attributes & FileAttributes.ReparsePoint) != 0)
+                        {
+                            continue;
+                        }
+
+                        var executable = new FileInfo(
+                            Path.Combine(architectureDirectory.FullName, "bin", "ciadpi.exe"));
+                        if (!executable.Exists || (executable.Attributes & FileAttributes.ReparsePoint) != 0)
+                        {
+                            continue;
+                        }
+
+                        using var stream = executable.OpenRead();
+                        var sha256 = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+                        engines.Add(new
+                        {
+                            Engine = "ByeDPI",
+                            Version = SafeDiagnosticLog.Sanitize(versionDirectory.Name, 128),
+                            Architecture = SafeDiagnosticLog.Sanitize(architectureDirectory.Name, 32),
+                            Executable = "bin/ciadpi.exe",
+                            executable.Length,
+                            Sha256 = sha256
+                        });
+                    }
+                }
+            }
+        }
+        catch (UnauthorizedAccessException)
+        {
+            error = "EngineMetadataAccessDenied";
+        }
+        catch (IOException)
+        {
+            error = "EngineMetadataIoError";
+        }
+
+        var payload = new
+        {
+            Schema = 1,
+            ManagedByeDpiRootPresent = Directory.Exists(root),
+            Error = error,
+            Engines = engines
+        };
+
+        File.WriteAllText(
+            Path.Combine(staging, "engine-status.json"),
+            JsonSerializer.Serialize(payload, JsonOptions),
+            Encoding.UTF8);
+    }
+
     private static void WritePrivacyNotice(string staging, bool serviceLogsReadable)
     {
         var text = string.Join(
@@ -185,7 +267,8 @@ public static class NetPilotSupportBundleBuilder
             "NetPilot diagnostic support bundle",
             "",
             "The bundle is created locally and is never uploaded automatically.",
-            "It intentionally excludes cookies, passwords, API keys, environment variables, IPC message bodies, browser data, user name, machine name and network addresses.",
+            "It intentionally excludes cookies, passwords, API keys, environment-variable dumps, IPC message bodies, browser data and user network traffic.",
+            "Local user name, machine name and user-profile paths are redacted from diagnostic text. Network addresses are not intentionally collected.",
             $"Service logs included: {serviceLogsReadable}.",
             "Review the ZIP before sharing it with a developer.",
             "");
