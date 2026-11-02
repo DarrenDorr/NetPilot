@@ -269,7 +269,6 @@ jobs:
           $runner = Resolve-Path 'pack\NetPilot-ByeDPI-PC-Validation.exe'
           & $runner 2>&1 | Tee-Object -FilePath hosted-evidence\validator-console.txt
           $exit = $LASTEXITCODE
-          if ($exit -ne 0) { throw "Real-PC validator failed with exit code $exit" }
 
           $bundle = Get-ChildItem -LiteralPath $support -Filter 'NetPilot-ByeDPI-PC-Validation-*-UTC.zip' -File |
             Sort-Object LastWriteTimeUtc -Descending |
@@ -282,6 +281,16 @@ jobs:
           $evidenceFile = Get-ChildItem -LiteralPath $expanded -Filter 'ByeDPI-PrePublish-Validation-*-UTC.txt' -File | Select-Object -First 1
           if ($null -eq $evidenceFile) { throw 'Combined evidence is missing validation text.' }
           $content = Get-Content -LiteralPath $evidenceFile.FullName -Raw
+
+          Copy-Item -LiteralPath $evidenceFile.FullName -Destination hosted-evidence\real-pc-validator-evidence.txt
+          Copy-Item -LiteralPath $bundle.FullName -Destination hosted-evidence\hosted-combined-evidence.zip
+          "HOSTED_VALIDATOR_EXIT_CODE=$exit" | Add-Content hosted-evidence\boundary.txt
+
+          if ($exit -ne 0) {
+            'HOSTED_SELF_VALIDATION=FAIL' | Add-Content hosted-evidence\boundary.txt
+            throw "Real-PC validator failed with exit code $exit; full validation evidence was preserved."
+          }
+
           foreach ($marker in @(
             "CANDIDATE_SHA256=$env:BYEDPI_WINDOWS_SHA256",
             'SYNTHETIC_R34_RUNTIME=PASS',
@@ -298,9 +307,6 @@ jobs:
               throw "Hosted self-validation evidence marker missing: $marker"
             }
           }
-
-          Copy-Item -LiteralPath $evidenceFile.FullName -Destination hosted-evidence\real-pc-validator-evidence.txt
-          Copy-Item -LiteralPath $bundle.FullName -Destination hosted-evidence\hosted-combined-evidence.zip
 
           $versionRoot = Join-Path $env:ProgramFiles 'NetPilot\Engines\Managed\byedpi\0.17.3-netpilot-r34-lab'
           if (Test-Path -LiteralPath $versionRoot) { throw 'Validation candidate remained staged after hosted run.' }
