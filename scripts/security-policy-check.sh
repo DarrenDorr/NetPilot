@@ -83,6 +83,26 @@ if ! grep -q 'WindowsByeDpiStrategyRuntime' "$default_composition"; then
   fail=1
 fi
 
+gui_manifest='src/NetPilot.App.Windows/app.manifest'
+gui_project='src/NetPilot.App.Windows/NetPilot.App.Windows.csproj'
+if [[ ! -f "$gui_manifest" ]]; then
+  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: GUI asInvoker manifest отсутствует."
+  fail=1
+else
+  if ! grep -qF '<requestedExecutionLevel level="asInvoker" uiAccess="false" />' "$gui_manifest"; then
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: GUI обязан явно запускаться как asInvoker."
+    fail=1
+  fi
+  if grep -qiE 'requireAdministrator|highestAvailable|uiAccess="true"' "$gui_manifest"; then
+    echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: GUI manifest запрашивает повышенные привилегии."
+    fail=1
+  fi
+fi
+if ! grep -qF '<ApplicationManifest>app.manifest</ApplicationManifest>' "$gui_project"; then
+  echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: GUI project не закрепляет asInvoker manifest."
+  fail=1
+fi
+
 user_mode_installer='installer/NetPilot.UserMode.iss'
 if [[ ! -f "$user_mode_installer" ]]; then
   echo "ОШИБКА ПОЛИТИКИ БЕЗОПАСНОСТИ: no-admin user-mode installer отсутствует."
