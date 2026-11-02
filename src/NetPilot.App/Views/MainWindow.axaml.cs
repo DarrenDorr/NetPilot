@@ -26,8 +26,8 @@ public sealed partial class MainWindow : Window
         }
         catch
         {
-            // InitializeAsync only reads optional platform state. The window must remain usable
-            // for direct public health checks even when NetPilot.Service is not installed yet.
+            // Startup state discovery is optional. The window remains usable even when the
+            // reviewed ByeDPI package is missing or rejected by the fail-closed runtime.
         }
     }
 
