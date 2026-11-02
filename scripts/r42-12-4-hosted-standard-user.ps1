@@ -12,6 +12,11 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+# TaskName is kept only for workflow backward compatibility. R42.12.4 now uses
+# a direct credentialed process rather than Task Scheduler because the first
+# hosted run proved the scheduler boundary could fail before user code starts.
+$null = $TaskName
+
 $PackPath = [System.IO.Path]::GetFullPath($PackPath)
 $HostedEvidenceDir = [System.IO.Path]::GetFullPath($HostedEvidenceDir)
 $publicPack = 'C:\Users\Public\NetPilot-R42.12.4-Pack'
@@ -20,6 +25,7 @@ $userAccount = "$env:COMPUTERNAME\$UserName"
 $createdUserSid = $null
 $validationSucceeded = $false
 $failure = $null
+$childProcess = $null
 
 function Copy-EvidenceBestEffort {
     New-Item -ItemType Directory -Force -Path $HostedEvidenceDir | Out-Null
@@ -60,8 +66,6 @@ try {
         throw 'ciadpi already exists before the no-admin hosted boundary.'
     }
 
-    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
     $existing = Get-LocalUser -Name $UserName -ErrorAction SilentlyContinue
     if ($null -ne $existing) {
         Remove-LocalUser -Name $UserName
@@ -110,10 +114,14 @@ $result = Join-Path $evidence 'standard-user-boundary.txt'
 try {
     $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
-    if ($principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw 'Scheduled task received an Administrator token.'
+    if ($null -eq $identity.User -or $identity.User.Value -cne '__USER_SID__') {
+        throw 'Direct credential launch did not receive the expected standard-user SID.'
     }
-    'SCHEDULED_TASK_ADMIN_ROLE=False' | Set-Content -LiteralPath $result -Encoding utf8NoBOM
+    if ($principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        throw 'Direct credential launch received an Administrator token.'
+    }
+    'RUNNER_IDENTITY_MATCH=PASS' | Set-Content -LiteralPath $result -Encoding utf8NoBOM
+    'RUNNER_ADMIN_ROLE=False' | Add-Content -LiteralPath $result
 
     $setup = Join-Path $pack 'NetPilot-UserMode-Setup-__VERSION__-x64.exe'
     $install = Start-Process `
@@ -165,14 +173,14 @@ try {
 }
 catch {
     if (-not (Test-Path -LiteralPath $result -PathType Leaf)) {
-        'SCHEDULED_TASK_STARTED=True' | Set-Content -LiteralPath $result -Encoding utf8NoBOM
+        'RUNNER_STARTED=True' | Set-Content -LiteralPath $result -Encoding utf8NoBOM
     }
     "RUNNER_FAILURE_TYPE=$($_.Exception.GetType().FullName)" | Add-Content -LiteralPath $result
     'DONE=FAIL' | Add-Content -LiteralPath $result
     exit 1
 }
 '@
-    $runnerTemplate.Replace('__VERSION__', $TestVersion) |
+    $runnerTemplate.Replace('__VERSION__', $TestVersion).Replace('__USER_SID__', $createdUserSid) |
         Set-Content -LiteralPath $runner -Encoding utf8NoBOM
 
     & icacls.exe `
@@ -201,50 +209,63 @@ catch {
         throw 'Could not apply evidence ACL for the standard user.'
     }
 
-    $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $action = New-ScheduledTaskAction `
-        -Execute $powershell `
-        -Argument "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$runner`""
-    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2)
-    Register-ScheduledTask `
-        -TaskName $TaskName `
-        -Action $action `
-        -Trigger $trigger `
-        -User $userAccount `
-        -Password $passwordPlain `
-        -RunLevel Limited `
-        -Force | Out-Null
-
-    $task = Get-ScheduledTask -TaskName $TaskName
-    if ([string]$task.Principal.RunLevel -cne 'Limited') {
-        throw 'Scheduled task is not configured with RunLevel Limited.'
-    }
-
     'STANDARD_USER_CREATED=PASS' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     'STANDARD_USER_ADMIN_GROUP=False' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
-    'SCHEDULED_TASK_RUNLEVEL=Limited' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    'STANDARD_USER_LAUNCH_METHOD=DirectCredential' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     'PACK_ACL_STANDARD_USER=RX' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     'EVIDENCE_ACL_STANDARD_USER=M' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
 
-    Start-ScheduledTask -TaskName $TaskName
+    $credential = [pscredential]::new($userAccount, $passwordSecure)
+    $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $stdoutPath = Join-Path $publicEvidence 'standard-user-stdout.txt'
+    $stderrPath = Join-Path $publicEvidence 'standard-user-stderr.txt'
+    $arguments = @(
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy', 'Bypass',
+        '-File', "`"$runner`""
+    )
 
-    $boundary = Join-Path $publicEvidence 'standard-user-boundary.txt'
+    $childProcess = Start-Process `
+        -FilePath $powershell `
+        -ArgumentList $arguments `
+        -Credential $credential `
+        -LoadUserProfile `
+        -WorkingDirectory $publicPack `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $stdoutPath `
+        -RedirectStandardError $stderrPath `
+        -PassThru
+
+    if ($null -eq $childProcess) {
+        throw 'Direct standard-user process was not created.'
+    }
+    'DIRECT_STANDARD_USER_PROCESS_CREATED=PASS' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+
     $deadline = (Get-Date).AddMinutes(10)
-    while ((Get-Date) -lt $deadline) {
-        if (Test-Path -LiteralPath $boundary -PathType Leaf) {
-            $boundaryText = Get-Content -LiteralPath $boundary -Raw
-            if ($boundaryText -match '(?m)^DONE=(PASS|FAIL)$') {
-                break
-            }
-        }
+    while ((Get-Date) -lt $deadline -and -not $childProcess.HasExited) {
         Start-Sleep -Seconds 2
+        $childProcess.Refresh()
     }
 
+    if (-not $childProcess.HasExited) {
+        try { $childProcess.Kill($true) } catch { }
+        throw 'Direct standard-user validation process timed out.'
+    }
+
+    "STANDARD_USER_PROCESS_EXIT_CODE=$($childProcess.ExitCode)" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    if ($childProcess.ExitCode -ne 0) {
+        throw "Direct standard-user validation process failed with exit code $($childProcess.ExitCode)."
+    }
+
+    $boundary = Join-Path $publicEvidence 'standard-user-boundary.txt'
     if (-not (Test-Path -LiteralPath $boundary -PathType Leaf)) {
         throw 'Standard-user boundary evidence was not created.'
     }
     $boundaryText = Get-Content -LiteralPath $boundary -Raw
-    Require-Marker -Text $boundaryText -Marker 'SCHEDULED_TASK_ADMIN_ROLE=False'
+    Require-Marker -Text $boundaryText -Marker 'RUNNER_IDENTITY_MATCH=PASS'
+    Require-Marker -Text $boundaryText -Marker 'RUNNER_ADMIN_ROLE=False'
     Require-Marker -Text $boundaryText -Marker 'INSTALLER_EXIT_CODE=0'
     Require-Marker -Text $boundaryText -Marker 'PER_USER_INSTALL=PASS'
     Require-Marker -Text $boundaryText -Marker 'NETPILOT_SERVICE_PRESENT=False'
@@ -313,6 +334,12 @@ catch {
 }
 catch {
     $failure = $_
+    try {
+        "HOSTED_FAILURE_TYPE=$($_.Exception.GetType().FullName)" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+        "HOSTED_FAILURE_HRESULT=0x$($_.Exception.HResult.ToString('X8'))" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    }
+    catch {
+    }
 }
 finally {
     Copy-EvidenceBestEffort
@@ -323,8 +350,20 @@ finally {
         'HOSTED_SERVICE_BOUNDARY=PASS' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     }
 
-    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    if ($null -ne $childProcess) {
+        try {
+            if (-not $childProcess.HasExited) {
+                $childProcess.Kill($true)
+                $childProcess.WaitForExit(5000)
+            }
+        }
+        catch {
+        }
+        finally {
+            $childProcess.Dispose()
+        }
+    }
+
     Get-Process -Name ciadpi -ErrorAction SilentlyContinue |
         Stop-Process -Force -ErrorAction SilentlyContinue
 
