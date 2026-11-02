@@ -11,9 +11,6 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-
-# TaskName is retained only for workflow-call compatibility. The hosted boundary
-# deliberately avoids Task Scheduler and runs a direct credentialed process.
 $null = $TaskName
 
 $PackPath = [System.IO.Path]::GetFullPath($PackPath)
@@ -24,7 +21,7 @@ $userAccount = "$env:COMPUTERNAME\$UserName"
 $createdUserSid = $null
 $validationSucceeded = $false
 $failure = $null
-$childProcess = $null
+$nativeChild = $null
 
 function Copy-EvidenceBestEffort {
     New-Item -ItemType Directory -Force -Path $HostedEvidenceDir | Out-Null
@@ -52,6 +49,169 @@ function Require-Marker {
         throw "Required no-admin evidence marker missing: $Marker"
     }
 }
+
+$nativeLauncherSource = @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class NetPilotStandardUserLauncher
+{
+    private const int LOGON_WITH_PROFILE = 0x00000001;
+    private const int CREATE_NO_WINDOW = 0x08000000;
+    private const uint WAIT_OBJECT_0 = 0x00000000;
+    private const uint WAIT_TIMEOUT = 0x00000102;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct STARTUPINFO
+    {
+        public int cb;
+        public IntPtr lpReserved;
+        public IntPtr lpDesktop;
+        public IntPtr lpTitle;
+        public int dwX;
+        public int dwY;
+        public int dwXSize;
+        public int dwYSize;
+        public int dwXCountChars;
+        public int dwYCountChars;
+        public int dwFillAttribute;
+        public int dwFlags;
+        public short wShowWindow;
+        public short cbReserved2;
+        public IntPtr lpReserved2;
+        public IntPtr hStdInput;
+        public IntPtr hStdOutput;
+        public IntPtr hStdError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROCESS_INFORMATION
+    {
+        public IntPtr hProcess;
+        public IntPtr hThread;
+        public int dwProcessId;
+        public int dwThreadId;
+    }
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateProcessWithLogonW(
+        string lpUsername,
+        string lpDomain,
+        string lpPassword,
+        int dwLogonFlags,
+        string lpApplicationName,
+        StringBuilder lpCommandLine,
+        int dwCreationFlags,
+        IntPtr lpEnvironment,
+        string lpCurrentDirectory,
+        ref STARTUPINFO lpStartupInfo,
+        out PROCESS_INFORMATION lpProcessInformation);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetExitCodeProcess(IntPtr hProcess, out uint lpExitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool TerminateProcess(IntPtr hProcess, uint uExitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    public sealed class ChildProcess : IDisposable
+    {
+        private IntPtr _process;
+        public int Id { get; }
+
+        internal ChildProcess(IntPtr process, int id)
+        {
+            _process = process;
+            Id = id;
+        }
+
+        public int Wait(int milliseconds)
+        {
+            if (_process == IntPtr.Zero)
+                throw new ObjectDisposedException(nameof(ChildProcess));
+
+            uint result = WaitForSingleObject(_process, checked((uint)milliseconds));
+            if (result == WAIT_TIMEOUT)
+                return int.MinValue;
+            if (result != WAIT_OBJECT_0)
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "WaitForSingleObject failed.");
+
+            if (!GetExitCodeProcess(_process, out uint exitCode))
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "GetExitCodeProcess failed.");
+
+            return unchecked((int)exitCode);
+        }
+
+        public void Kill()
+        {
+            if (_process == IntPtr.Zero)
+                return;
+            if (!TerminateProcess(_process, 1))
+            {
+                int error = Marshal.GetLastWin32Error();
+                if (error != 5)
+                    throw new Win32Exception(error, "TerminateProcess failed.");
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_process != IntPtr.Zero)
+            {
+                CloseHandle(_process);
+                _process = IntPtr.Zero;
+            }
+        }
+    }
+
+    public static ChildProcess Start(
+        string userName,
+        string domain,
+        string password,
+        string applicationPath,
+        string arguments,
+        string workingDirectory)
+    {
+        var startup = new STARTUPINFO { cb = Marshal.SizeOf<STARTUPINFO>() };
+        var commandLine = new StringBuilder();
+        commandLine.Append('"').Append(applicationPath).Append('"');
+        if (!string.IsNullOrWhiteSpace(arguments))
+            commandLine.Append(' ').Append(arguments);
+
+        if (!CreateProcessWithLogonW(
+            userName,
+            domain,
+            password,
+            LOGON_WITH_PROFILE,
+            applicationPath,
+            commandLine,
+            CREATE_NO_WINDOW,
+            IntPtr.Zero,
+            workingDirectory,
+            ref startup,
+            out PROCESS_INFORMATION processInfo))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "CreateProcessWithLogonW failed.");
+        }
+
+        if (processInfo.hThread != IntPtr.Zero)
+            CloseHandle(processInfo.hThread);
+
+        return new ChildProcess(processInfo.hProcess, processInfo.dwProcessId);
+    }
+}
+'@
 
 try {
     if (-not (Test-Path -LiteralPath $PackPath -PathType Container)) {
@@ -87,7 +247,6 @@ try {
         -PasswordNeverExpires `
         -UserMayNotChangePassword
     $createdUserSid = $createdUser.SID.Value
-    $testSidPrincipal = "*$createdUserSid"
 
     $usersSid = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-545')
     $usersGroup = Get-LocalGroup -SID $usersSid
@@ -104,6 +263,40 @@ try {
         Copy-Item -LiteralPath $_.FullName -Destination $publicPack -Recurse -Force
     }
 
+    & icacls.exe `
+        $publicPack `
+        /inheritance:r `
+        /grant:r `
+        "*${createdUserSid}:(OI)(CI)RX" `
+        '*S-1-5-18:(OI)(CI)F' `
+        '*S-1-5-32-544:(OI)(CI)F' `
+        /T `
+        /C | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Could not apply read-only pack ACL for the exact standard-user SID.'
+    }
+
+    & icacls.exe `
+        $publicEvidence `
+        /inheritance:r `
+        /grant:r `
+        "*${createdUserSid}:(OI)(CI)M" `
+        '*S-1-5-18:(OI)(CI)F' `
+        '*S-1-5-32-544:(OI)(CI)F' `
+        /T `
+        /C | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Could not apply evidence ACL for the exact standard-user SID.'
+    }
+
+    'STANDARD_USER_CREATED=PASS' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    'STANDARD_USER_ADMIN_GROUP=False' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    'STANDARD_USER_LAUNCH_METHOD=CreateProcessWithLogonW' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    'PACK_ACL_PRINCIPAL=EXACT_TEST_USER_SID' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    'PACK_ACL_STANDARD_USER=RX' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    'EVIDENCE_ACL_PRINCIPAL=EXACT_TEST_USER_SID' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    'EVIDENCE_ACL_STANDARD_USER=M' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+
     $runnerTemplate = @'
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -114,13 +307,24 @@ try {
     $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
     if ($null -eq $identity.User -or $identity.User.Value -cne '__USER_SID__') {
-        throw 'Direct credential launch did not receive the expected standard-user SID.'
+        throw 'Native logon launch did not receive the expected standard-user SID.'
     }
     if ($principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw 'Direct credential launch received an Administrator token.'
+        throw 'Native logon launch received an Administrator token.'
     }
     'RUNNER_IDENTITY_MATCH=PASS' | Set-Content -LiteralPath $result -Encoding utf8NoBOM
     'RUNNER_ADMIN_ROLE=False' | Add-Content -LiteralPath $result
+
+    $localAppData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+    $roamingAppData = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)
+    $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+    if ([string]::IsNullOrWhiteSpace($localAppData) -or [string]::IsNullOrWhiteSpace($userProfile)) {
+        throw 'Loaded standard-user profile did not expose LocalAppData/UserProfile.'
+    }
+    $env:LOCALAPPDATA = $localAppData
+    $env:APPDATA = $roamingAppData
+    $env:USERPROFILE = $userProfile
+    'STANDARD_USER_PROFILE_LOADED=PASS' | Add-Content -LiteralPath $result
 
     $setup = Join-Path $pack 'NetPilot-UserMode-Setup-__VERSION__-x64.exe'
     $install = Start-Process `
@@ -133,7 +337,7 @@ try {
         throw "User-mode installer failed: $($install.ExitCode)"
     }
 
-    $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\NetPilot'
+    $installRoot = Join-Path $localAppData 'Programs\NetPilot'
     if (-not (Test-Path -LiteralPath (Join-Path $installRoot 'App\NetPilot.exe') -PathType Leaf)) {
         throw 'Per-user NetPilot.exe was not installed beneath LocalAppData.'
     }
@@ -175,89 +379,41 @@ catch {
         'RUNNER_STARTED=True' | Set-Content -LiteralPath $result -Encoding utf8NoBOM
     }
     "RUNNER_FAILURE_TYPE=$($_.Exception.GetType().FullName)" | Add-Content -LiteralPath $result
+    "RUNNER_FAILURE_HRESULT=0x$($_.Exception.HResult.ToString('X8'))" | Add-Content -LiteralPath $result
     'DONE=FAIL' | Add-Content -LiteralPath $result
     exit 1
 }
 '@
 
-    $runnerCommand = $runnerTemplate.Replace('__VERSION__', $TestVersion).Replace('__USER_SID__', $createdUserSid)
-    $encodedRunner = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($runnerCommand))
-
-    & icacls.exe `
-        $publicPack `
-        /inheritance:r `
-        /grant:r `
-        "${testSidPrincipal}:(OI)(CI)RX" `
-        '*S-1-5-18:(OI)(CI)F' `
-        '*S-1-5-32-544:(OI)(CI)F' `
-        /T `
-        /C | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Could not apply read-only pack ACL for the exact standard-user SID.'
-    }
-
-    & icacls.exe `
-        $publicEvidence `
-        /inheritance:r `
-        /grant:r `
-        "${testSidPrincipal}:(OI)(CI)M" `
-        '*S-1-5-18:(OI)(CI)F' `
-        '*S-1-5-32-544:(OI)(CI)F' `
-        /T `
-        /C | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Could not apply evidence ACL for the exact standard-user SID.'
-    }
-
-    'STANDARD_USER_CREATED=PASS' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
-    'STANDARD_USER_ADMIN_GROUP=False' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
-    'STANDARD_USER_LAUNCH_METHOD=DirectCredentialEncodedCommand' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
-    'PACK_ACL_PRINCIPAL=EXACT_TEST_USER_SID' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
-    'PACK_ACL_STANDARD_USER=RX' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
-    'EVIDENCE_ACL_PRINCIPAL=EXACT_TEST_USER_SID' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
-    'EVIDENCE_ACL_STANDARD_USER=M' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
-
-    $credential = [pscredential]::new($userAccount, $passwordSecure)
+    $runnerCode = $runnerTemplate.Replace('__VERSION__', $TestVersion).Replace('__USER_SID__', $createdUserSid)
+    $encodedRunner = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($runnerCode))
     $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $stdoutPath = Join-Path $publicEvidence 'standard-user-stdout.txt'
-    $stderrPath = Join-Path $publicEvidence 'standard-user-stderr.txt'
-    $arguments = @(
-        '-NoLogo',
-        '-NoProfile',
-        '-NonInteractive',
-        '-EncodedCommand', $encodedRunner
-    )
+    $arguments = "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encodedRunner"
 
-    $childProcess = Start-Process `
-        -FilePath $powershell `
-        -ArgumentList $arguments `
-        -Credential $credential `
-        -LoadUserProfile `
-        -WorkingDirectory $env:SystemRoot `
-        -WindowStyle Hidden `
-        -RedirectStandardOutput $stdoutPath `
-        -RedirectStandardError $stderrPath `
-        -PassThru
+    Add-Type -TypeDefinition $nativeLauncherSource -Language CSharp
+    $nativeChild = [NetPilotStandardUserLauncher]::Start(
+        $UserName,
+        $env:COMPUTERNAME,
+        $passwordPlain,
+        $powershell,
+        $arguments,
+        $publicPack)
 
-    if ($null -eq $childProcess) {
-        throw 'Direct standard-user process was not created.'
+    if ($null -eq $nativeChild) {
+        throw 'Native standard-user process was not created.'
     }
+    "DIRECT_STANDARD_USER_PROCESS_ID=$($nativeChild.Id)" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     'DIRECT_STANDARD_USER_PROCESS_CREATED=PASS' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
 
-    $deadline = (Get-Date).AddMinutes(10)
-    while ((Get-Date) -lt $deadline -and -not $childProcess.HasExited) {
-        Start-Sleep -Seconds 2
-        $childProcess.Refresh()
+    $exitCode = $nativeChild.Wait(600000)
+    if ($exitCode -eq [int]::MinValue) {
+        try { $nativeChild.Kill() } catch { }
+        throw 'Native standard-user validation process timed out.'
     }
 
-    if (-not $childProcess.HasExited) {
-        try { $childProcess.Kill($true) } catch { }
-        throw 'Direct standard-user validation process timed out.'
-    }
-
-    "STANDARD_USER_PROCESS_EXIT_CODE=$($childProcess.ExitCode)" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
-    if ($childProcess.ExitCode -ne 0) {
-        throw "Direct standard-user validation process failed with exit code $($childProcess.ExitCode)."
+    "STANDARD_USER_PROCESS_EXIT_CODE=$exitCode" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    if ($exitCode -ne 0) {
+        throw "Native standard-user validation process failed with exit code $exitCode."
     }
 
     $boundary = Join-Path $publicEvidence 'standard-user-boundary.txt'
@@ -267,6 +423,7 @@ catch {
     $boundaryText = Get-Content -LiteralPath $boundary -Raw
     Require-Marker -Text $boundaryText -Marker 'RUNNER_IDENTITY_MATCH=PASS'
     Require-Marker -Text $boundaryText -Marker 'RUNNER_ADMIN_ROLE=False'
+    Require-Marker -Text $boundaryText -Marker 'STANDARD_USER_PROFILE_LOADED=PASS'
     Require-Marker -Text $boundaryText -Marker 'INSTALLER_EXIT_CODE=0'
     Require-Marker -Text $boundaryText -Marker 'PER_USER_INSTALL=PASS'
     Require-Marker -Text $boundaryText -Marker 'NETPILOT_SERVICE_PRESENT=False'
@@ -338,6 +495,9 @@ catch {
     try {
         "HOSTED_FAILURE_TYPE=$($_.Exception.GetType().FullName)" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
         "HOSTED_FAILURE_HRESULT=0x$($_.Exception.HResult.ToString('X8'))" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+        if ($_.Exception -is [System.ComponentModel.Win32Exception]) {
+            "HOSTED_WIN32_ERROR=$($_.Exception.NativeErrorCode)" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+        }
     }
     catch {
     }
@@ -351,17 +511,11 @@ finally {
         'HOSTED_SERVICE_BOUNDARY=PASS' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     }
 
-    if ($null -ne $childProcess) {
+    if ($null -ne $nativeChild) {
         try {
-            if (-not $childProcess.HasExited) {
-                $childProcess.Kill($true)
-                $childProcess.WaitForExit(5000)
-            }
+            $nativeChild.Dispose()
         }
         catch {
-        }
-        finally {
-            $childProcess.Dispose()
         }
     }
 
