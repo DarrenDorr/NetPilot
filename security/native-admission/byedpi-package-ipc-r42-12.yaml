@@ -1,0 +1,44 @@
+schema_version: 1
+scope: byedpi-r42.12-package-ipc
+status: SERVICE_IPC_PACKAGE_BOUNDARY_FAIL_CLOSED
+parent_checkpoint: 0b371240b4699205346e8a89c2e75c4e1571cde3
+
+ipc_boundary:
+  protocol_version: 5
+  windows_pipe_name: NetPilot.Service.v5
+  commands:
+    - ByeDpiGetPackageStatus
+    - ByeDpiApplyReviewedPackage
+  caller_target_version: FORBIDDEN
+  caller_url: FORBIDDEN
+  caller_path: FORBIDDEN
+  caller_archive_bytes: FORBIDDEN
+  package_status_read_only: true
+  package_apply_owner_required: true
+  package_apply_engine_install_policy_required: true
+  package_apply_runtime_state_checked: true
+  package_apply_timeout_seconds: 120
+
+service_boundary:
+  package_surface: IWindowsByeDpiPackageProvisioner
+  production_implementation: NoAdmittedWindowsByeDpiPackageProvisioner
+  live_http_handler_in_service: ABSENT
+  live_network_acquisition: NOT_ADMITTED
+  package_mutation: BLOCK
+  managed_state_read_api: EXISTING_R42_3_BOUNDARY_ONLY
+  engine_start_policy: BLOCK
+  engine_stop_policy: LEGACY_STOP_ONLY
+  native_process_launcher: NO_ADMITTED
+  runtime_plan_provider: NO_ADMITTED
+
+runtime_boundary:
+  service_ipc_contract: PRESENT_FAIL_CLOSED
+  package_install_upgrade_execution: BLOCK
+  native_execution: NOT_IMPLEMENTED
+  windivert_execution: NOT_IMPLEMENTED
+  production_admission: BLOCK
+
+next_gate:
+  live_network_handler: SEPARATE_REVIEW_REQUIRED
+  windows_e2e_package_provisioning: SEPARATE_REVIEW_REQUIRED
+  service_policy_enablement: SEPARATE_REVIEW_REQUIRED

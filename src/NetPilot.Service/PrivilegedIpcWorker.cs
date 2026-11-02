@@ -20,6 +20,7 @@ public sealed class PrivilegedIpcWorker(
     ZapretEngineController zapretController,
     ZapretUpdateOrchestrator zapretUpdater,
     WindowsByeDpiRuntimeSession byeDpiRuntime,
+    IWindowsByeDpiPackageProvisioner byeDpiPackages,
     ILogger<PrivilegedIpcWorker> logger) : BackgroundService
 {
     private const string ByeDpiResourceId = "byedpi";
@@ -123,9 +124,10 @@ public sealed class PrivilegedIpcWorker(
             return;
         }
 
-        var operationTimeoutMilliseconds = request.Command == IpcCommand.ZapretInstallLatest
-            ? IpcProtocol.EngineInstallTimeoutMilliseconds
-            : IpcProtocol.RequestTimeoutMilliseconds;
+        var operationTimeoutMilliseconds = request.Command is
+            IpcCommand.ZapretInstallLatest or IpcCommand.ByeDpiApplyReviewedPackage
+                ? IpcProtocol.EngineInstallTimeoutMilliseconds
+                : IpcProtocol.RequestTimeoutMilliseconds;
 
         IpcResponse response;
         using (var operationTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
@@ -172,6 +174,14 @@ public sealed class PrivilegedIpcWorker(
             {
                 response = Failure(request, exception.Code, exception.Message);
             }
+            catch (WindowsByeDpiStagingTransactionException exception)
+            {
+                response = Failure(request, exception.Code, exception.Message);
+            }
+            catch (WindowsByeDpiPromotionException exception)
+            {
+                response = Failure(request, exception.Code, exception.Message);
+            }
             catch (UpdateSecurityException exception)
             {
                 response = Failure(request, exception.Code, exception.Message);
@@ -181,7 +191,7 @@ public sealed class PrivilegedIpcWorker(
                 response = Failure(
                     request,
                     "EngineDownloadNetworkError",
-                    "Не удалось получить официальный пакет Zapret с GitHub.");
+                    "Не удалось получить официальный пакет сетевого движка с GitHub.");
             }
             catch (DirectoryNotFoundException)
             {
@@ -256,6 +266,74 @@ public sealed class PrivilegedIpcWorker(
                 return Success(
                     request,
                     "Служба NetPilot доступна; интерактивный пользователь работает в отдельном SID-профиле.");
+
+            case IpcCommand.ByeDpiGetPackageStatus:
+            {
+                var package = await byeDpiPackages.GetStatusAsync(cancellationToken);
+                return new IpcResponse(
+                    IpcProtocol.Version,
+                    request.RequestId,
+                    true,
+                    "Ok",
+                    ByeDpiPackage: new IpcByeDpiPackageStatus(
+                        package.IsInstalled,
+                        package.CurrentVersion,
+                        package.RetainedPreviousVersion));
+            }
+
+            case IpcCommand.ByeDpiApplyReviewedPackage:
+            {
+                if (!authorizedUserStore.IsAuthorized(clientSid))
+                {
+                    return Failure(
+                        request,
+                        "InstallationOwnerRequired",
+                        "Установка системного ByeDPI package доступна только владельцу установки NetPilot.");
+                }
+
+                if (!operationPolicy.IsAllowed(PrivilegedOperation.EngineInstall))
+                {
+                    return Failure(
+                        request,
+                        "OperationDenied",
+                        "Установка или обновление ByeDPI запрещены текущей политикой безопасности.");
+                }
+
+                var runtime = await byeDpiRuntime.GetStatusAsync(cancellationToken);
+                ReconcileByeDpiOwnership(runtime);
+                var engineLeaseActive = runtime.State == WindowsServiceOwnedEngineProcessState.Running;
+
+                var applied = await byeDpiPackages.ApplyReviewedPackageAsync(
+                    engineLeaseActive,
+                    cancellationToken);
+
+                var ipcOperation = applied.Operation switch
+                {
+                    ByeDpiPackageLifecycleOperation.Install => IpcByeDpiPackageOperation.Install,
+                    ByeDpiPackageLifecycleOperation.Upgrade => IpcByeDpiPackageOperation.Upgrade,
+                    _ => throw new UpdateSecurityException(
+                        "ByeDpiPackageOperationUnexpected",
+                        "ByeDPI package provisioner returned an operation outside the IPC Install/Upgrade boundary.")
+                };
+
+                return new IpcResponse(
+                    IpcProtocol.Version,
+                    request.RequestId,
+                    true,
+                    "Ok",
+                    applied.Changed
+                        ? "Проверенный пакет ByeDPI применён."
+                        : "Проверенный пакет ByeDPI уже находится в актуальном состоянии.",
+                    ByeDpiPackage: new IpcByeDpiPackageStatus(
+                        true,
+                        applied.CurrentVersion,
+                        applied.RetainedPreviousVersion),
+                    ByeDpiPackageApply: new IpcByeDpiPackageApplyResult(
+                        ipcOperation,
+                        applied.CurrentVersion,
+                        applied.RetainedPreviousVersion,
+                        applied.Changed));
+            }
 
             case IpcCommand.ByeDpiGetStatus:
             {

@@ -6,8 +6,8 @@ namespace NetPilot.Ipc;
 
 public static class IpcProtocol
 {
-    public const int Version = 4;
-    public const string WindowsPipeName = "NetPilot.Service.v4";
+    public const int Version = 5;
+    public const string WindowsPipeName = "NetPilot.Service.v5";
     public const int MaxMessageBytes = 64 * 1024;
     public const int ConnectTimeoutMilliseconds = 2_000;
     public const int RequestTimeoutMilliseconds = 5_000;
@@ -45,7 +45,9 @@ public enum IpcCommand
     ZapretInstallLatest,
     ByeDpiGetStatus,
     ByeDpiStart,
-    ByeDpiStop
+    ByeDpiStop,
+    ByeDpiGetPackageStatus,
+    ByeDpiApplyReviewedPackage
 }
 
 public sealed record IpcRequest(
@@ -91,6 +93,12 @@ public sealed record IpcRequest(
 
     public static IpcRequest CreateByeDpiStop() =>
         new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.ByeDpiStop);
+
+    public static IpcRequest CreateByeDpiGetPackageStatus() =>
+        new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.ByeDpiGetPackageStatus);
+
+    public static IpcRequest CreateByeDpiApplyReviewedPackage() =>
+        new(IpcProtocol.Version, Guid.NewGuid(), IpcCommand.ByeDpiApplyReviewedPackage);
 }
 
 public enum IpcZapretProcessState
@@ -103,6 +111,12 @@ public enum IpcByeDpiProcessState
 {
     Stopped,
     Running
+}
+
+public enum IpcByeDpiPackageOperation
+{
+    Install,
+    Upgrade
 }
 
 public sealed record IpcZapretStrategy(
@@ -118,6 +132,17 @@ public sealed record IpcZapretStatus(
 /// exposed through user IPC because clients do not need them to control NetPilot safely.
 /// </summary>
 public sealed record IpcByeDpiStatus(IpcByeDpiProcessState State);
+
+public sealed record IpcByeDpiPackageStatus(
+    bool IsInstalled,
+    string? CurrentVersion = null,
+    string? RetainedPreviousVersion = null);
+
+public sealed record IpcByeDpiPackageApplyResult(
+    IpcByeDpiPackageOperation Operation,
+    string CurrentVersion,
+    string? RetainedPreviousVersion = null,
+    bool Changed = true);
 
 public sealed record IpcZapretInstallationStatus(
     bool IsInstalled,
@@ -138,7 +163,9 @@ public sealed record IpcResponse(
     IpcZapretStatus? ZapretStatus = null,
     IpcZapretInstallationStatus? ZapretInstallation = null,
     IpcZapretInstallResult? ZapretInstall = null,
-    IpcByeDpiStatus? ByeDpiStatus = null);
+    IpcByeDpiStatus? ByeDpiStatus = null,
+    IpcByeDpiPackageStatus? ByeDpiPackage = null,
+    IpcByeDpiPackageApplyResult? ByeDpiPackageApply = null);
 
 public sealed class IpcProtocolException(string code, string message, Exception? innerException = null)
     : Exception(message, innerException)
