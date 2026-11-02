@@ -6,6 +6,13 @@ namespace NetPilot.Core.Tests;
 public sealed class IpcProtocolTests
 {
     [Fact]
+    public void Protocol_v5_uses_dedicated_pipe_identity()
+    {
+        Assert.Equal(5, IpcProtocol.Version);
+        Assert.Equal("NetPilot.Service.v5", IpcProtocol.WindowsPipeName);
+    }
+
+    [Fact]
     public void Ping_without_payload_is_valid()
     {
         var result = IpcRequestValidator.Validate(IpcRequest.CreatePing());
@@ -50,6 +57,33 @@ public sealed class IpcProtocolTests
             IpcRequest.CreateZapretGetInstallationStatus());
 
         Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void ByeDpi_package_status_and_apply_commands_have_no_user_controlled_target_payload()
+    {
+        Assert.True(IpcRequestValidator.Validate(
+            IpcRequest.CreateByeDpiGetPackageStatus()).IsValid);
+        Assert.True(IpcRequestValidator.Validate(
+            IpcRequest.CreateByeDpiApplyReviewedPackage()).IsValid);
+
+        var invalidApply = new IpcRequest(
+            IpcProtocol.Version,
+            Guid.NewGuid(),
+            IpcCommand.ByeDpiApplyReviewedPackage,
+            StrategyId: "https://example.invalid/package.zip");
+        var invalidStatus = new IpcRequest(
+            IpcProtocol.Version,
+            Guid.NewGuid(),
+            IpcCommand.ByeDpiGetPackageStatus,
+            EnrollmentNonce: new string('A', IpcProtocol.EnrollmentNonceCharacters));
+
+        var applyResult = IpcRequestValidator.Validate(invalidApply);
+        var statusResult = IpcRequestValidator.Validate(invalidStatus);
+        Assert.False(applyResult.IsValid);
+        Assert.Equal("UnexpectedStrategyId", applyResult.Code);
+        Assert.False(statusResult.IsValid);
+        Assert.Equal("UnexpectedEnrollmentNonce", statusResult.Code);
     }
 
     [Fact]
@@ -133,6 +167,33 @@ public sealed class IpcProtocolTests
             TestContext.Current.CancellationToken);
 
         Assert.Equal(request, restored);
+    }
+
+    [Fact]
+    public async Task Framing_round_trip_preserves_typed_ByeDpi_package_response()
+    {
+        var response = new IpcResponse(
+            IpcProtocol.Version,
+            Guid.NewGuid(),
+            true,
+            "Ok",
+            ByeDpiPackage: new IpcByeDpiPackageStatus(
+                true,
+                "0.17.3",
+                "0.17.2"),
+            ByeDpiPackageApply: new IpcByeDpiPackageApplyResult(
+                IpcByeDpiPackageOperation.Upgrade,
+                "0.17.3",
+                "0.17.2"));
+        await using var stream = new MemoryStream();
+
+        await IpcFraming.WriteAsync(stream, response, TestContext.Current.CancellationToken);
+        stream.Position = 0;
+        var restored = await IpcFraming.ReadAsync<IpcResponse>(
+            stream,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(response, restored);
     }
 
     [Fact]
