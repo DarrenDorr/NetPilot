@@ -12,6 +12,7 @@ concurrency:
 
 env:
   R34_HARNESS_SHA: 42a7f467bf822f76f0a67a3b31d3c7b8174f3648
+  RELEASE_ID: '431054375'
   RELEASE_TAG: byedpi-v0.17.3
   RELEASE_TARGET: dc28fc4f0b635c34c63bbaed99ea7658d8a9c827
   PAYLOAD_NAME: NetPilot-ByeDPI-0.17.3-x64.zip
@@ -52,17 +53,19 @@ jobs:
           $ErrorActionPreference = 'Stop'
           Set-StrictMode -Version Latest
           New-Item -ItemType Directory -Force -Path evidence | Out-Null
+          'RUNTIME_SMOKE_STARTED=True' | Set-Content evidence\boundary.txt
+          "EXPECTED_RELEASE_ID=$env:RELEASE_ID" | Add-Content evidence\boundary.txt
+          'PRODUCTION_ADMISSION=BLOCK' | Add-Content evidence\boundary.txt
 
           if ((git -C r34 rev-parse HEAD).Trim() -ne $env:R34_HARNESS_SHA) {
             throw 'Pinned R34 harness checkpoint drift.'
           }
 
-          $all = @(gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" | ConvertFrom-Json)
-          if ($LASTEXITCODE -ne 0) { throw 'Failed to query repository releases.' }
-          $matches = @($all | Where-Object { $_.tag_name -ceq $env:RELEASE_TAG })
-          if ($matches.Count -ne 1) { throw "Expected exactly one release/draft for $env:RELEASE_TAG." }
-          $release = $matches[0]
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/$env:RELEASE_ID" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to query the pinned draft release.' }
 
+          if ([string]$release.id -cne $env:RELEASE_ID) { throw 'Pinned draft release ID drift.' }
+          if ($release.tag_name -cne $env:RELEASE_TAG) { throw 'Draft tag drift.' }
           if ($release.draft -ne $true) { throw 'Runtime smoke requires the release to remain a draft.' }
           if ($release.prerelease -ne $false) { throw 'Runtime smoke refuses a prerelease draft.' }
           if ($null -ne $release.published_at) { throw 'Runtime smoke refuses an already-published release.' }
@@ -97,9 +100,8 @@ jobs:
             asset_count = @($release.assets).Count
           } | ConvertTo-Json | Set-Content evidence\draft-metadata.json
 
-          'DRAFT_METADATA=PASS' | Set-Content evidence\boundary.txt
+          'DRAFT_METADATA=PASS' | Add-Content evidence\boundary.txt
           'RELEASE_PUBLISHED=False' | Add-Content evidence\boundary.txt
-          'PRODUCTION_ADMISSION=BLOCK' | Add-Content evidence\boundary.txt
 
       - name: Download exact draft assets as binary bytes
         shell: bash
