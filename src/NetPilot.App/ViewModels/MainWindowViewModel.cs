@@ -237,9 +237,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 break;
 
             case StrategySelectionStatus.NotRunning:
-                LastAction = "Zapret сейчас не запущен. Автоматический запуск не выполнялся.";
+                LastAction = "ByeDPI сейчас не запущен. Автоматический запуск не выполнялся.";
                 OverallStatus = "Сетевой движок не запущен";
-                OverallDetails = "После установки и запуска движка станет доступен автоматический подбор.";
+                OverallDetails = "После запуска ByeDPI станет доступен автоматический подбор.";
                 break;
 
             case StrategySelectionStatus.OriginalRestoreFailed:
@@ -260,12 +260,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             var state = await _dashboardService.GetStrategyRuntimeStateAsync(cancellationToken);
             EngineStatus = state.IsRunning && !string.IsNullOrWhiteSpace(state.StrategyId)
-                ? $"Zapret: запущен · стратегия {state.StrategyId}"
-                : "Zapret: остановлен";
+                ? $"ByeDPI: запущен · стратегия {state.StrategyId}"
+                : "ByeDPI: остановлен";
         }
         catch (Exception exception) when (IsExpectedOperationalException(exception))
         {
-            EngineStatus = "Служба NetPilot недоступна или ещё не установлена.";
+            EngineStatus = "Проверенный пакет ByeDPI недоступен или ещё не установлен.";
         }
     }
 
@@ -289,8 +289,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private static string GetUserMessage(Exception exception) =>
         exception switch
         {
-            IpcProtocolException => "Не удалось связаться со службой NetPilot.",
-            StrategyRuntimeException => "Служба не смогла выполнить операцию с сетевой стратегией.",
+            IpcProtocolException => "Недоступен изолированный привилегированный компонент NetPilot.",
+            StrategyRuntimeException => "ByeDPI не смог выполнить операцию. NetPilot остановил её безопасно.",
             HttpRequestException => "Не удалось проверить доступность сети.",
             OperationCanceledException => "Операция была отменена.",
             _ => "Не удалось завершить операцию."
