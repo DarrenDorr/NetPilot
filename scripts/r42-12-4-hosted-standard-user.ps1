@@ -50,26 +50,37 @@ function Require-Marker {
     }
 }
 
+function Get-DeepestException {
+    param([Parameter(Mandatory = $true)] [System.Exception]$Exception)
+    $current = $Exception
+    while ($null -ne $current.InnerException) {
+        $current = $current.InnerException
+    }
+    return $current
+}
+
 $nativeLauncherSource = @'
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
 
-public static class NetPilotStandardUserLauncher
+public static class NetPilotStandardUserTokenLauncher
 {
+    private const int LOGON32_LOGON_INTERACTIVE = 2;
+    private const int LOGON32_PROVIDER_DEFAULT = 0;
     private const int LOGON_WITH_PROFILE = 0x00000001;
     private const int CREATE_NO_WINDOW = 0x08000000;
     private const uint WAIT_OBJECT_0 = 0x00000000;
     private const uint WAIT_TIMEOUT = 0x00000102;
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct STARTUPINFO
     {
         public int cb;
-        public IntPtr lpReserved;
-        public IntPtr lpDesktop;
-        public IntPtr lpTitle;
+        public string lpReserved;
+        public string lpDesktop;
+        public string lpTitle;
         public int dwX;
         public int dwY;
         public int dwXSize;
@@ -97,10 +108,18 @@ public static class NetPilotStandardUserLauncher
 
     [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CreateProcessWithLogonW(
-        string lpUsername,
-        string lpDomain,
-        string lpPassword,
+    private static extern bool LogonUserW(
+        string lpszUsername,
+        string lpszDomain,
+        string lpszPassword,
+        int dwLogonType,
+        int dwLogonProvider,
+        out IntPtr phToken);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateProcessWithTokenW(
+        IntPtr hToken,
         int dwLogonFlags,
         string lpApplicationName,
         StringBuilder lpCommandLine,
@@ -129,11 +148,13 @@ public static class NetPilotStandardUserLauncher
     {
         private IntPtr _process;
         public int Id { get; }
+        public string LaunchMethod { get; }
 
-        internal ChildProcess(IntPtr process, int id)
+        internal ChildProcess(IntPtr process, int id, string launchMethod)
         {
             _process = process;
             Id = id;
+            LaunchMethod = launchMethod;
         }
 
         public int Wait(int milliseconds)
@@ -157,6 +178,7 @@ public static class NetPilotStandardUserLauncher
         {
             if (_process == IntPtr.Zero)
                 return;
+
             if (!TerminateProcess(_process, 1))
             {
                 int error = Marshal.GetLastWin32Error();
@@ -177,38 +199,71 @@ public static class NetPilotStandardUserLauncher
 
     public static ChildProcess Start(
         string userName,
-        string domain,
         string password,
         string applicationPath,
         string arguments,
         string workingDirectory)
     {
-        var startup = new STARTUPINFO { cb = Marshal.SizeOf<STARTUPINFO>() };
-        var commandLine = new StringBuilder();
-        commandLine.Append('"').Append(applicationPath).Append('"');
-        if (!string.IsNullOrWhiteSpace(arguments))
-            commandLine.Append(' ').Append(arguments);
+        IntPtr token = IntPtr.Zero;
+        PROCESS_INFORMATION processInfo = default(PROCESS_INFORMATION);
 
-        if (!CreateProcessWithLogonW(
+        if (!LogonUserW(
             userName,
-            domain,
+            ".",
             password,
-            LOGON_WITH_PROFILE,
-            applicationPath,
-            commandLine,
-            CREATE_NO_WINDOW,
-            IntPtr.Zero,
-            workingDirectory,
-            ref startup,
-            out PROCESS_INFORMATION processInfo))
+            LOGON32_LOGON_INTERACTIVE,
+            LOGON32_PROVIDER_DEFAULT,
+            out token))
         {
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "CreateProcessWithLogonW failed.");
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "LogonUserW failed.");
         }
 
-        if (processInfo.hThread != IntPtr.Zero)
-            CloseHandle(processInfo.hThread);
+        try
+        {
+            var startup = new STARTUPINFO { cb = Marshal.SizeOf<STARTUPINFO>() };
+            var commandLine = new StringBuilder();
+            commandLine.Append('"').Append(applicationPath).Append('"');
+            if (!string.IsNullOrWhiteSpace(arguments))
+                commandLine.Append(' ').Append(arguments);
 
-        return new ChildProcess(processInfo.hProcess, processInfo.dwProcessId);
+            if (!CreateProcessWithTokenW(
+                token,
+                LOGON_WITH_PROFILE,
+                applicationPath,
+                commandLine,
+                CREATE_NO_WINDOW,
+                IntPtr.Zero,
+                workingDirectory,
+                ref startup,
+                out processInfo))
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "CreateProcessWithTokenW failed.");
+            }
+
+            if (processInfo.hThread != IntPtr.Zero)
+            {
+                CloseHandle(processInfo.hThread);
+                processInfo.hThread = IntPtr.Zero;
+            }
+
+            return new ChildProcess(
+                processInfo.hProcess,
+                processInfo.dwProcessId,
+                "LogonUserW+CreateProcessWithTokenW");
+        }
+        catch
+        {
+            if (processInfo.hThread != IntPtr.Zero)
+                CloseHandle(processInfo.hThread);
+            if (processInfo.hProcess != IntPtr.Zero)
+                CloseHandle(processInfo.hProcess);
+            throw;
+        }
+        finally
+        {
+            if (token != IntPtr.Zero)
+                CloseHandle(token);
+        }
     }
 }
 '@
@@ -230,12 +285,8 @@ try {
         Remove-LocalUser -Name $UserName
     }
 
-    if (Test-Path -LiteralPath $publicPack) {
-        Remove-Item -LiteralPath $publicPack -Recurse -Force
-    }
-    if (Test-Path -LiteralPath $publicEvidence) {
-        Remove-Item -LiteralPath $publicEvidence -Recurse -Force
-    }
+    Remove-Item -LiteralPath $publicPack -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $publicEvidence -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $publicPack, $publicEvidence, $HostedEvidenceDir | Out-Null
 
     $passwordPlain = 'Aa1!' + [guid]::NewGuid().ToString('N')
@@ -291,7 +342,7 @@ try {
 
     'STANDARD_USER_CREATED=PASS' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     'STANDARD_USER_ADMIN_GROUP=False' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
-    'STANDARD_USER_LAUNCH_METHOD=CreateProcessWithLogonW' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    'STANDARD_USER_LAUNCH_METHOD=LogonUserW+CreateProcessWithTokenW' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     'PACK_ACL_PRINCIPAL=EXACT_TEST_USER_SID' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     'PACK_ACL_STANDARD_USER=RX' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     'EVIDENCE_ACL_PRINCIPAL=EXACT_TEST_USER_SID' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
@@ -307,11 +358,12 @@ try {
     $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
     if ($null -eq $identity.User -or $identity.User.Value -cne '__USER_SID__') {
-        throw 'Native logon launch did not receive the expected standard-user SID.'
+        throw 'Token launch did not receive the expected standard-user SID.'
     }
     if ($principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw 'Native logon launch received an Administrator token.'
+        throw 'Token launch received an Administrator token.'
     }
+
     'RUNNER_IDENTITY_MATCH=PASS' | Set-Content -LiteralPath $result -Encoding utf8NoBOM
     'RUNNER_ADMIN_ROLE=False' | Add-Content -LiteralPath $result
 
@@ -321,6 +373,7 @@ try {
     if ([string]::IsNullOrWhiteSpace($localAppData) -or [string]::IsNullOrWhiteSpace($userProfile)) {
         throw 'Loaded standard-user profile did not expose LocalAppData/UserProfile.'
     }
+
     $env:LOCALAPPDATA = $localAppData
     $env:APPDATA = $roamingAppData
     $env:USERPROFILE = $userProfile
@@ -344,6 +397,7 @@ try {
     if (Get-Service -Name 'NetPilot.Service' -ErrorAction SilentlyContinue) {
         throw 'NetPilot.Service unexpectedly exists during no-admin validation.'
     }
+
     'PER_USER_INSTALL=PASS' | Add-Content -LiteralPath $result
     'NETPILOT_SERVICE_PRESENT=False' | Add-Content -LiteralPath $result
 
@@ -357,6 +411,7 @@ try {
     if ($validation.ExitCode -ne 0) {
         throw "No-admin validator failed: $($validation.ExitCode)"
     }
+
     'STANDARD_USER_VALIDATION=PASS' | Add-Content -LiteralPath $result
 
     $uninstaller = Join-Path $installRoot 'unins000.exe'
@@ -378,6 +433,7 @@ catch {
     if (-not (Test-Path -LiteralPath $result -PathType Leaf)) {
         'RUNNER_STARTED=True' | Set-Content -LiteralPath $result -Encoding utf8NoBOM
     }
+
     "RUNNER_FAILURE_TYPE=$($_.Exception.GetType().FullName)" | Add-Content -LiteralPath $result
     "RUNNER_FAILURE_HRESULT=0x$($_.Exception.HResult.ToString('X8'))" | Add-Content -LiteralPath $result
     'DONE=FAIL' | Add-Content -LiteralPath $result
@@ -391,9 +447,8 @@ catch {
     $arguments = "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encodedRunner"
 
     Add-Type -TypeDefinition $nativeLauncherSource -Language CSharp
-    $nativeChild = [NetPilotStandardUserLauncher]::Start(
+    $nativeChild = [NetPilotStandardUserTokenLauncher]::Start(
         $UserName,
-        $env:COMPUTERNAME,
         $passwordPlain,
         $powershell,
         $arguments,
@@ -402,7 +457,9 @@ catch {
     if ($null -eq $nativeChild) {
         throw 'Native standard-user process was not created.'
     }
+
     "DIRECT_STANDARD_USER_PROCESS_ID=$($nativeChild.Id)" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    "DIRECT_STANDARD_USER_LAUNCH_METHOD=$($nativeChild.LaunchMethod)" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     'DIRECT_STANDARD_USER_PROCESS_CREATED=PASS' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
 
     $exitCode = $nativeChild.Wait(600000)
@@ -420,6 +477,7 @@ catch {
     if (-not (Test-Path -LiteralPath $boundary -PathType Leaf)) {
         throw 'Standard-user boundary evidence was not created.'
     }
+
     $boundaryText = Get-Content -LiteralPath $boundary -Raw
     Require-Marker -Text $boundaryText -Marker 'RUNNER_IDENTITY_MATCH=PASS'
     Require-Marker -Text $boundaryText -Marker 'RUNNER_ADMIN_ROLE=False'
@@ -434,7 +492,9 @@ catch {
     $validationTxt = Get-ChildItem `
         -LiteralPath $publicEvidence `
         -Filter 'ByeDPI-NoAdmin-Validation-*-UTC.txt' `
-        -File | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+        -File |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1
     if ($null -eq $validationTxt) {
         throw 'Detailed no-admin validation evidence is missing.'
     }
@@ -476,7 +536,9 @@ catch {
     $combined = Get-ChildItem `
         -LiteralPath $publicEvidence `
         -Filter 'NetPilot-ByeDPI-NoAdmin-Validation-*-UTC.zip' `
-        -File | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+        -File |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1
     if ($null -eq $combined) {
         throw 'Combined no-admin evidence ZIP is missing.'
     }
@@ -493,10 +555,13 @@ catch {
 catch {
     $failure = $_
     try {
+        $deep = Get-DeepestException -Exception $_.Exception
         "HOSTED_FAILURE_TYPE=$($_.Exception.GetType().FullName)" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
         "HOSTED_FAILURE_HRESULT=0x$($_.Exception.HResult.ToString('X8'))" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
-        if ($_.Exception -is [System.ComponentModel.Win32Exception]) {
-            "HOSTED_WIN32_ERROR=$($_.Exception.NativeErrorCode)" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+        "HOSTED_DEEP_FAILURE_TYPE=$($deep.GetType().FullName)" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+        "HOSTED_DEEP_FAILURE_HRESULT=0x$($deep.HResult.ToString('X8'))" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+        if ($deep -is [System.ComponentModel.Win32Exception]) {
+            "HOSTED_WIN32_ERROR=$($deep.NativeErrorCode)" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
         }
     }
     catch {
@@ -512,11 +577,7 @@ finally {
     }
 
     if ($null -ne $nativeChild) {
-        try {
-            $nativeChild.Dispose()
-        }
-        catch {
-        }
+        try { $nativeChild.Dispose() } catch { }
     }
 
     Get-Process -Name ciadpi -ErrorAction SilentlyContinue |
