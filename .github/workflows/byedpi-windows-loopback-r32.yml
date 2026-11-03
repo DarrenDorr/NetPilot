@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout exact NetPilot R32 checkpoint
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.NETPILOT_R32_SHA }}
           path: netpilot
@@ -32,7 +32,7 @@ jobs:
           fetch-depth: 1
 
       - name: Checkout exact ByeDPI v0.17.3 source
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: hufrea/byedpi
           ref: ${{ env.BYEDPI_SOURCE_SHA }}
@@ -130,7 +130,7 @@ jobs:
 
     steps:
       - name: Checkout exact NetPilot R32 checkpoint
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.NETPILOT_R32_SHA }}
           path: netpilot
