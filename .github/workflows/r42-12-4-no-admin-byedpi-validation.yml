@@ -169,6 +169,7 @@ jobs:
           'NO_ADMIN_VALIDATOR_BUILT=PASS' | Add-Content hosted-evidence\boundary.txt
 
       - name: Assemble one-day physical-PC no-admin validation pack
+        id: assemble_pack
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -191,6 +192,7 @@ jobs:
             draft_target_commit = $env:RELEASE_TARGET
             release_published = $false
             production_admission = 'BLOCK'
+            hosted_validation = 'NOT_YET_PROVEN'
             candidate = [ordered]@{
               version = '0.17.3'
               size = [long]$env:BYEDPI_WINDOWS_SIZE
@@ -213,6 +215,7 @@ jobs:
           'VALIDATION_PACK_ASSEMBLED=PASS' | Add-Content hosted-evidence\boundary.txt
 
       - name: Execute pack under isolated standard Windows user
+        id: hosted_validation
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -225,6 +228,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Re-require draft remains unpublished and unchanged
+        id: recheck_draft
+        if: ${{ always() && steps.assemble_pack.outcome == 'success' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -244,11 +249,16 @@ jobs:
               throw "Draft asset changed: $($item.Id)"
             }
           }
-          'DRAFT_UNCHANGED_AFTER_VALIDATION=PASS' | Add-Content hosted-evidence\boundary.txt
+          'DRAFT_UNCHANGED_AFTER_PACK_BUILD=PASS' | Add-Content hosted-evidence\boundary.txt
           'RELEASE_PUBLISHED=False' | Add-Content hosted-evidence\boundary.txt
-          'RESULT=R42_12_4_HOSTED_STANDARD_USER_PASS_BLOCK' | Add-Content hosted-evidence\boundary.txt
+          if ('${{ steps.hosted_validation.outcome }}' -eq 'success') {
+            'RESULT=R42_12_4_HOSTED_STANDARD_USER_PASS_BLOCK' | Add-Content hosted-evidence\boundary.txt
+          } else {
+            'RESULT=R42_12_4_HOSTED_STANDARD_USER_FAIL_BLOCK' | Add-Content hosted-evidence\boundary.txt
+          }
 
       - name: Upload one-day no-admin physical-PC validation pack
+        if: ${{ always() && steps.assemble_pack.outcome == 'success' && steps.recheck_draft.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: netpilot-r42-12-4-no-admin-pc-validation-pack
