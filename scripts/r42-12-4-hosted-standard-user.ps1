@@ -608,11 +608,12 @@ catch {
     function Test-HostedFixedStartup {
         param(
             [Parameter(Mandatory=$true)]
-            [ValidateSet('CMD','POWERSHELL','PWSH7','POWERSHELL_USERENV')]
+            [ValidateSet('CMD','POWERSHELL','PWSH7','POWERSHELL_USERENV','POWERSHELL_CONSOLE')]
             [string]$Kind,
             [Parameter(Mandatory=$true)][string]$Application,
             [Parameter(Mandatory=$true)][string]$Arguments,
-            [bool]$ExplicitUserEnvironment = $false
+            [bool]$ExplicitUserEnvironment = $false,
+            [bool]$DiagnosticNewConsole = $false
         )
         if (($Application.Length + $Arguments.Length + 4) -ge 1024) {
             throw 'Fixed hosted startup probe command line is too long.'
@@ -622,9 +623,15 @@ catch {
         try {
             $probe = [NetPilotStandardUserTokenLauncher]::Start(
                 $UserName, $passwordPlain, $Application, $Arguments,
-                $publicPack, $ExplicitUserEnvironment)
+                $publicPack, $ExplicitUserEnvironment, $DiagnosticNewConsole)
             $probeExit = $probe.Wait(15000)
             if ($probeExit -eq [int]::MinValue) {
+                # Snapshot only coarse state/session relationship for this exact
+                # child handle; no process list, memory dump, PID or user data.
+                "HOSTED_NATIVE_${Kind}_STATE=$($probe.GetDiagnosticState())" |
+                    Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+                "HOSTED_NATIVE_${Kind}_SESSION=$($probe.GetSessionRelation())" |
+                    Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
                 "HOSTED_NATIVE_${Kind}_TIMEOUT_SECONDS=15" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
                 try { $probe.Kill() } catch { }
                 return $false
@@ -673,6 +680,11 @@ catch {
         # This comparison never replaces the original launch-mode gate.
         $null = Test-HostedFixedStartup -Kind POWERSHELL_USERENV -Application $powershell `
             -Arguments $psCommand -ExplicitUserEnvironment $true
+        # Bounded, diagnostic-only comparison: a fresh console may change
+        # PowerShell host initialization in the CI session. Never let a PASS
+        # bypass the default CREATE_NO_WINDOW PowerShell baseline.
+        $null = Test-HostedFixedStartup -Kind POWERSHELL_CONSOLE -Application $powershell `
+            -Arguments $psCommand -DiagnosticNewConsole $true
         throw 'Hosted exact-SID Windows PowerShell 5.1 startup baseline failed.'
     }
 
