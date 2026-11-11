@@ -132,6 +132,24 @@ public static class NetPilotStandardUserTokenLauncher
         ref STARTUPINFO lpStartupInfo,
         out PROCESS_INFORMATION lpProcessInformation);
 
+    // Diagnostic-only Win32 alternative: do not change the mandatory
+    // LogonUserW + CreateProcessWithTokenW acceptance boundary.
+    [DllImport("advapi32.dll", EntryPoint = "CreateProcessWithLogonW",
+        SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateProcessWithLogonW(
+        string lpUsername,
+        string lpDomain,
+        string lpPassword,
+        int dwLogonFlags,
+        string lpApplicationName,
+        StringBuilder lpCommandLine,
+        int dwCreationFlags,
+        IntPtr lpEnvironment,
+        string lpCurrentDirectory,
+        ref STARTUPINFO lpStartupInfo,
+        out PROCESS_INFORMATION lpProcessInformation);
+
     [DllImport("userenv.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CreateEnvironmentBlock(
@@ -251,6 +269,54 @@ public static class NetPilotStandardUserTokenLauncher
                 CloseHandle(_process);
                 _process = IntPtr.Zero;
             }
+        }
+    }
+
+    // Compare the credential-based API for the same ephemeral local user.
+    // Only invoked for fixed, bounded diagnostic commands after baseline
+    // PowerShell failure. This path NEVER qualifies for admission.
+    public static ChildProcess StartWithLogon(
+        string userName,
+        string password,
+        string applicationPath,
+        string arguments,
+        string workingDirectory)
+    {
+        PROCESS_INFORMATION processInfo = default(PROCESS_INFORMATION);
+        var startup = new STARTUPINFO { cb = Marshal.SizeOf<STARTUPINFO>() };
+        var commandLine = new StringBuilder();
+        commandLine.Append('"').Append(applicationPath).Append('"');
+        if (!string.IsNullOrWhiteSpace(arguments))
+            commandLine.Append(' ').Append(arguments);
+        if (commandLine.Length >= 1024)
+            throw new ArgumentException("Hosted diagnostic command line too long.");
+
+        try
+        {
+            if (!CreateProcessWithLogonW(
+                userName, ".", password, LOGON_WITH_PROFILE,
+                applicationPath, commandLine, CREATE_NO_WINDOW, IntPtr.Zero,
+                workingDirectory, ref startup, out processInfo))
+                throw new Win32Exception(Marshal.GetLastWin32Error(),
+                    "CreateProcessWithLogonW failed.");
+
+            if (processInfo.hThread != IntPtr.Zero)
+            {
+                CloseHandle(processInfo.hThread);
+                processInfo.hThread = IntPtr.Zero;
+            }
+            return new ChildProcess(
+                processInfo.hProcess,
+                processInfo.dwProcessId,
+                "CreateProcessWithLogonW");
+        }
+        catch
+        {
+            if (processInfo.hThread != IntPtr.Zero)
+                CloseHandle(processInfo.hThread);
+            if (processInfo.hProcess != IntPtr.Zero)
+                CloseHandle(processInfo.hProcess);
+            throw;
         }
     }
 
@@ -608,12 +674,13 @@ catch {
     function Test-HostedFixedStartup {
         param(
             [Parameter(Mandatory=$true)]
-            [ValidateSet('CMD','POWERSHELL','PWSH7','POWERSHELL_USERENV','POWERSHELL_CONSOLE')]
+            [ValidateSet('CMD','POWERSHELL','PWSH7','POWERSHELL_USERENV','POWERSHELL_CONSOLE','CMD_LOGON','POWERSHELL_LOGON')]
             [string]$Kind,
             [Parameter(Mandatory=$true)][string]$Application,
             [Parameter(Mandatory=$true)][string]$Arguments,
             [bool]$ExplicitUserEnvironment = $false,
-            [bool]$DiagnosticNewConsole = $false
+            [bool]$DiagnosticNewConsole = $false,
+            [bool]$UseCredentialLogon = $false
         )
         if (($Application.Length + $Arguments.Length + 4) -ge 1024) {
             throw 'Fixed hosted startup probe command line is too long.'
@@ -621,9 +688,29 @@ catch {
         "HOSTED_NATIVE_${Kind}_LAUNCH_BEGIN=YES" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
         $probe = $null
         try {
-            $probe = [NetPilotStandardUserTokenLauncher]::Start(
-                $UserName, $passwordPlain, $Application, $Arguments,
-                $publicPack, $ExplicitUserEnvironment, $DiagnosticNewConsole)
+            if ($UseCredentialLogon) {
+                if ($Kind -cnotin @('CMD_LOGON','POWERSHELL_LOGON') -or
+                    $ExplicitUserEnvironment -or $DiagnosticNewConsole) {
+                    throw 'Credential API probe must use fixed kind and original flags.'
+                }
+                # For this diagnostic branch, accept only trusted executable
+                # paths and the two hard-coded, side-effect-free commands.
+                if (($Kind -ceq 'CMD_LOGON' -and
+                        ($Application -cne $cmd -or
+                         $Arguments -cne '/D /Q /C exit /B 0')) -or
+                    ($Kind -ceq 'POWERSHELL_LOGON' -and
+                        ($Application -cne $powershell -or
+                         $Arguments -cne $psCommand))) {
+                    throw 'Credential API diagnostic executable/arguments mismatch.'
+                }
+                $probe = [NetPilotStandardUserTokenLauncher]::StartWithLogon(
+                    $UserName, $passwordPlain, $Application, $Arguments, $publicPack)
+            }
+            else {
+                $probe = [NetPilotStandardUserTokenLauncher]::Start(
+                    $UserName, $passwordPlain, $Application, $Arguments,
+                    $publicPack, $ExplicitUserEnvironment, $DiagnosticNewConsole)
+            }
             $probeExit = $probe.Wait(15000)
             if ($probeExit -eq [int]::MinValue) {
                 # Snapshot only coarse state/session relationship for this exact
@@ -685,6 +772,22 @@ catch {
         # bypass the default CREATE_NO_WINDOW PowerShell baseline.
         $null = Test-HostedFixedStartup -Kind POWERSHELL_CONSOLE -Application $powershell `
             -Arguments $psCommand -DiagnosticNewConsole $true
+
+        # Compare CreateProcessWithLogonW with the original explicit-token
+        # process creation. CMD confirms whether the alternate API works at
+        # all before a fixed PowerShell 5.1 comparison is attempted.
+        # Both use the same ephemeral user credentials and LOGON_WITH_PROFILE.
+        # Success here cannot override the baseline failure.
+        $logonCmdPassed = Test-HostedFixedStartup -Kind CMD_LOGON -Application $cmd `
+            -Arguments '/D /Q /C exit /B 0' -UseCredentialLogon $true
+        if ($logonCmdPassed) {
+            $null = Test-HostedFixedStartup -Kind POWERSHELL_LOGON -Application $powershell `
+                -Arguments $psCommand -UseCredentialLogon $true
+        }
+        else {
+            'HOSTED_NATIVE_POWERSHELL_LOGON=SKIPPED_CMD_LOGON_FAILED' |
+                Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+        }
         throw 'Hosted exact-SID Windows PowerShell 5.1 startup baseline failed.'
     }
 
