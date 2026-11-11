@@ -71,6 +71,10 @@ jobs:
             }
           }
 
+      - name: R42.12.4 hosted short-command security regression
+        shell: pwsh
+        run: pwsh -NoLogo -NoProfile -File scripts/test-r42-12-4-hosted-launch-policy.ps1
+
       - name: Restore Windows security tests
         run: dotnet restore tests/NetPilot.Platform.Windows.Tests/NetPilot.Platform.Windows.Tests.csproj
 
