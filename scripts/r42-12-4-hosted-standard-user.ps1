@@ -369,7 +369,7 @@ try {
         throw 'Token launch received an Administrator token.'
     }
 
-    'RUNNER_IDENTITY_MATCH=PASS' | Set-Content -LiteralPath $result -Encoding utf8NoBOM
+    'RUNNER_IDENTITY_MATCH=PASS' | Set-Content -LiteralPath $result -Encoding UTF8
     'RUNNER_ADMIN_ROLE=False' | Add-Content -LiteralPath $result
 
     $localAppData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
@@ -436,7 +436,7 @@ try {
 }
 catch {
     if (-not (Test-Path -LiteralPath $result -PathType Leaf)) {
-        'RUNNER_STARTED=True' | Set-Content -LiteralPath $result -Encoding utf8NoBOM
+        'RUNNER_STARTED=True' | Set-Content -LiteralPath $result -Encoding UTF8
     }
 
     "RUNNER_FAILURE_TYPE=$($_.Exception.GetType().FullName)" | Add-Content -LiteralPath $result
