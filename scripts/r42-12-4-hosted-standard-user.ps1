@@ -62,6 +62,7 @@ function Get-DeepestException {
 $nativeLauncherSource = @'
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -71,6 +72,7 @@ public static class NetPilotStandardUserTokenLauncher
     private const int LOGON32_PROVIDER_DEFAULT = 0;
     private const int LOGON_WITH_PROFILE = 0x00000001;
     private const int CREATE_NO_WINDOW = 0x08000000;
+    private const int CREATE_NEW_CONSOLE = 0x00000010;
     private const int CREATE_UNICODE_ENVIRONMENT = 0x00000400;
     private const uint WAIT_OBJECT_0 = 0x00000000;
     private const uint WAIT_TIMEOUT = 0x00000102;
@@ -186,6 +188,49 @@ public static class NetPilotStandardUserTokenLauncher
             return unchecked((int)exitCode);
         }
 
+        // Bounded, coarse process state only. No handles, process IDs,
+        // command lines, user names or environment values are recorded.
+        public string GetDiagnosticState()
+        {
+            if (_process == IntPtr.Zero)
+                return "NO_HANDLE";
+            try
+            {
+                if (WaitForSingleObject(_process, 0) == WAIT_OBJECT_0)
+                    return "EXITED";
+                using (var child = Process.GetProcessById(Id))
+                {
+                    if (child.HasExited)
+                        return "EXITED";
+                    if (child.Threads.Count == 0)
+                        return "NO_THREADS";
+                    return child.TotalProcessorTime.TotalMilliseconds >= 500
+                        ? "RUNNING_CPU" : "RUNNING_IDLE";
+                }
+            }
+            catch (Exception)
+            {
+                return "UNAVAILABLE";
+            }
+        }
+
+        public string GetSessionRelation()
+        {
+            try
+            {
+                using (var child = Process.GetProcessById(Id))
+                using (var parent = Process.GetCurrentProcess())
+                {
+                    return child.SessionId == parent.SessionId
+                        ? "SAME_SESSION" : "OTHER_SESSION";
+                }
+            }
+            catch (Exception)
+            {
+                return "UNAVAILABLE";
+            }
+        }
+
         public void Kill()
         {
             if (_process == IntPtr.Zero)
@@ -216,7 +261,7 @@ public static class NetPilotStandardUserTokenLauncher
         string arguments,
         string workingDirectory)
     {
-        return Start(userName, password, applicationPath, arguments, workingDirectory, false);
+        return Start(userName, password, applicationPath, arguments, workingDirectory, false, false);
     }
 
     // Explicit user environment is a diagnostic A/B mode only. The primary
@@ -228,6 +273,21 @@ public static class NetPilotStandardUserTokenLauncher
         string arguments,
         string workingDirectory,
         bool explicitUserEnvironment)
+    {
+        return Start(userName, password, applicationPath, arguments, workingDirectory,
+            explicitUserEnvironment, false);
+    }
+
+    // New console is restricted to the optional diagnostic comparison.
+    // All original acceptance paths keep CREATE_NO_WINDOW unchanged.
+    public static ChildProcess Start(
+        string userName,
+        string password,
+        string applicationPath,
+        string arguments,
+        string workingDirectory,
+        bool explicitUserEnvironment,
+        bool diagnosticNewConsole)
     {
         IntPtr token = IntPtr.Zero;
         IntPtr environment = IntPtr.Zero;
@@ -269,7 +329,8 @@ public static class NetPilotStandardUserTokenLauncher
                 LOGON_WITH_PROFILE,
                 applicationPath,
                 commandLine,
-                CREATE_NO_WINDOW | (explicitUserEnvironment ? CREATE_UNICODE_ENVIRONMENT : 0),
+                (diagnosticNewConsole ? CREATE_NEW_CONSOLE : CREATE_NO_WINDOW) |
+                    (explicitUserEnvironment ? CREATE_UNICODE_ENVIRONMENT : 0),
                 environment,
                 workingDirectory,
                 ref startup,
@@ -547,11 +608,12 @@ catch {
     function Test-HostedFixedStartup {
         param(
             [Parameter(Mandatory=$true)]
-            [ValidateSet('CMD','POWERSHELL','PWSH7','POWERSHELL_USERENV')]
+            [ValidateSet('CMD','POWERSHELL','PWSH7','POWERSHELL_USERENV','POWERSHELL_CONSOLE')]
             [string]$Kind,
             [Parameter(Mandatory=$true)][string]$Application,
             [Parameter(Mandatory=$true)][string]$Arguments,
-            [bool]$ExplicitUserEnvironment = $false
+            [bool]$ExplicitUserEnvironment = $false,
+            [bool]$DiagnosticNewConsole = $false
         )
         if (($Application.Length + $Arguments.Length + 4) -ge 1024) {
             throw 'Fixed hosted startup probe command line is too long.'
@@ -561,9 +623,15 @@ catch {
         try {
             $probe = [NetPilotStandardUserTokenLauncher]::Start(
                 $UserName, $passwordPlain, $Application, $Arguments,
-                $publicPack, $ExplicitUserEnvironment)
+                $publicPack, $ExplicitUserEnvironment, $DiagnosticNewConsole)
             $probeExit = $probe.Wait(15000)
             if ($probeExit -eq [int]::MinValue) {
+                # Snapshot only coarse state/session relationship for this exact
+                # child handle; no process list, memory dump, PID or user data.
+                "HOSTED_NATIVE_${Kind}_STATE=$($probe.GetDiagnosticState())" |
+                    Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+                "HOSTED_NATIVE_${Kind}_SESSION=$($probe.GetSessionRelation())" |
+                    Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
                 "HOSTED_NATIVE_${Kind}_TIMEOUT_SECONDS=15" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
                 try { $probe.Kill() } catch { }
                 return $false
@@ -612,6 +680,11 @@ catch {
         # This comparison never replaces the original launch-mode gate.
         $null = Test-HostedFixedStartup -Kind POWERSHELL_USERENV -Application $powershell `
             -Arguments $psCommand -ExplicitUserEnvironment $true
+        # Bounded, diagnostic-only comparison: a fresh console may change
+        # PowerShell host initialization in the CI session. Never let a PASS
+        # bypass the default CREATE_NO_WINDOW PowerShell baseline.
+        $null = Test-HostedFixedStartup -Kind POWERSHELL_CONSOLE -Application $powershell `
+            -Arguments $psCommand -DiagnosticNewConsole $true
         throw 'Hosted exact-SID Windows PowerShell 5.1 startup baseline failed.'
     }
 
