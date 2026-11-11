@@ -32,8 +32,8 @@ $required = @(
     "HOSTED_PREFLIGHT_TIMEOUT_SECONDS=45",
     "HOSTED_PREFLIGHT=PASS",
     'preflightChild.Wait(45000)',
-    'Assert-HostedFixedStartup',
-    "[ValidateSet('CMD','POWERSHELL')]",
+    'Test-HostedFixedStartup',
+    "[ValidateSet('CMD','POWERSHELL','PWSH7','POWERSHELL_USERENV')]",
     "System32\cmd.exe",
     "'/D /Q /C exit /B 0'",
     '-Command "exit 0"',
@@ -41,6 +41,14 @@ $required = @(
     'HOSTED_NATIVE_${Kind}_TIMEOUT_SECONDS=15',
     'HOSTED_NATIVE_${Kind}_EXIT_CODE',
     'HOSTED_NATIVE_${Kind}_STARTUP=PASS',
+    'HOSTED_NATIVE_${Kind}_FAILURE_HRESULT',
+    'HOSTED_NATIVE_PWSH7=NOT_INSTALLED',
+    'PowerShell\7\pwsh.exe',
+    'CreateEnvironmentBlock(',
+    'DestroyEnvironmentBlock(',
+    'CREATE_UNICODE_ENVIRONMENT',
+    'if (-not $ps51Passed)',
+    'throw ''Hosted exact-SID Windows PowerShell 5.1 startup baseline failed.''',
     'PREFLIGHT_SID_MATCH=PASS',
     'PREFLIGHT_EVIDENCE_WRITE=PASS',
     'RUNNER_IDENTITY_MATCH=PASS',
@@ -95,4 +103,23 @@ foreach ($requiredPreflight in @(
         throw 'R42.12.4 hosted preflight must prove identity, privilege and write boundary.'
     }
 }
+# Compile the embedded, test-only native launcher without invoking any
+# Win32 function or creating a local account. Parser-only CI would miss
+# P/Invoke/overload mistakes in the PowerShell here-string.
+$hereStart = '$nativeLauncherSource = @' + "'"
+$begin = $source.IndexOf($hereStart, [System.StringComparison]::Ordinal)
+if ($begin -lt 0) {
+    throw 'R42.12.4 native launcher here-string start missing.'
+}
+$bodyStart = $source.IndexOf("`n", $begin)
+$bodyEnd = $source.IndexOf("`n'@", $bodyStart + 1, [System.StringComparison]::Ordinal)
+if ($bodyStart -lt 0 -or $bodyEnd -le $bodyStart) {
+    throw 'R42.12.4 native launcher here-string end missing.'
+}
+$launcherCs = $source.Substring($bodyStart + 1, $bodyEnd - $bodyStart - 1)
+Add-Type -TypeDefinition $launcherCs -Language CSharp -ErrorAction Stop
+if ($null -eq ([System.Management.Automation.PSTypeName]'NetPilotStandardUserTokenLauncher').Type) {
+    throw 'R42.12.4 native launcher C# type was not compiled.'
+}
+'R42_12_4_HOSTED_NATIVE_INTEROP_COMPILE=PASS'
 'R42_12_4_HOSTED_SHORT_LAUNCH_POLICY=PASS'
