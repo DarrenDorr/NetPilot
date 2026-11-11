@@ -21,6 +21,7 @@ $required = @(
     'NetPilot-StandardUser-Runner.ps1',
     '[System.IO.File]::WriteAllText(',
     'icacls.exe $runnerScript /inheritance:r /grant:r',
+    '"*${createdUserSid}:RX"',
     'HOSTED_RUNNER_SCRIPT_ACL=EXACT_TEST_USER_RX',
     'LOGON_WITH_PROFILE',
     'RUNNER_IDENTITY_MATCH=PASS',
