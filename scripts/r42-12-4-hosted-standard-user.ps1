@@ -360,6 +360,7 @@ $pack = 'C:\Users\Public\NetPilot-R42.12.4-Pack'
 $evidence = 'C:\Users\Public\NetPilot-R42.12.4-Evidence'
 $result = Join-Path $evidence 'standard-user-boundary.txt'
 try {
+    'RUNNER_STARTED=True' | Set-Content -LiteralPath $result -Encoding UTF8
     $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
     if ($null -eq $identity.User -or $identity.User.Value -cne '__USER_SID__') {
@@ -369,7 +370,7 @@ try {
         throw 'Token launch received an Administrator token.'
     }
 
-    'RUNNER_IDENTITY_MATCH=PASS' | Set-Content -LiteralPath $result -Encoding utf8NoBOM
+    'RUNNER_IDENTITY_MATCH=PASS' | Add-Content -LiteralPath $result
     'RUNNER_ADMIN_ROLE=False' | Add-Content -LiteralPath $result
 
     $localAppData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
@@ -385,6 +386,7 @@ try {
     'STANDARD_USER_PROFILE_LOADED=PASS' | Add-Content -LiteralPath $result
 
     $setup = Join-Path $pack 'NetPilot-UserMode-Setup-__VERSION__-x64.exe'
+    'INSTALLER_LAUNCH_BEGIN=PASS' | Add-Content -LiteralPath $result
     $install = Start-Process `
         -FilePath $setup `
         -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' `
@@ -407,6 +409,7 @@ try {
     'NETPILOT_SERVICE_PRESENT=False' | Add-Content -LiteralPath $result
 
     $validator = Join-Path $pack 'NetPilot-ByeDPI-NoAdmin-Validation.exe'
+    'VALIDATOR_LAUNCH_BEGIN=PASS' | Add-Content -LiteralPath $result
     $validation = Start-Process `
         -FilePath $validator `
         -ArgumentList '--install-root',$installRoot,'--evidence-dir',$evidence `
@@ -421,6 +424,7 @@ try {
 
     $uninstaller = Join-Path $installRoot 'unins000.exe'
     if (Test-Path -LiteralPath $uninstaller -PathType Leaf) {
+        'UNINSTALLER_LAUNCH_BEGIN=PASS' | Add-Content -LiteralPath $result
         $uninstall = Start-Process `
             -FilePath $uninstaller `
             -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' `
@@ -436,7 +440,7 @@ try {
 }
 catch {
     if (-not (Test-Path -LiteralPath $result -PathType Leaf)) {
-        'RUNNER_STARTED=True' | Set-Content -LiteralPath $result -Encoding utf8NoBOM
+        'RUNNER_STARTED=True' | Set-Content -LiteralPath $result -Encoding UTF8
     }
 
     "RUNNER_FAILURE_TYPE=$($_.Exception.GetType().FullName)" | Add-Content -LiteralPath $result

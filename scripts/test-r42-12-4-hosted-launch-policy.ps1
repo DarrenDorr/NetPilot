@@ -24,6 +24,10 @@ $required = @(
     '"*${createdUserSid}:RX"',
     'HOSTED_RUNNER_SCRIPT_ACL=EXACT_TEST_USER_RX',
     'LOGON_WITH_PROFILE',
+    'RUNNER_STARTED=True',
+    'INSTALLER_LAUNCH_BEGIN=PASS',
+    'VALIDATOR_LAUNCH_BEGIN=PASS',
+    'UNINSTALLER_LAUNCH_BEGIN=PASS',
     'RUNNER_IDENTITY_MATCH=PASS',
     'RUNNER_ADMIN_ROLE=False',
     'STANDARD_USER_VALIDATION=PASS',
@@ -33,6 +37,11 @@ foreach ($value in $required) {
     if (-not $source.Contains($value, [System.StringComparison]::Ordinal)) {
         throw 'R42.12.4 protected short-launch policy is missing required code.'
     }
+}
+# This harness starts Windows PowerShell 5.1; it does not support
+# Set-Content -Encoding utf8NoBOM (PowerShell 7 syntax).
+if ($source.Contains('-Encoding utf8NoBOM', [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw 'R42.12.4 hosted runner must use PowerShell 5.1-compatible evidence encoding.'
 }
 if (-not $source.Contains('-File ', [System.StringComparison]::Ordinal)) {
     throw 'R42.12.4 must launch the protected runner script by file path.'
