@@ -693,6 +693,16 @@ catch {
                     $ExplicitUserEnvironment -or $DiagnosticNewConsole) {
                     throw 'Credential API probe must use fixed kind and original flags.'
                 }
+                # For this diagnostic branch, accept only trusted executable
+                # paths and the two hard-coded, side-effect-free commands.
+                if (($Kind -ceq 'CMD_LOGON' -and
+                        ($Application -cne $cmd -or
+                         $Arguments -cne '/D /Q /C exit /B 0')) -or
+                    ($Kind -ceq 'POWERSHELL_LOGON' -and
+                        ($Application -cne $powershell -or
+                         $Arguments -cne $psCommand))) {
+                    throw 'Credential API diagnostic executable/arguments mismatch.'
+                }
                 $probe = [NetPilotStandardUserTokenLauncher]::StartWithLogon(
                     $UserName, $passwordPlain, $Application, $Arguments, $publicPack)
             }
