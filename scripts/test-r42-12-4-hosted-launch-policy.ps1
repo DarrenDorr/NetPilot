@@ -33,7 +33,7 @@ $required = @(
     "HOSTED_PREFLIGHT=PASS",
     'preflightChild.Wait(45000)',
     'Test-HostedFixedStartup',
-    "[ValidateSet('CMD','POWERSHELL','PWSH7','POWERSHELL_USERENV','POWERSHELL_CONSOLE')]",
+    "[ValidateSet('CMD','POWERSHELL','PWSH7','POWERSHELL_USERENV','POWERSHELL_CONSOLE','CMD_LOGON','POWERSHELL_LOGON')]",
     "System32\cmd.exe",
     "'/D /Q /C exit /B 0'",
     '-Command "exit 0"',
