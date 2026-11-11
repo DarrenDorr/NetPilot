@@ -132,6 +132,24 @@ public static class NetPilotStandardUserTokenLauncher
         ref STARTUPINFO lpStartupInfo,
         out PROCESS_INFORMATION lpProcessInformation);
 
+    // Diagnostic-only Win32 alternative: do not change the mandatory
+    // LogonUserW + CreateProcessWithTokenW acceptance boundary.
+    [DllImport("advapi32.dll", EntryPoint = "CreateProcessWithLogonW",
+        SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateProcessWithLogonW(
+        string lpUsername,
+        string lpDomain,
+        string lpPassword,
+        int dwLogonFlags,
+        string lpApplicationName,
+        StringBuilder lpCommandLine,
+        int dwCreationFlags,
+        IntPtr lpEnvironment,
+        string lpCurrentDirectory,
+        ref STARTUPINFO lpStartupInfo,
+        out PROCESS_INFORMATION lpProcessInformation);
+
     [DllImport("userenv.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CreateEnvironmentBlock(
@@ -251,6 +269,54 @@ public static class NetPilotStandardUserTokenLauncher
                 CloseHandle(_process);
                 _process = IntPtr.Zero;
             }
+        }
+    }
+
+    // Compare the credential-based API for the same ephemeral local user.
+    // Only invoked for fixed, bounded diagnostic commands after baseline
+    // PowerShell failure. This path NEVER qualifies for admission.
+    public static ChildProcess StartWithLogon(
+        string userName,
+        string password,
+        string applicationPath,
+        string arguments,
+        string workingDirectory)
+    {
+        PROCESS_INFORMATION processInfo = default(PROCESS_INFORMATION);
+        var startup = new STARTUPINFO { cb = Marshal.SizeOf<STARTUPINFO>() };
+        var commandLine = new StringBuilder();
+        commandLine.Append('"').Append(applicationPath).Append('"');
+        if (!string.IsNullOrWhiteSpace(arguments))
+            commandLine.Append(' ').Append(arguments);
+        if (commandLine.Length >= 1024)
+            throw new ArgumentException("Hosted diagnostic command line too long.");
+
+        try
+        {
+            if (!CreateProcessWithLogonW(
+                userName, ".", password, LOGON_WITH_PROFILE,
+                applicationPath, commandLine, CREATE_NO_WINDOW, IntPtr.Zero,
+                workingDirectory, ref startup, out processInfo))
+                throw new Win32Exception(Marshal.GetLastWin32Error(),
+                    "CreateProcessWithLogonW failed.");
+
+            if (processInfo.hThread != IntPtr.Zero)
+            {
+                CloseHandle(processInfo.hThread);
+                processInfo.hThread = IntPtr.Zero;
+            }
+            return new ChildProcess(
+                processInfo.hProcess,
+                processInfo.dwProcessId,
+                "CreateProcessWithLogonW");
+        }
+        catch
+        {
+            if (processInfo.hThread != IntPtr.Zero)
+                CloseHandle(processInfo.hThread);
+            if (processInfo.hProcess != IntPtr.Zero)
+                CloseHandle(processInfo.hProcess);
+            throw;
         }
     }
 
