@@ -544,45 +544,76 @@ catch {
     # Isolate Win32 token process launch from Windows PowerShell initialization
     # and the protected test script. Fixed commands only; no user input or
     # arbitrary shell execution. Every probe retains the same exact logon SID.
-    function Assert-HostedFixedStartup {
+    function Test-HostedFixedStartup {
         param(
-            [Parameter(Mandatory=$true)][ValidateSet('CMD','POWERSHELL')][string]$Kind,
+            [Parameter(Mandatory=$true)]
+            [ValidateSet('CMD','POWERSHELL','PWSH7','POWERSHELL_USERENV')]
+            [string]$Kind,
             [Parameter(Mandatory=$true)][string]$Application,
-            [Parameter(Mandatory=$true)][string]$Arguments
+            [Parameter(Mandatory=$true)][string]$Arguments,
+            [bool]$ExplicitUserEnvironment = $false
         )
         if (($Application.Length + $Arguments.Length + 4) -ge 1024) {
             throw 'Fixed hosted startup probe command line is too long.'
         }
         "HOSTED_NATIVE_${Kind}_LAUNCH_BEGIN=YES" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
-        $probe = [NetPilotStandardUserTokenLauncher]::Start(
-            $UserName, $passwordPlain, $Application, $Arguments, $publicPack)
+        $probe = $null
         try {
+            $probe = [NetPilotStandardUserTokenLauncher]::Start(
+                $UserName, $passwordPlain, $Application, $Arguments,
+                $publicPack, $ExplicitUserEnvironment)
             $probeExit = $probe.Wait(15000)
             if ($probeExit -eq [int]::MinValue) {
                 "HOSTED_NATIVE_${Kind}_TIMEOUT_SECONDS=15" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
                 try { $probe.Kill() } catch { }
-                throw 'Fixed hosted startup probe did not exit in time.'
+                return $false
             }
             "HOSTED_NATIVE_${Kind}_EXIT_CODE=$probeExit" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
             if ($probeExit -ne 0) {
-                throw 'Fixed hosted startup probe exited unsuccessfully.'
+                return $false
             }
+            "HOSTED_NATIVE_${Kind}_STARTUP=PASS" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+            return $true
+        }
+        catch {
+            # Error codes only. Never record native arguments, passwords,
+            # environment values, usernames, stack traces or other details.
+            "HOSTED_NATIVE_${Kind}_FAILURE_HRESULT=0x$($_.Exception.HResult.ToString('X8'))" |
+                Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+            return $false
         }
         finally {
-            $probe.Dispose()
+            if ($null -ne $probe) { $probe.Dispose() }
         }
-        "HOSTED_NATIVE_${Kind}_STARTUP=PASS" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     }
 
     $cmd = Join-Path $env:SystemRoot 'System32\cmd.exe'
     if (-not (Test-Path -LiteralPath $cmd -PathType Leaf)) {
         throw 'Windows system command interpreter is missing.'
     }
-    # Built-in exit command is constant, local, and cannot execute input.
-    Assert-HostedFixedStartup -Kind CMD -Application $cmd -Arguments '/D /Q /C exit /B 0'
-    # This probe has no script file, profile commands, network activity or
-    # installer. A PASS here is diagnostic only, never runtime admission.
-    Assert-HostedFixedStartup -Kind POWERSHELL -Application $powershell -Arguments '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "exit 0"'
+    # This fixed CMD command is a mandatory host token/OS process baseline.
+    if (-not (Test-HostedFixedStartup -Kind CMD -Application $cmd -Arguments '/D /Q /C exit /B 0')) {
+        throw 'Hosted exact-SID CMD startup baseline failed.'
+    }
+    $psCommand = '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "exit 0"'
+    $ps51Passed = Test-HostedFixedStartup -Kind POWERSHELL -Application $powershell -Arguments $psCommand
+    if (-not $ps51Passed) {
+        # Diagnostic-only variants run AFTER baseline failure to separate
+        # .NET Framework/PS 5.1 startup from general PowerShell startup.
+        $pwsh7 = Join-Path $env:ProgramFiles 'PowerShell\7\pwsh.exe'
+        if (Test-Path -LiteralPath $pwsh7 -PathType Leaf) {
+            $null = Test-HostedFixedStartup -Kind PWSH7 -Application $pwsh7 -Arguments $psCommand
+        }
+        else {
+            'HOSTED_NATIVE_PWSH7=NOT_INSTALLED' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+        }
+        # CreateEnvironmentBlock(token, inherit=false) and
+        # CREATE_UNICODE_ENVIRONMENT: no CI runner secrets inherited.
+        # This comparison never replaces the original launch-mode gate.
+        $null = Test-HostedFixedStartup -Kind POWERSHELL_USERENV -Application $powershell `
+            -Arguments $psCommand -ExplicitUserEnvironment $true
+        throw 'Hosted exact-SID Windows PowerShell 5.1 startup baseline failed.'
+    }
 
     'HOSTED_PREFLIGHT_LAUNCH_BEGIN=YES' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     $preflightChild = [NetPilotStandardUserTokenLauncher]::Start(
