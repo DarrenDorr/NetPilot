@@ -118,7 +118,7 @@ if ($bodyStart -lt 0 -or $bodyEnd -le $bodyStart) {
 }
 $launcherCs = $source.Substring($bodyStart + 1, $bodyEnd - $bodyStart - 1)
 Add-Type -TypeDefinition $launcherCs -Language CSharp -ErrorAction Stop
-if (-not ('NetPilotStandardUserTokenLauncher' -as [type])) {
+if ($null -eq ([System.Management.Automation.PSTypeName]'NetPilotStandardUserTokenLauncher').Type) {
     throw 'R42.12.4 native launcher C# type was not compiled.'
 }
 'R42_12_4_HOSTED_NATIVE_INTEROP_COMPILE=PASS'
