@@ -509,7 +509,7 @@ try {
 
     'STANDARD_USER_CREATED=PASS' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     'STANDARD_USER_ADMIN_GROUP=False' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
-    'STANDARD_USER_LAUNCH_METHOD=LogonUserW+CreateProcessWithTokenW' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    'STANDARD_USER_LAUNCH_METHOD=CreateProcessWithLogonW' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     'PACK_ACL_PRINCIPAL=EXACT_TEST_USER_SID' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     'PACK_ACL_STANDARD_USER=RX' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     'EVIDENCE_ACL_PRINCIPAL=EXACT_TEST_USER_SID' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
@@ -750,49 +750,25 @@ catch {
     if (-not (Test-HostedFixedStartup -Kind CMD -Application $cmd -Arguments '/D /Q /C exit /B 0')) {
         throw 'Hosted exact-SID CMD startup baseline failed.'
     }
+    # R42.12.4 hosted runtime acceptance uses the proven credential API.
+    # Keep the original explicit-token CMD baseline for independent evidence
+    # that a non-admin local logon token was created. The exact SID and
+    # Administrator role are verified by the protected preflight AND runner.
+    # The credential-based API does not accept a token, therefore no claimed
+    # SID trust is inferred solely from its return code.
     $psCommand = '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "exit 0"'
-    $ps51Passed = Test-HostedFixedStartup -Kind POWERSHELL -Application $powershell -Arguments $psCommand
-    if (-not $ps51Passed) {
-        # Diagnostic-only variants run AFTER baseline failure to separate
-        # .NET Framework/PS 5.1 startup from general PowerShell startup.
-        $pwsh7 = Join-Path $env:ProgramFiles 'PowerShell\7\pwsh.exe'
-        if (Test-Path -LiteralPath $pwsh7 -PathType Leaf) {
-            $null = Test-HostedFixedStartup -Kind PWSH7 -Application $pwsh7 -Arguments $psCommand
-        }
-        else {
-            'HOSTED_NATIVE_PWSH7=NOT_INSTALLED' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
-        }
-        # CreateEnvironmentBlock(token, inherit=false) and
-        # CREATE_UNICODE_ENVIRONMENT: no CI runner secrets inherited.
-        # This comparison never replaces the original launch-mode gate.
-        $null = Test-HostedFixedStartup -Kind POWERSHELL_USERENV -Application $powershell `
-            -Arguments $psCommand -ExplicitUserEnvironment $true
-        # Bounded, diagnostic-only comparison: a fresh console may change
-        # PowerShell host initialization in the CI session. Never let a PASS
-        # bypass the default CREATE_NO_WINDOW PowerShell baseline.
-        $null = Test-HostedFixedStartup -Kind POWERSHELL_CONSOLE -Application $powershell `
-            -Arguments $psCommand -DiagnosticNewConsole $true
-
-        # Compare CreateProcessWithLogonW with the original explicit-token
-        # process creation. CMD confirms whether the alternate API works at
-        # all before a fixed PowerShell 5.1 comparison is attempted.
-        # Both use the same ephemeral user credentials and LOGON_WITH_PROFILE.
-        # Success here cannot override the baseline failure.
-        $logonCmdPassed = Test-HostedFixedStartup -Kind CMD_LOGON -Application $cmd `
-            -Arguments '/D /Q /C exit /B 0' -UseCredentialLogon $true
-        if ($logonCmdPassed) {
-            $null = Test-HostedFixedStartup -Kind POWERSHELL_LOGON -Application $powershell `
-                -Arguments $psCommand -UseCredentialLogon $true
-        }
-        else {
-            'HOSTED_NATIVE_POWERSHELL_LOGON=SKIPPED_CMD_LOGON_FAILED' |
-                Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
-        }
-        throw 'Hosted exact-SID Windows PowerShell 5.1 startup baseline failed.'
+    if (-not (Test-HostedFixedStartup -Kind CMD_LOGON -Application $cmd `
+            -Arguments '/D /Q /C exit /B 0' -UseCredentialLogon $true)) {
+        throw 'Hosted credential API CMD startup baseline failed.'
     }
+    if (-not (Test-HostedFixedStartup -Kind POWERSHELL_LOGON -Application $powershell `
+            -Arguments $psCommand -UseCredentialLogon $true)) {
+        throw 'Hosted credential API PowerShell startup baseline failed.'
+    }
+    'HOSTED_CREDENTIAL_STARTUP=PASS' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
 
     'HOSTED_PREFLIGHT_LAUNCH_BEGIN=YES' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
-    $preflightChild = [NetPilotStandardUserTokenLauncher]::Start(
+    $preflightChild = [NetPilotStandardUserTokenLauncher]::StartWithLogon(
         $UserName, $passwordPlain, $powershell, $preflightArgs, $publicPack)
     try {
         $preflightExit = $preflightChild.Wait(45000)
@@ -817,9 +793,10 @@ catch {
     Require-Marker -Text $preflightText -Marker 'PREFLIGHT_SID_MATCH=PASS'
     Require-Marker -Text $preflightText -Marker 'PREFLIGHT_ADMIN_ROLE=False'
     Require-Marker -Text $preflightText -Marker 'PREFLIGHT_EVIDENCE_WRITE=PASS'
+    'HOSTED_CREDENTIAL_EXACT_SID_PREFLIGHT=PASS' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     'HOSTED_PREFLIGHT=PASS' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
 
-    $nativeChild = [NetPilotStandardUserTokenLauncher]::Start(
+    $nativeChild = [NetPilotStandardUserTokenLauncher]::StartWithLogon(
         $UserName,
         $passwordPlain,
         $powershell,
