@@ -62,7 +62,7 @@ $required = @(
     '-UseCredentialLogon $true',
     'HOSTED_NATIVE_POWERSHELL_LOGON=SKIPPED_CMD_LOGON_FAILED',
     'LOGON_WITH_PROFILE',
-    'throw ''Hosted exact-SID Windows PowerShell 5.1 startup baseline failed.''',
+    'Credential API diagnostic executable/arguments mismatch.',
     'if (-not $ps51Passed)',
     'throw ''Hosted exact-SID Windows PowerShell 5.1 startup baseline failed.''',
     'PREFLIGHT_SID_MATCH=PASS',
