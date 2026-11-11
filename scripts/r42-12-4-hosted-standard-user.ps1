@@ -71,6 +71,7 @@ public static class NetPilotStandardUserTokenLauncher
     private const int LOGON32_PROVIDER_DEFAULT = 0;
     private const int LOGON_WITH_PROFILE = 0x00000001;
     private const int CREATE_NO_WINDOW = 0x08000000;
+    private const int CREATE_UNICODE_ENVIRONMENT = 0x00000400;
     private const uint WAIT_OBJECT_0 = 0x00000000;
     private const uint WAIT_TIMEOUT = 0x00000102;
 
@@ -128,6 +129,17 @@ public static class NetPilotStandardUserTokenLauncher
         string lpCurrentDirectory,
         ref STARTUPINFO lpStartupInfo,
         out PROCESS_INFORMATION lpProcessInformation);
+
+    [DllImport("userenv.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateEnvironmentBlock(
+        out IntPtr environment,
+        IntPtr token,
+        [MarshalAs(UnmanagedType.Bool)] bool inherit);
+
+    [DllImport("userenv.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DestroyEnvironmentBlock(IntPtr environment);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
@@ -204,7 +216,21 @@ public static class NetPilotStandardUserTokenLauncher
         string arguments,
         string workingDirectory)
     {
+        return Start(userName, password, applicationPath, arguments, workingDirectory, false);
+    }
+
+    // Explicit user environment is a diagnostic A/B mode only. The primary
+    // preflight, validator and production admission still use the original mode.
+    public static ChildProcess Start(
+        string userName,
+        string password,
+        string applicationPath,
+        string arguments,
+        string workingDirectory,
+        bool explicitUserEnvironment)
+    {
         IntPtr token = IntPtr.Zero;
+        IntPtr environment = IntPtr.Zero;
         PROCESS_INFORMATION processInfo = default(PROCESS_INFORMATION);
 
         if (!LogonUserW(
@@ -220,6 +246,13 @@ public static class NetPilotStandardUserTokenLauncher
 
         try
         {
+            // Do not inherit any CI runner secrets in the A/B environment.
+            // LOGON_WITH_PROFILE remains set for both launch modes.
+            if (explicitUserEnvironment &&
+                !CreateEnvironmentBlock(out environment, token, false))
+                throw new Win32Exception(Marshal.GetLastWin32Error(),
+                    "CreateEnvironmentBlock failed.");
+
             var startup = new STARTUPINFO { cb = Marshal.SizeOf<STARTUPINFO>() };
             var commandLine = new StringBuilder();
             commandLine.Append('"').Append(applicationPath).Append('"');
@@ -236,8 +269,8 @@ public static class NetPilotStandardUserTokenLauncher
                 LOGON_WITH_PROFILE,
                 applicationPath,
                 commandLine,
-                CREATE_NO_WINDOW,
-                IntPtr.Zero,
+                CREATE_NO_WINDOW | (explicitUserEnvironment ? CREATE_UNICODE_ENVIRONMENT : 0),
+                environment,
                 workingDirectory,
                 ref startup,
                 out processInfo))
@@ -266,6 +299,8 @@ public static class NetPilotStandardUserTokenLauncher
         }
         finally
         {
+            if (environment != IntPtr.Zero)
+                DestroyEnvironmentBlock(environment);
             if (token != IntPtr.Zero)
                 CloseHandle(token);
         }
