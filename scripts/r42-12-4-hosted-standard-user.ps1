@@ -506,6 +506,49 @@ catch {
     if (($powershell.Length + $preflightArgs.Length + 4) -ge 1024) {
         throw 'Hosted bootstrap preflight command line too long.'
     }
+    # Isolate Win32 token process launch from Windows PowerShell initialization
+    # and the protected test script. Fixed commands only; no user input or
+    # arbitrary shell execution. Every probe retains the same exact logon SID.
+    function Assert-HostedFixedStartup {
+        param(
+            [Parameter(Mandatory=$true)][ValidateSet('CMD','POWERSHELL')][string]$Kind,
+            [Parameter(Mandatory=$true)][string]$Application,
+            [Parameter(Mandatory=$true)][string]$Arguments
+        )
+        if (($Application.Length + $Arguments.Length + 4) -ge 1024) {
+            throw 'Fixed hosted startup probe command line is too long.'
+        }
+        "HOSTED_NATIVE_${Kind}_LAUNCH_BEGIN=YES" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+        $probe = [NetPilotStandardUserTokenLauncher]::Start(
+            $UserName, $passwordPlain, $Application, $Arguments, $publicPack)
+        try {
+            $probeExit = $probe.Wait(15000)
+            if ($probeExit -eq [int]::MinValue) {
+                "HOSTED_NATIVE_${Kind}_TIMEOUT_SECONDS=15" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+                try { $probe.Kill() } catch { }
+                throw 'Fixed hosted startup probe did not exit in time.'
+            }
+            "HOSTED_NATIVE_${Kind}_EXIT_CODE=$probeExit" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+            if ($probeExit -ne 0) {
+                throw 'Fixed hosted startup probe exited unsuccessfully.'
+            }
+        }
+        finally {
+            $probe.Dispose()
+        }
+        "HOSTED_NATIVE_${Kind}_STARTUP=PASS" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    }
+
+    $cmd = Join-Path $env:SystemRoot 'System32\cmd.exe'
+    if (-not (Test-Path -LiteralPath $cmd -PathType Leaf)) {
+        throw 'Windows system command interpreter is missing.'
+    }
+    # Built-in exit command is constant, local, and cannot execute input.
+    Assert-HostedFixedStartup -Kind CMD -Application $cmd -Arguments '/D /Q /C exit /B 0'
+    # This probe has no script file, profile commands, network activity or
+    # installer. A PASS here is diagnostic only, never runtime admission.
+    Assert-HostedFixedStartup -Kind POWERSHELL -Application $powershell -Arguments '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "exit 0"'
+
     'HOSTED_PREFLIGHT_LAUNCH_BEGIN=YES' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
     $preflightChild = [NetPilotStandardUserTokenLauncher]::Start(
         $UserName, $passwordPlain, $powershell, $preflightArgs, $publicPack)
