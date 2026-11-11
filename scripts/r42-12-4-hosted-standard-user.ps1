@@ -464,7 +464,7 @@ catch {
 
     # Apply exact-SID read/execute, SYSTEM and Administrators only; do not
     # grant modification of the script to the standard-user test identity.
-    & icacls.exe $runnerScript /inheritance:r /grant:r `"*${createdUserSid}:RX`" '*S-1-5-18:F' '*S-1-5-32-544:F' | Out-Null
+    & icacls.exe $runnerScript /inheritance:r /grant:r "*${createdUserSid}:RX" '*S-1-5-18:F' '*S-1-5-32-544:F' | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw 'Could not protect hosted runner script with exact-SID read-only ACL.'
     }
