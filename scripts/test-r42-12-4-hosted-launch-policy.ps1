@@ -34,7 +34,7 @@ $required = @(
     'preflightChild.Wait(45000)',
     'Assert-HostedFixedStartup',
     "[ValidateSet('CMD','POWERSHELL')]",
-    "System32\\cmd.exe",
+    "System32\cmd.exe",
     "'/D /Q /C exit /B 0'",
     '-Command "exit 0"',
     'probe.Wait(15000)',
