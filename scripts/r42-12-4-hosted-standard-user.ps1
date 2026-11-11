@@ -481,6 +481,59 @@ catch {
     }
 
     Add-Type -TypeDefinition $nativeLauncherSource -Language CSharp
+
+    # First isolate Windows PowerShell startup, exact-SID identity and
+    # evidence-directory write access without installing or running ByeDPI.
+    # A failed/timed-out preflight never counts toward admission.
+    $preflightSource = Join-Path $PSScriptRoot 'r42-12-4-hosted-preflight.ps1'
+    if (-not (Test-Path -LiteralPath $preflightSource -PathType Leaf)) {
+        throw 'Hosted bootstrap preflight source is missing.'
+    }
+    if (((Get-Item -LiteralPath $preflightSource -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'Hosted bootstrap preflight source must be a regular file.'
+    }
+    $preflightScript = Join-Path $publicPack 'NetPilot-StandardUser-Preflight.ps1'
+    if (Test-Path -LiteralPath $preflightScript) {
+        throw 'Protected bootstrap preflight target already exists.'
+    }
+    $preflightCode = [System.IO.File]::ReadAllText($preflightSource).Replace('__USER_SID__', $createdUserSid)
+    [System.IO.File]::WriteAllText($preflightScript, $preflightCode, [System.Text.UTF8Encoding]::new($false))
+    & icacls.exe $preflightScript /inheritance:r /grant:r "*${createdUserSid}:RX" '*S-1-5-18:F' '*S-1-5-32-544:F' | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Could not secure exact-SID bootstrap preflight script.'
+    }
+    $preflightArgs = "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$preflightScript`""
+    if (($powershell.Length + $preflightArgs.Length + 4) -ge 1024) {
+        throw 'Hosted bootstrap preflight command line too long.'
+    }
+    'HOSTED_PREFLIGHT_LAUNCH_BEGIN=YES' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+    $preflightChild = [NetPilotStandardUserTokenLauncher]::Start(
+        $UserName, $passwordPlain, $powershell, $preflightArgs, $publicPack)
+    try {
+        $preflightExit = $preflightChild.Wait(45000)
+        if ($preflightExit -eq [int]::MinValue) {
+            'HOSTED_PREFLIGHT_TIMEOUT_SECONDS=45' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+            try { $preflightChild.Kill() } catch { }
+            throw 'Hosted bootstrap preflight process timed out.'
+        }
+        "HOSTED_PREFLIGHT_EXIT_CODE=$preflightExit" | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+        if ($preflightExit -ne 0) {
+            throw 'Hosted bootstrap preflight failed its exact-SID or write check.'
+        }
+    }
+    finally {
+        $preflightChild.Dispose()
+    }
+    $preflightEvidence = Join-Path $publicEvidence 'standard-user-preflight.txt'
+    if (-not (Test-Path -LiteralPath $preflightEvidence -PathType Leaf)) {
+        throw 'Hosted bootstrap preflight evidence file missing.'
+    }
+    $preflightText = Get-Content -LiteralPath $preflightEvidence -Raw
+    Require-Marker -Text $preflightText -Marker 'PREFLIGHT_SID_MATCH=PASS'
+    Require-Marker -Text $preflightText -Marker 'PREFLIGHT_ADMIN_ROLE=False'
+    Require-Marker -Text $preflightText -Marker 'PREFLIGHT_EVIDENCE_WRITE=PASS'
+    'HOSTED_PREFLIGHT=PASS' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+
     $nativeChild = [NetPilotStandardUserTokenLauncher]::Start(
         $UserName,
         $passwordPlain,

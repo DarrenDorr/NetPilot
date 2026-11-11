@@ -57,7 +57,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           foreach ($file in @(
             'scripts\build-user-mode-installer.ps1',
-            'scripts\r42-12-4-hosted-standard-user.ps1'
+            'scripts\r42-12-4-hosted-standard-user.ps1',
+            'scripts\r42-12-4-hosted-preflight.ps1'
           )) {
             $tokens = $null
             $errors = $null
