@@ -42,8 +42,6 @@ $required = @(
     'HOSTED_NATIVE_${Kind}_EXIT_CODE',
     'HOSTED_NATIVE_${Kind}_STARTUP=PASS',
     'HOSTED_NATIVE_${Kind}_FAILURE_HRESULT',
-    'HOSTED_NATIVE_PWSH7=NOT_INSTALLED',
-    'PowerShell\7\pwsh.exe',
     'CreateEnvironmentBlock(',
     'DestroyEnvironmentBlock(',
     'CREATE_UNICODE_ENVIRONMENT',
@@ -53,18 +51,24 @@ $required = @(
     'GetSessionRelation()',
     'HOSTED_NATIVE_${Kind}_STATE',
     'HOSTED_NATIVE_${Kind}_SESSION',
-    '-DiagnosticNewConsole $true',
     'POWERSHELL_CONSOLE',
     'CMD_LOGON',
     'POWERSHELL_LOGON',
     'CreateProcessWithLogonW(',
     'StartWithLogon(',
     '-UseCredentialLogon $true',
-    'HOSTED_NATIVE_POWERSHELL_LOGON=SKIPPED_CMD_LOGON_FAILED',
     'LOGON_WITH_PROFILE',
     'Credential API diagnostic executable/arguments mismatch.',
-    'if (-not $ps51Passed)',
-    'throw ''Hosted exact-SID Windows PowerShell 5.1 startup baseline failed.''',
+    'HOSTED_CREDENTIAL_STARTUP=PASS',
+    'HOSTED_CREDENTIAL_EXACT_SID_PREFLIGHT=PASS',
+    'STANDARD_USER_LAUNCH_METHOD=CreateProcessWithLogonW',
+    '$preflightChild = [NetPilotStandardUserTokenLauncher]::StartWithLogon(',
+    '$nativeChild = [NetPilotStandardUserTokenLauncher]::StartWithLogon(',
+    'Test-HostedFixedStartup -Kind CMD_LOGON',
+    'Test-HostedFixedStartup -Kind POWERSHELL_LOGON',
+    'Hosted credential API PowerShell startup baseline failed.',
+    "Require-Marker -Text $preflightText -Marker 'PREFLIGHT_SID_MATCH=PASS'",
+    "Require-Marker -Text $preflightText -Marker 'PREFLIGHT_ADMIN_ROLE=False'",
     'PREFLIGHT_SID_MATCH=PASS',
     'PREFLIGHT_EVIDENCE_WRITE=PASS',
     'RUNNER_IDENTITY_MATCH=PASS',
@@ -87,7 +91,12 @@ if (-not $source.Contains('-File ', [System.StringComparison]::Ordinal)) {
 }
 if ($source -match '(?m)^\s*\$encodedRunner\s*=' -or
     $source -match '(?m)^\s*\$arguments\s*=.*-EncodedCommand') {
-    throw 'R42.12.4 must not pass an encoded script through CreateProcessWithTokenW.'
+    throw 'R42.12.4 must not pass an encoded script through native process creation.'
+}
+
+if ($source -match '(?m)^\s*\$nativeChild\s*=\s*\[NetPilotStandardUserTokenLauncher\]::Start\(' -or
+    $source -match '(?m)^\s*\$preflightChild\s*=\s*\[NetPilotStandardUserTokenLauncher\]::Start\(') {
+    throw 'R42.12.4 primary hosted runner and preflight must use credential-based launch.'
 }
 
 $workflowPath = Join-Path $PSScriptRoot '..\.github\workflows\r42-12-4-no-admin-byedpi-validation.yml'
