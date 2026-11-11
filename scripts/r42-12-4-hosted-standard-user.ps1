@@ -226,6 +226,11 @@ public static class NetPilotStandardUserTokenLauncher
             if (!string.IsNullOrWhiteSpace(arguments))
                 commandLine.Append(' ').Append(arguments);
 
+            // CreateProcessWithTokenW caps lpCommandLine at 1,024 UTF-16
+            // characters including NUL; never pass an encoded script here.
+            if (commandLine.Length >= 1024)
+                throw new ArgumentException("Hosted standard-user command line exceeds Windows API limit.");
+
             if (!CreateProcessWithTokenW(
                 token,
                 LOGON_WITH_PROFILE,
@@ -442,9 +447,34 @@ catch {
 '@
 
     $runnerCode = $runnerTemplate.Replace('__VERSION__', $TestVersion).Replace('__USER_SID__', $createdUserSid)
-    $encodedRunner = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($runnerCode))
+    # The test SID already has RX, not write, on the protected pack root.
+    # Store the runner there instead of passing 10K+ characters via -EncodedCommand:
+    # CreateProcessWithTokenW rejects command lines longer than 1,024 chars.
+    $runnerScript = Join-Path $publicPack 'NetPilot-StandardUser-Runner.ps1'
+    if (Test-Path -LiteralPath $runnerScript) {
+        throw 'Protected hosted runner path already exists.'
+    }
+    [System.IO.File]::WriteAllText(
+        $runnerScript,
+        $runnerCode,
+        [System.Text.UTF8Encoding]::new($false))
+    if (((Get-Item -LiteralPath $runnerScript -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'Hosted runner may not be a reparse point.'
+    }
+
+    # Apply exact-SID read/execute, SYSTEM and Administrators only; do not
+    # grant modification of the script to the standard-user test identity.
+    & icacls.exe $runnerScript /inheritance:r /grant:r "*${createdUserSid}:RX" '*S-1-5-18:F' '*S-1-5-32-544:F' | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Could not protect hosted runner script with exact-SID read-only ACL.'
+    }
+    'HOSTED_RUNNER_SCRIPT_ACL=EXACT_TEST_USER_RX' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
+
     $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $arguments = "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encodedRunner"
+    $arguments = "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$runnerScript`""
+    if (($powershell.Length + $arguments.Length + 4) -ge 1024) {
+        throw 'Hosted runner command line exceeds CreateProcessWithTokenW length limit.'
+    }
 
     Add-Type -TypeDefinition $nativeLauncherSource -Language CSharp
     $nativeChild = [NetPilotStandardUserTokenLauncher]::Start(
