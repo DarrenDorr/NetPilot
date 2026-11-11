@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Net;
+using System.Net.Sockets;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -125,13 +126,49 @@ internal static class Program
                 await evidence.WriteAsync($"EXTERNAL_DIRECT_SUCCESS={direct.Success}");
                 await evidence.WriteAsync($"EXTERNAL_DIRECT_STATUS={direct.StatusCode?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "NONE"}");
                 await evidence.WriteAsync($"EXTERNAL_DIRECT_ERROR={direct.ErrorType ?? "NONE"}");
+                await evidence.WriteAsync($"EXTERNAL_DIRECT_ERROR_CHAIN={direct.ErrorChain ?? "NONE"}");
+                await evidence.WriteAsync($"EXTERNAL_DIRECT_ELAPSED_MS={direct.ElapsedMilliseconds}");
                 await evidence.WriteAsync($"EXTERNAL_BYEDPI_SUCCESS={proxied.Success}");
                 await evidence.WriteAsync($"EXTERNAL_BYEDPI_STATUS={proxied.StatusCode?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "NONE"}");
                 await evidence.WriteAsync($"EXTERNAL_BYEDPI_ERROR={proxied.ErrorType ?? "NONE"}");
+                await evidence.WriteAsync($"EXTERNAL_BYEDPI_ERROR_CHAIN={proxied.ErrorChain ?? "NONE"}");
+                await evidence.WriteAsync($"EXTERNAL_BYEDPI_ELAPSED_MS={proxied.ElapsedMilliseconds}");
 
                 if (!proxied.Success)
                 {
-                    throw new InvalidOperationException("External HTTPS request through user-mode ByeDPI SOCKS5 failed.");
+                    // Diagnostic comparison only: keep the primary profile and release gate unchanged.
+                    // Both profiles run through the same hash-verified audited launcher and Job Object.
+                    await evidence.WriteAsync("DIAGNOSTIC_ALT_STRATEGY=byedpi-auto-tlsrec");
+                    try
+                    {
+                        await runtime.ActivateAsync("byedpi-auto-tlsrec");
+                        var alternateState = await runtime.GetStateAsync();
+                        if (!alternateState.IsRunning || runtime.ProxyPort is null)
+                        {
+                            throw new InvalidOperationException("Alternate ByeDPI strategy did not reach running state.");
+                        }
+
+                        var alternatePort = runtime.ProxyPort.Value;
+                        RequireLoopbackOnlyListener(alternatePort);
+                        using (var alternateProcess = RequireSingleCiadpiProcess())
+                        {
+                            RequireOwnedByCurrentNonElevatedUser(alternateProcess);
+                        }
+
+                        var alternate = await ProbeHttpsAsync(ExternalTarget, alternatePort);
+                        await evidence.WriteAsync($"DIAGNOSTIC_ALT_SUCCESS={alternate.Success}");
+                        await evidence.WriteAsync($"DIAGNOSTIC_ALT_STATUS={alternate.StatusCode?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "NONE"}");
+                        await evidence.WriteAsync($"DIAGNOSTIC_ALT_ERROR={alternate.ErrorType ?? "NONE"}");
+                        await evidence.WriteAsync($"DIAGNOSTIC_ALT_ERROR_CHAIN={alternate.ErrorChain ?? "NONE"}");
+                        await evidence.WriteAsync($"DIAGNOSTIC_ALT_ELAPSED_MS={alternate.ElapsedMilliseconds}");
+                    }
+                    catch (Exception alternateException) when (alternateException is not OutOfMemoryException)
+                    {
+                        await evidence.WriteAsync($"DIAGNOSTIC_ALT_FAILURE_CHAIN={DescribeNetworkErrorChain(alternateException)}");
+                    }
+
+                    // Even a successful comparison never overrides the failed primary check.
+                    throw new InvalidOperationException("External HTTPS request through primary user-mode ByeDPI SOCKS5 failed.");
                 }
                 await evidence.WriteAsync("EXTERNAL_SOCKS5_HTTPS=PASS");
 
@@ -673,12 +710,12 @@ internal static class Program
             request.Headers.UserAgent.ParseAdd("NetPilot-R42.12.4-NoAdmin-Validation/1.0");
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
             stopwatch.Stop();
-            return new HttpProbe(true, (int)response.StatusCode, stopwatch.ElapsedMilliseconds, null);
+            return new HttpProbe(true, (int)response.StatusCode, stopwatch.ElapsedMilliseconds, null, null);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             stopwatch.Stop();
-            return new HttpProbe(false, null, stopwatch.ElapsedMilliseconds, SafeTypeName(exception));
+            return new HttpProbe(false, null, stopwatch.ElapsedMilliseconds, SafeTypeName(exception), DescribeNetworkErrorChain(exception));
         }
     }
 
@@ -804,6 +841,27 @@ internal static class Program
     private static string SafeTypeName(Exception exception) =>
         exception.GetType().FullName?.Replace(' ', '_') ?? "UnknownException";
 
+    // Stable, privacy-limited diagnostics: exception types and error codes only.
+    // Never record exception messages, URLs, IP addresses or stack traces.
+    private static string DescribeNetworkErrorChain(Exception exception)
+    {
+        var segments = new List<string>(6);
+        for (Exception? current = exception;
+             current is not null && segments.Count < 6;
+             current = current.InnerException)
+        {
+            var detail = current switch
+            {
+                HttpRequestException http => $"_{http.HttpRequestError}",
+                SocketException socket => $"_{socket.SocketErrorCode}",
+                _ => string.Empty
+            };
+            segments.Add($"{SafeTypeName(current)}{detail}_0x{current.HResult:X8}");
+        }
+
+        return string.Join(">", segments);
+    }
+
     private sealed record ValidationOptions(
         string InstallRoot,
         string EvidenceDirectory,
@@ -813,7 +871,8 @@ internal static class Program
         bool Success,
         int? StatusCode,
         long ElapsedMilliseconds,
-        string? ErrorType);
+        string? ErrorType,
+        string? ErrorChain);
 
     private sealed class EvidenceWriter : IAsyncDisposable
     {
