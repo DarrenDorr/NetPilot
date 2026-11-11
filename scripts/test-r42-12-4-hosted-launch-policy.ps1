@@ -103,4 +103,23 @@ foreach ($requiredPreflight in @(
         throw 'R42.12.4 hosted preflight must prove identity, privilege and write boundary.'
     }
 }
+# Compile the embedded, test-only native launcher without invoking any
+# Win32 function or creating a local account. Parser-only CI would miss
+# P/Invoke/overload mistakes in the PowerShell here-string.
+$hereStart = '$nativeLauncherSource = @' + "'"
+$begin = $source.IndexOf($hereStart, [System.StringComparison]::Ordinal)
+if ($begin -lt 0) {
+    throw 'R42.12.4 native launcher here-string start missing.'
+}
+$bodyStart = $source.IndexOf("`n", $begin)
+$bodyEnd = $source.IndexOf("`n'@", $bodyStart + 1, [System.StringComparison]::Ordinal)
+if ($bodyStart -lt 0 -or $bodyEnd -le $bodyStart) {
+    throw 'R42.12.4 native launcher here-string end missing.'
+}
+$launcherCs = $source.Substring($bodyStart + 1, $bodyEnd - $bodyStart - 1)
+Add-Type -TypeDefinition $launcherCs -Language CSharp -ErrorAction Stop
+if (-not ('NetPilotStandardUserTokenLauncher' -as [type])) {
+    throw 'R42.12.4 native launcher C# type was not compiled.'
+}
+'R42_12_4_HOSTED_NATIVE_INTEROP_COMPILE=PASS'
 'R42_12_4_HOSTED_SHORT_LAUNCH_POLICY=PASS'
