@@ -28,6 +28,12 @@ $required = @(
     'INSTALLER_LAUNCH_BEGIN=PASS',
     'VALIDATOR_LAUNCH_BEGIN=PASS',
     'UNINSTALLER_LAUNCH_BEGIN=PASS',
+    "HOSTED_PREFLIGHT_LAUNCH_BEGIN=YES",
+    "HOSTED_PREFLIGHT_TIMEOUT_SECONDS=45",
+    "HOSTED_PREFLIGHT=PASS",
+    'preflightChild.Wait(45000)',
+    'PREFLIGHT_SID_MATCH=PASS',
+    'PREFLIGHT_EVIDENCE_WRITE=PASS',
     'RUNNER_IDENTITY_MATCH=PASS',
     'RUNNER_ADMIN_ROLE=False',
     'STANDARD_USER_VALIDATION=PASS',
@@ -55,5 +61,29 @@ $workflowPath = Join-Path $PSScriptRoot '..\.github\workflows\r42-12-4-no-admin-
 $workflow = Get-Content -LiteralPath $workflowPath -Raw -Encoding utf8
 if (-not $workflow.Contains("'PRODUCTION_ADMISSION=BLOCK'", [System.StringComparison]::Ordinal)) {
     throw 'R42.12.4 production admission gate is missing.'
+}
+$preflight = Join-Path $PSScriptRoot 'r42-12-4-hosted-preflight.ps1'
+if (-not (Test-Path -LiteralPath $preflight -PathType Leaf)) {
+    throw 'R42.12.4 hosted preflight script is missing.'
+}
+$preflightTokens = $null
+$preflightErrors = $null
+[System.Management.Automation.Language.Parser]::ParseFile(
+    $preflight, [ref]$preflightTokens, [ref]$preflightErrors) | Out-Null
+if (@($preflightErrors).Count -ne 0) {
+    throw 'R42.12.4 hosted preflight syntax invalid.'
+}
+$preflightText = Get-Content -LiteralPath $preflight -Raw -Encoding utf8
+foreach ($requiredPreflight in @(
+    '__USER_SID__',
+    'PREFLIGHT_SID_MATCH=PASS',
+    'PREFLIGHT_ADMIN_ROLE=False',
+    'PREFLIGHT_EVIDENCE_WRITE=PASS',
+    'WindowsBuiltInRole',
+    '[System.IO.File]::WriteAllText('
+)) {
+    if (-not $preflightText.Contains($requiredPreflight, [System.StringComparison]::Ordinal)) {
+        throw 'R42.12.4 hosted preflight must prove identity, privilege and write boundary.'
+    }
 }
 'R42_12_4_HOSTED_SHORT_LAUNCH_POLICY=PASS'
