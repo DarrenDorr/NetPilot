@@ -22,6 +22,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private string _overallStatus = "Готов к проверке";
     private string _overallDetails = "Запустите ByeDPI для проверки через локальный SOCKS5. Можно отдельно проверить прямое соединение.";
     private string _healthRouteDescription = "Маршрут: ByeDPI SOCKS5 (127.0.0.1), без системного прокси";
+    private string _strategyDiagnostics = "Диагностика подбора появится после проверки стратегии.";
     private string _engineStatus = "Состояние сетевого движка ещё не получено.";
     private string _engineActionText = "Запустить ByeDPI";
     private IBrush _engineStatusBrush = Brushes.SlateGray;
@@ -105,6 +106,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         get => _healthRouteDescription;
         private set => SetField(ref _healthRouteDescription, value);
+    }
+
+    public string StrategyDiagnostics
+    {
+        get => _strategyDiagnostics;
+        private set => SetField(ref _strategyDiagnostics, value);
     }
 
     public string LastAction
@@ -276,6 +283,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ThrowIfDisposed();
         IsBusy = true;
         OverallStatus = "Подбираем рабочую стратегию…";
+        StrategyDiagnostics = "Подбор выполняется; результат ещё не подтверждён.";
         HealthRouteDescription = "Маршрут: локальный ByeDPI SOCKS5 (подбор стратегии)";
         OverallDetails = "NetPilot сначала подтверждает проблему, затем проверяет ограниченное число альтернатив через локальный ByeDPI SOCKS5.";
 
@@ -288,6 +296,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             var result = await _dashboardService.FindWorkingStrategyAsync();
             ApplyStrategySelectionResult(result);
+            StrategyDiagnostics = BuildStrategyDiagnosticSummary(result);
 
             var health = await _dashboardService.CheckResourcesAsync();
             ApplyHealthResults(health, preserveActionText: true);
@@ -298,6 +307,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             OverallStatus = "Подбор не выполнен";
             OverallDetails = GetUserMessage(exception);
             LastAction = "Автоматический подбор остановлен без скрытого продолжения.";
+            StrategyDiagnostics = "Подбор прерван до подтверждённого результата.";
         }
         finally
         {
@@ -371,6 +381,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 LastAction = "Подтверждённая рабочая альтернатива не найдена; исходная стратегия восстановлена.";
                 break;
         }
+    }
+
+    // Aggregate-only result: no endpoint, exception strings, paths or process arguments.
+    private static string BuildStrategyDiagnosticSummary(StrategySelectionResult result)
+    {
+        var evaluations = result.Evaluations;
+        if (evaluations.Count == 0)
+        {
+            return $"Итог: {result.Status}. Прогонов: 0.";
+        }
+
+        var confirmed = evaluations.Count(e => e.IsViable);
+        var empty = evaluations.Count(e => e.ResourceResults.Count == 0);
+        var total = evaluations.Sum(e => e.ResourceResults.Count);
+        var healthy = evaluations.Sum(e => e.ResourceResults.Count(r => r.State == ResourceHealthState.Healthy));
+        var degraded = evaluations.Sum(e => e.ResourceResults.Count(r => r.State == ResourceHealthState.Degraded));
+        var unavailable = evaluations.Sum(e => e.ResourceResults.Count(r => r.State == ResourceHealthState.Unavailable));
+        return $"Итог: {result.Status}. Прогонов: {evaluations.Count}; пригодных: {confirmed}; " +
+            $"без ответов: {empty}. HTTPS-проверок: {total}; работает: {healthy}; " +
+            $"ограничения: {degraded}; недоступно: {unavailable}. " +
+            "Успех одного сервиса не означает, что стратегия работает для всех.";
     }
 
     private async Task RefreshEngineStatusAsync(CancellationToken cancellationToken)

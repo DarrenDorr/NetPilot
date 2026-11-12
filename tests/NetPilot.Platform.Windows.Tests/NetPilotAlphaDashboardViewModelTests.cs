@@ -65,6 +65,23 @@ public sealed class NetPilotAlphaDashboardViewModelTests
     }
 
     [Fact]
+    public async Task StrategyDiagnostics_UsesBoundedAggregatesWithoutCandidateIdentifiers()
+    {
+        using var dashboard = new FakeDashboardService(true);
+        using var viewModel = new MainWindowViewModel(dashboard);
+        viewModel.IsAdvancedMode = true;
+        viewModel.FindStrategyCommand.Execute(null);
+        for (var i = 0; i < 100 && !viewModel.StrategyDiagnostics.Contains("Прогонов:", StringComparison.Ordinal); i++)
+        {
+            await Task.Delay(10);
+        }
+        Assert.Contains("Прогонов: 2", viewModel.StrategyDiagnostics);
+        Assert.Contains("работает: 1", viewModel.StrategyDiagnostics);
+        Assert.Contains("недоступно: 1", viewModel.StrategyDiagnostics);
+        Assert.DoesNotContain("private-strategy", viewModel.StrategyDiagnostics);
+    }
+
+    [Fact]
     public void Dispose_ClosesUnderlyingDashboardExactlyOnce()
     {
         var dashboard = new FakeDashboardService(false);
@@ -92,7 +109,18 @@ public sealed class NetPilotAlphaDashboardViewModelTests
 
         public Task<StrategySelectionResult> FindWorkingStrategyAsync(
             CancellationToken cancellationToken = default)
-            => Task.FromException<StrategySelectionResult>(new NotSupportedException());
+            => Task.FromResult(new StrategySelectionResult(
+                StrategySelectionStatus.NoWorkingAlternative,
+                "private-strategy",
+                "private-strategy",
+                [
+                    new StrategyEvaluation("private-strategy", 0, false, null,
+                        [
+                            new ResourceHealth("discord", ResourceHealthState.Healthy, DateTimeOffset.UtcNow),
+                            new ResourceHealth("youtube", ResourceHealthState.Unavailable, DateTimeOffset.UtcNow)
+                        ]),
+                    new StrategyEvaluation("private-strategy-alt", 0, false, null, [])
+                ]));
 
         public Task<StrategyRuntimeState> GetStrategyRuntimeStateAsync(
             CancellationToken cancellationToken = default)
