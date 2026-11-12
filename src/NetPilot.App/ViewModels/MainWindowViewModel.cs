@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using Avalonia.Media;
 using NetPilot.App.Services;
 using NetPilot.Automation;
 using NetPilot.Core.Models;
@@ -21,6 +22,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private string _overallDetails = "Проверьте доступность сервисов одной кнопкой.";
     private string _engineStatus = "Состояние сетевого движка ещё не получено.";
     private string _engineActionText = "Запустить ByeDPI";
+    private IBrush _engineStatusBrush = Brushes.SlateGray;
+    private bool _isEngineRunning;
+    private bool _isMenuExpanded = true;
     private string _lastAction = "Действий ещё не выполнялось.";
     private bool _isBusy;
     private bool _isAdvancedMode;
@@ -95,6 +99,35 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         get => _lastAction;
         private set => SetField(ref _lastAction, value);
     }
+
+    // These presentation-only properties reflect the *confirmed* runtime
+    // state, not the user's last requested action. Never display a running
+    // indicator before GetStrategyRuntimeStateAsync confirms it.
+    public bool IsEngineRunning
+    {
+        get => _isEngineRunning;
+        private set => SetField(ref _isEngineRunning, value);
+    }
+
+    public IBrush EngineStatusBrush
+    {
+        get => _engineStatusBrush;
+        private set => SetField(ref _engineStatusBrush, value);
+    }
+
+    public bool IsMenuExpanded
+    {
+        get => _isMenuExpanded;
+        set
+        {
+            if (SetField(ref _isMenuExpanded, value))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SidebarWidth)));
+            }
+        }
+    }
+
+    public double SidebarWidth => IsMenuExpanded ? 228 : 76;
 
     public bool IsBusy
     {
@@ -317,6 +350,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             var state = await _dashboardService.GetStrategyRuntimeStateAsync(cancellationToken);
             var running = state.IsRunning && !string.IsNullOrWhiteSpace(state.StrategyId);
+            IsEngineRunning = running;
+            EngineStatusBrush = running ? Brushes.MediumSeaGreen : Brushes.SlateGray;
             EngineStatus = running
                 ? $"ByeDPI: запущен · стратегия {state.StrategyId}"
                 : "ByeDPI: остановлен";
@@ -324,6 +359,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
         catch (Exception exception) when (IsExpectedOperationalException(exception))
         {
+            IsEngineRunning = false;
+            EngineStatusBrush = Brushes.IndianRed;
             EngineStatus = "Проверенный пакет ByeDPI недоступен или ещё не установлен.";
             EngineActionText = "Запустить ByeDPI";
         }
