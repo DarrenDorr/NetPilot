@@ -72,7 +72,8 @@ public sealed class ResourceStatusViewModel : INotifyPropertyChanged
         switch (health.State)
         {
             case ResourceHealthState.Healthy:
-                StatusText = "Работает";
+                // This confirms only the configured HTTPS health endpoint, not the app.
+                StatusText = "HTTPS отвечает";
                 DetailsText = latencyText;
                 StatusBrush = Brushes.MediumSeaGreen;
                 StatusGlyph = "●";
@@ -86,7 +87,7 @@ public sealed class ResourceStatusViewModel : INotifyPropertyChanged
                 break;
 
             case ResourceHealthState.Unavailable:
-                StatusText = "Недоступно";
+                StatusText = "HTTPS недоступен";
                 DetailsText = string.Empty;
                 StatusBrush = Brushes.IndianRed;
                 StatusGlyph = "●";

@@ -36,6 +36,29 @@ public sealed class NetPilotAlphaDashboardViewModelTests
     }
 
     [Fact]
+    public void HealthyHealthProbe_IsNotDescribedAsApplicationWorking()
+    {
+        var card = new ResourceStatusViewModel("example", "Example");
+        card.Apply(new ResourceHealth("example", ResourceHealthState.Healthy, DateTimeOffset.UtcNow));
+        Assert.Equal("HTTPS отвечает", card.StatusText);
+        Assert.DoesNotContain("Работает", card.StatusText);
+    }
+
+    [Fact]
+    public async Task EmptyHealthCheck_ReportsNotVerifiedInsteadOfSuccessOrDegraded()
+    {
+        using var dashboard = new FakeDashboardService(false);
+        using var viewModel = new MainWindowViewModel(dashboard);
+        viewModel.CheckCommand.Execute(null);
+        for (var i = 0; i < 100 && viewModel.IsBusy; i++)
+        {
+            await Task.Delay(10);
+        }
+        Assert.Equal("Нет результатов проверки", viewModel.OverallStatus);
+        Assert.Contains("не подтверждена", viewModel.OverallDetails);
+    }
+
+    [Fact]
     public void Sidebar_ContractsWithoutHidingFunctionalOperations()
     {
         using var dashboard = new FakeDashboardService(false);
