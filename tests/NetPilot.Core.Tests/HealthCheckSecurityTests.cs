@@ -102,7 +102,7 @@ public sealed class HealthCheckSecurityTests
 
         foreach (var entry in reviewed)
         {
-            Assert.Same(entry.Resource, BuiltInResourceCatalog.GetReviewed(entry.Resource.Id));
+            Assert.Same(entry.Resource, BuiltInResourceCatalog.GetReviewed(entry.Resource.Id).Resource);
             Assert.Equal(ServiceConnectivity.HttpsOverLocalSocks5ProbeOnly, entry.Connectivity);
             Assert.NotEmpty(entry.Resource.HealthCheckUris);
             Assert.All(entry.Resource.HealthCheckUris, PublicEndpointPolicy.ValidateUri);
