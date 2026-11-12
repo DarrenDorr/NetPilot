@@ -106,6 +106,14 @@ public sealed class ResourceStatusViewModel : INotifyPropertyChanged
         }
     }
 
+    public void SetNotVerified()
+    {
+        StatusText = "Не проверено";
+        DetailsText = "Нет результата HTTPS-проверки.";
+        StatusBrush = Brushes.Gray;
+        StatusGlyph = "○";
+    }
+
     public void SetNotAvailableYet(string details)
     {
         StatusText = "Пока не подключён";

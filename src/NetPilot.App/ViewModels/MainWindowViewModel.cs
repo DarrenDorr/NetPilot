@@ -372,6 +372,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
         else if (results.Count == 0)
         {
+            foreach (var resource in _resourceById.Values)
+            {
+                resource.SetNotVerified();
+            }
             OverallStatus = "Нет результатов проверки";
             OverallDetails = "Проверка не вернула ни одного результата; доступность сервисов и приложений не подтверждена.";
         }

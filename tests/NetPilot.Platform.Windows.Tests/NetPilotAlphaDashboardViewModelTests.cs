@@ -56,6 +56,7 @@ public sealed class NetPilotAlphaDashboardViewModelTests
         }
         Assert.Equal("Нет результатов проверки", viewModel.OverallStatus);
         Assert.Contains("не подтверждена", viewModel.OverallDetails);
+        Assert.All(viewModel.Resources, resource => Assert.Equal("Не проверено", resource.StatusText));
     }
 
     [Fact]
