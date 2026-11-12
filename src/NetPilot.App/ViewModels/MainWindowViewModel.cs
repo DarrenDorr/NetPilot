@@ -210,6 +210,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         await RefreshEngineStatusAsync(CancellationToken.None);
     }
 
+    // Clipboard/UI consumers must not trust the last rendered port. Re-read the
+    // confirmed current runtime state before offering it for manual use.
+    public async Task<string?> GetConfirmedLocalSocks5AddressAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        var address = await _dashboardService.GetLocalSocks5AddressAsync(cancellationToken);
+        LocalSocks5Address = address ?? "Недоступен — локальный SOCKS5 не подтверждён.";
+        return address;
+    }
+
     public void Dispose()
     {
         if (_disposed)

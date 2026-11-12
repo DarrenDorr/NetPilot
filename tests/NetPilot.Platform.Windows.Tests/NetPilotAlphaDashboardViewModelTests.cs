@@ -36,6 +36,21 @@ public sealed class NetPilotAlphaDashboardViewModelTests
     }
 
     [Fact]
+    public async Task ConfirmedLocalSocks5Address_RefusesStalePortAfterRuntimeStops()
+    {
+        using var dashboard = new FakeDashboardService(true);
+        using var viewModel = new MainWindowViewModel(dashboard);
+        await viewModel.InitializeAsync();
+        Assert.Equal("127.0.0.1:37801", viewModel.LocalSocks5Address);
+
+        dashboard.Running = false;
+        var result = await viewModel.GetConfirmedLocalSocks5AddressAsync();
+
+        Assert.Null(result);
+        Assert.DoesNotContain("37801", viewModel.LocalSocks5Address);
+    }
+
+    [Fact]
     public void HealthyHealthProbe_IsNotDescribedAsApplicationWorking()
     {
         var card = new ResourceStatusViewModel("example", "Example");
@@ -158,6 +173,7 @@ public sealed class NetPilotAlphaDashboardViewModelTests
 
     private sealed class FakeDashboardService(bool running) : IDashboardService
     {
+        public bool Running { get; set; } = running;
         public int DisposeCalls { get; private set; }
         public string? LastRequestedResourceId { get; private set; }
 
@@ -205,13 +221,13 @@ public sealed class NetPilotAlphaDashboardViewModelTests
 
         public Task<StrategyRuntimeState> GetStrategyRuntimeStateAsync(
             CancellationToken cancellationToken = default)
-            => Task.FromResult(running
+            => Task.FromResult(Running
                 ? StrategyRuntimeState.Running("byedpi-windows-recommended")
                 : StrategyRuntimeState.Stopped);
 
         public Task<string?> GetLocalSocks5AddressAsync(
             CancellationToken cancellationToken = default)
-            => Task.FromResult<string?>(running ? "127.0.0.1:37801" : null);
+            => Task.FromResult<string?>(Running ? "127.0.0.1:37801" : null);
 
         public Task StartDefaultStrategyAsync(
             CancellationToken cancellationToken = default)
