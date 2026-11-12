@@ -4,109 +4,260 @@
         x:Class="NetPilot.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding Title}"
-        Width="920"
-        Height="720"
-        MinWidth="760"
-        MinHeight="600">
-  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto" Margin="32" MaxWidth="1040">
-      <Grid ColumnDefinitions="*,Auto">
-        <StackPanel Spacing="5">
-          <TextBlock Text="{Binding Title}" FontSize="32" FontWeight="SemiBold" />
-          <TextBlock Text="{Binding Subtitle}" FontSize="15" Opacity="0.62" />
+        Width="1100"
+        Height="790"
+        MinWidth="820"
+        MinHeight="640"
+        Background="#0B1220"
+        Foreground="#E8EEFA"
+        FontFamily="Segoe UI">
+  <Grid ColumnDefinitions="Auto,*">
+    <!-- Left: navigation and operations; every interactive item is wired. -->
+    <Border Grid.Column="0"
+            Width="{Binding SidebarWidth}"
+            Padding="16,22"
+            Background="#111C31"
+            BorderBrush="#27354C"
+            BorderThickness="0,0,1,0">
+      <Grid RowDefinitions="Auto,*,Auto">
+        <StackPanel Spacing="20">
+          <Grid ColumnDefinitions="Auto,*">
+            <Border Width="42" Height="42" CornerRadius="12" Background="#2251AA">
+              <TextBlock Text="N" FontSize="26" FontWeight="Bold"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <StackPanel Grid.Column="1" Margin="10,2,0,0"
+                        IsVisible="{Binding IsMenuExpanded}" Spacing="0">
+              <TextBlock Text="NetPilot" FontSize="19" FontWeight="SemiBold" />
+              <TextBlock Text="Панель управления" FontSize="11"
+                         Foreground="#A3B3CC" />
+            </StackPanel>
+          </Grid>
+
+          <ToggleButton Content="☰"
+                        ToolTip.Tip="Показать или скрыть боковую панель"
+                        IsChecked="{Binding IsMenuExpanded}"
+                        Width="44" Height="38"
+                        HorizontalAlignment="Left"
+                        Background="#1D2C47"
+                        BorderBrush="#344A6F"
+                        FontSize="20" />
         </StackPanel>
 
-        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
-          <TextBlock Text="Расширенный режим" FontSize="12" Opacity="0.62" HorizontalAlignment="Right" />
-          <ToggleSwitch IsChecked="{Binding IsAdvancedMode}" HorizontalAlignment="Right" />
+        <StackPanel Grid.Row="1"
+                    IsVisible="{Binding IsMenuExpanded}"
+                    Margin="0,28,0,0"
+                    Spacing="12">
+          <TextBlock Text="ДЕЙСТВИЯ" FontSize="11" FontWeight="SemiBold"
+                     Foreground="#8498BA" Margin="4,0,0,4" />
+
+          <Button Content="Проверить сервисы"
+                  Command="{Binding CheckCommand}"
+                  HorizontalAlignment="Stretch"
+                  HorizontalContentAlignment="Left"
+                  Padding="15,12"
+                  Background="#1B2B46"
+                  BorderBrush="#314665"
+                  CornerRadius="10" />
+
+          <Button Content="Подобрать стратегию"
+                  Command="{Binding FindStrategyCommand}"
+                  HorizontalAlignment="Stretch"
+                  HorizontalContentAlignment="Left"
+                  Padding="15,12"
+                  Background="#1B2B46"
+                  BorderBrush="#314665"
+                  CornerRadius="10" />
+
+          <Border Height="1" Background="#2C3B55" Margin="0,16,0,10" />
+
+          <TextBlock Text="НАСТРОЙКИ" FontSize="11" FontWeight="SemiBold"
+                     Foreground="#8498BA" Margin="4,0,0,4" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <ToggleSwitch IsChecked="{Binding IsAdvancedMode}"
+                          VerticalAlignment="Center"
+                          ToolTip.Tip="Показать или скрыть техническую информацию" />
+            <TextBlock Text="Режим эксперта"
+                       VerticalAlignment="Center" FontSize="13"
+                       Foreground="#CFD9EA" />
+          </StackPanel>
+        </StackPanel>
+
+        <StackPanel Grid.Row="2"
+                    IsVisible="{Binding IsMenuExpanded}"
+                    Spacing="4">
+          <TextBlock Text="ByeDPI · пользовательский режим" FontSize="11"
+                     TextWrapping="Wrap" Foreground="#95A8C2" />
+          <TextBlock Text="Без службы и WinDivert" FontSize="11"
+                     Foreground="#6D829F" />
         </StackPanel>
       </Grid>
+    </Border>
 
-      <Border Grid.Row="1"
-              Margin="0,28,0,0"
-              Padding="24"
-              CornerRadius="18"
-              BorderThickness="1"
-              BorderBrush="#33808080">
+    <!-- The primary view stays usable without opening the expert panel. -->
+    <ScrollViewer Grid.Column="1"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="30,28,30,30"
+                  MaxWidth="920"
+                  HorizontalAlignment="Stretch"
+                  Spacing="20">
         <Grid ColumnDefinitions="*,Auto">
-          <StackPanel Spacing="7">
-            <TextBlock Text="Общее состояние" FontSize="14" Opacity="0.62" />
-            <TextBlock Text="{Binding OverallStatus}" FontSize="26" FontWeight="SemiBold" TextWrapping="Wrap" />
-            <TextBlock Text="{Binding OverallDetails}" FontSize="14" Opacity="0.70" TextWrapping="Wrap" MaxWidth="620" />
+          <StackPanel Spacing="4">
+            <TextBlock Text="Обзор подключения" FontSize="28" FontWeight="SemiBold" />
+            <TextBlock Text="Состояние сети и доступность сервисов"
+                       FontSize="13" Foreground="#98ABC7" />
           </StackPanel>
-
-          <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="24,0,0,0" Spacing="10">
-            <Button Content="{Binding EngineActionText}"
-                    Command="{Binding ToggleEngineCommand}"
-                    Padding="18,10"
-                    HorizontalAlignment="Stretch" />
-            <Button Content="Проверить сейчас"
-                    Command="{Binding CheckCommand}"
-                    Padding="18,10"
-                    HorizontalAlignment="Stretch" />
-            <Button Content="Подобрать стратегию"
-                    Command="{Binding FindStrategyCommand}"
-                    Padding="18,10"
-                    HorizontalAlignment="Stretch" />
-          </StackPanel>
+          <Border Grid.Column="1" VerticalAlignment="Center"
+                  Padding="12,7" CornerRadius="13"
+                  Background="#182A44"
+                  BorderBrush="#304E75" BorderThickness="1">
+            <TextBlock Text="USER MODE" FontSize="11" FontWeight="SemiBold"
+                       Foreground="#9CCBFF" />
+          </Border>
         </Grid>
-      </Border>
 
-      <StackPanel Grid.Row="2" Margin="0,22,0,0" Spacing="12">
-        <TextBlock Text="Сервисы" FontSize="18" FontWeight="SemiBold" />
+        <Border Padding="26" CornerRadius="24"
+                Background="#15243E"
+                BorderBrush="#314765"
+                BorderThickness="1">
+          <StackPanel HorizontalAlignment="Stretch" Spacing="14">
+            <TextBlock Text="Управление ByeDPI"
+                       FontSize="16" FontWeight="SemiBold"
+                       HorizontalAlignment="Center" Foreground="#DCE9FA" />
+            <TextBlock Text="Запуск и остановка без повышения прав"
+                       FontSize="12"
+                       HorizontalAlignment="Center" Foreground="#A5B6CE" />
+            <Button Command="{Binding ToggleEngineCommand}"
+                    Width="210" Height="210"
+                    HorizontalAlignment="Center"
+                    Background="#2367C8"
+                    BorderBrush="{Binding EngineStatusBrush}"
+                    BorderThickness="5"
+                    CornerRadius="105"
+                    Padding="20"
+                    ToolTip.Tip="Запустить или остановить локальный движок ByeDPI">
+              <TextBlock Text="{Binding EngineActionText}"
+                         TextWrapping="Wrap"
+                         TextAlignment="Center"
+                         FontSize="22"
+                         FontWeight="Bold"
+                         Foreground="#FFFFFF" />
+            </Button>
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Center" Spacing="8">
+              <TextBlock Text="●"
+                         FontSize="17"
+                         VerticalAlignment="Center"
+                         Foreground="{Binding EngineStatusBrush}" />
+              <TextBlock Text="{Binding EngineStatus}"
+                         FontSize="14"
+                         VerticalAlignment="Center"
+                         TextWrapping="Wrap"
+                         Foreground="#CFDDF1" />
+            </StackPanel>
+            <Border Background="#1D314F" CornerRadius="12"
+                    Padding="16,13" Margin="0,10,0,0">
+              <StackPanel Spacing="5">
+                <TextBlock Text="{Binding OverallStatus}"
+                           FontSize="19" FontWeight="SemiBold"
+                           TextWrapping="Wrap" />
+                <TextBlock Text="{Binding OverallDetails}"
+                           FontSize="13" Foreground="#A5BAD4"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </Border>
+
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Text="Сервисы" FontSize="19" FontWeight="SemiBold"
+                     VerticalAlignment="Center" />
+          <TextBlock Grid.Column="1" Text="Состояние после проверки"
+                     VerticalAlignment="Center" FontSize="11"
+                     Foreground="#879BB8" />
+        </Grid>
 
         <ItemsControl ItemsSource="{Binding Resources}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:ResourceStatusViewModel">
-              <Border Padding="18"
+              <Border Padding="17"
                       Margin="0,0,0,10"
                       CornerRadius="14"
+                      Background="#132137"
                       BorderThickness="1"
-                      BorderBrush="#28808080">
+                      BorderBrush="#2B3E59">
                 <Grid ColumnDefinitions="Auto,*,Auto">
-                  <TextBlock Text="{Binding StatusGlyph}"
-                             Foreground="{Binding StatusBrush}"
-                             FontSize="21"
-                             VerticalAlignment="Center"
-                             Margin="0,0,14,0" />
-
-                  <StackPanel Grid.Column="1" Spacing="3">
-                    <TextBlock Text="{Binding DisplayName}" FontSize="17" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding DetailsText}" FontSize="12" Opacity="0.58" TextWrapping="Wrap" />
+                  <Border Background="#20334F"
+                          CornerRadius="11" Width="40" Height="40"
+                          VerticalAlignment="Center">
+                    <TextBlock Text="{Binding StatusGlyph}"
+                               Foreground="{Binding StatusBrush}"
+                               FontSize="22"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                  </Border>
+                  <StackPanel Grid.Column="1"
+                              Margin="14,0,14,0"
+                              VerticalAlignment="Center"
+                              Spacing="4">
+                    <TextBlock Text="{Binding DisplayName}"
+                               FontSize="15" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding DetailsText}"
+                               FontSize="11"
+                               Foreground="#93A6C0"
+                               TextWrapping="Wrap" />
                   </StackPanel>
-
                   <TextBlock Grid.Column="2"
+                             VerticalAlignment="Center"
                              Text="{Binding StatusText}"
                              Foreground="{Binding StatusBrush}"
-                             FontSize="14"
-                             FontWeight="SemiBold"
-                             VerticalAlignment="Center"
-                             Margin="18,0,0,0" />
+                             FontSize="12"
+                             FontWeight="SemiBold" />
                 </Grid>
               </Border>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
+
+        <!-- One actual local event; do not simulate a live news feed. -->
+        <Border CornerRadius="15" Padding="18"
+                Background="#14223A" BorderBrush="#2D405C"
+                BorderThickness="1">
+          <StackPanel Spacing="7">
+            <TextBlock Text="Последнее событие"
+                       FontSize="16" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding LastAction}"
+                       FontSize="13" TextWrapping="Wrap"
+                       Foreground="#AFBED3" />
+          </StackPanel>
+        </Border>
+
+        <Border IsVisible="{Binding IsAdvancedMode}"
+                CornerRadius="15" Padding="20"
+                Background="#111E32"
+                BorderBrush="#354865"
+                BorderThickness="1">
+          <StackPanel Spacing="12">
+            <TextBlock Text="Техническая информация"
+                       FontSize="16" FontWeight="SemiBold" />
+            <Grid ColumnDefinitions="146,*" RowDefinitions="Auto,Auto">
+              <TextBlock Text="Сетевой движок" Foreground="#A2B3CB" />
+              <TextBlock Grid.Column="1"
+                         Text="{Binding EngineStatus}"
+                         TextWrapping="Wrap" />
+              <TextBlock Grid.Row="1" Text="Последнее действие"
+                         Margin="0,7,0,0" Foreground="#A2B3CB" />
+              <TextBlock Grid.Row="1" Grid.Column="1"
+                         Text="{Binding LastAction}"
+                         Margin="0,7,0,0" TextWrapping="Wrap" />
+            </Grid>
+            <TextBlock Text="Режим эксперта не меняет права доступа и системный прокси."
+                       FontSize="11" Foreground="#8497B4"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
       </StackPanel>
-
-      <Border Grid.Row="3"
-              IsVisible="{Binding IsAdvancedMode}"
-              Margin="0,12,0,0"
-              Padding="20"
-              CornerRadius="14"
-              BorderThickness="1"
-              BorderBrush="#33808080">
-        <StackPanel Spacing="9">
-          <TextBlock Text="Техническая информация" FontSize="16" FontWeight="SemiBold" />
-          <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto">
-            <TextBlock Text="Движок" Opacity="0.60" />
-            <TextBlock Grid.Column="1" Text="{Binding EngineStatus}" TextWrapping="Wrap" />
-
-            <TextBlock Grid.Row="1" Text="Последнее действие" Opacity="0.60" Margin="0,7,0,0" />
-            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LastAction}" TextWrapping="Wrap" Margin="0,7,0,0" />
-          </Grid>
-        </StackPanel>
-      </Border>
-    </Grid>
-  </ScrollViewer>
+    </ScrollViewer>
+  </Grid>
 </Window>
