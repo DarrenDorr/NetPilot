@@ -74,6 +74,7 @@ $expectedNames = @(
     'package-manifest.json',
     'README.md',
     'WINDOWS-ALPHA-GUI-SMOKE.md',
+    'R44-SOCKS5-CLIENT-VALIDATION.md',
     'verify-physical-pack.ps1'
 )
 $files = @(Get-ChildItem -LiteralPath $PackRoot -Force -ErrorAction Stop)

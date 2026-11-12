@@ -180,6 +180,7 @@ jobs:
           Copy-Item -LiteralPath 'build\no-admin-validator\NetPilot.ByeDpiUserModeValidation.exe' -Destination (Join-Path $pack 'NetPilot-ByeDPI-NoAdmin-Validation.exe')
           Copy-Item -LiteralPath 'docs\R42.12.4-NO-ADMIN-BYEDPI.md' -Destination (Join-Path $pack 'README.md')
           Copy-Item -LiteralPath 'docs\WINDOWS-ALPHA-GUI-SMOKE.md' -Destination (Join-Path $pack 'WINDOWS-ALPHA-GUI-SMOKE.md')
+          Copy-Item -LiteralPath 'docs\R44-SOCKS5-CLIENT-VALIDATION.md' -Destination (Join-Path $pack 'R44-SOCKS5-CLIENT-VALIDATION.md')
           Copy-Item -LiteralPath 'scripts\r42-12-4-verify-physical-pack.ps1' -Destination (Join-Path $pack 'verify-physical-pack.ps1')
 
           $setup = Get-Item -LiteralPath (Join-Path $pack "NetPilot-UserMode-Setup-$env:TEST_VERSION-x64.exe")

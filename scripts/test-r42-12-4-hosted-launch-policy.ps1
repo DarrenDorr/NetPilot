@@ -205,6 +205,7 @@ foreach ($requiredDelivery in @(
     'gui = [ordered]@{',
     "name = 'NetPilot.exe'",
     "Copy-Item -LiteralPath 'docs\WINDOWS-ALPHA-GUI-SMOKE.md'",
+    "Copy-Item -LiteralPath 'docs\R44-SOCKS5-CLIENT-VALIDATION.md'",
     "Copy-Item -LiteralPath 'scripts\r42-12-4-verify-physical-pack.ps1'",
     'id: finalize_pc_pack',
     "steps.hosted_validation.outcome == 'success'",
@@ -230,6 +231,10 @@ if (@($verifyPackErrors).Count -ne 0) {
     throw 'R42.12.4 physical pack verification PowerShell syntax is invalid.'
 }
 $verifyText = Get-Content -LiteralPath $verifyPackPath -Raw -Encoding utf8
+if (-not $verifyText.Contains("'R44-SOCKS5-CLIENT-VALIDATION.md'", [System.StringComparison]::Ordinal)) {
+    throw 'R44 client validation guide must be explicitly allowlisted in the exact physical pack.'
+}
+
 foreach ($requiredVerifier in @(
     "hosted_validation -cne 'PASS_BLOCK'",
     "production_admission -cne 'BLOCK'",
