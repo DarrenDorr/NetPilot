@@ -10,6 +10,8 @@ using NetPilot.Ipc;
 
 namespace NetPilot.App.ViewModels;
 
+public sealed record StrategyTargetOption(string? ResourceId, string DisplayName);
+
 public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly IDashboardService _dashboardService;
@@ -18,8 +20,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly AsyncCommand _checkCommand;
     private readonly AsyncCommand _checkDirectCommand;
     private readonly AsyncCommand _findStrategyCommand;
-    private readonly AsyncCommand _findDiscordStrategyCommand;
-    private readonly AsyncCommand _findYouTubeStrategyCommand;
 
     private string _overallStatus = "Готов к проверке";
     private string _overallDetails = "Запустите ByeDPI для проверки через локальный SOCKS5. Можно отдельно проверить прямое соединение.";
@@ -33,6 +33,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private string _lastAction = "Действий ещё не выполнялось.";
     private bool _isBusy;
     private bool _isAdvancedMode;
+    private StrategyTargetOption _selectedStrategyTarget;
     private bool _disposed;
 
     public MainWindowViewModel(IDashboardService dashboardService)
@@ -42,6 +43,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         Resources = new ObservableCollection<ResourceStatusViewModel>(
             dashboardService.Resources.Select(resource =>
                 new ResourceStatusViewModel(resource.Id, resource.DisplayName)));
+
+        StrategyTargets = new List<StrategyTargetOption>
+        {
+            new(null, "Все поддерживаемые сервисы")
+        }.Concat(dashboardService.Resources.Select(
+            resource => new StrategyTargetOption(resource.Id, resource.DisplayName))).ToArray();
+        _selectedStrategyTarget = StrategyTargets[0];
 
         Telegram = new ResourceStatusViewModel("telegram", "Telegram");
         Telegram.SetNotAvailableYet("Поддержка Telegram будет добавлена отдельным движком.");
@@ -70,16 +78,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             FindStrategyAsync,
             () => !IsBusy,
             HandleUnexpectedError);
-
-        _findDiscordStrategyCommand = new AsyncCommand(
-            () => FindStrategyForResourceAsync("discord", "Discord"),
-            () => !IsBusy,
-            HandleUnexpectedError);
-
-        _findYouTubeStrategyCommand = new AsyncCommand(
-            () => FindStrategyForResourceAsync("youtube", "YouTube"),
-            () => !IsBusy,
-            HandleUnexpectedError);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -89,6 +87,24 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public ObservableCollection<ResourceStatusViewModel> Resources { get; }
     public ResourceStatusViewModel Telegram { get; }
+
+    // Generated from the same approved catalog used by the health checker.
+    // A future reviewed service appears here without hard-coded service buttons.
+    public IReadOnlyList<StrategyTargetOption> StrategyTargets { get; }
+
+    public StrategyTargetOption SelectedStrategyTarget
+    {
+        get => _selectedStrategyTarget;
+        set
+        {
+            if (!StrategyTargets.Contains(value))
+            {
+                throw new ArgumentException("Unknown strategy target.", nameof(value));
+            }
+
+            SetField(ref _selectedStrategyTarget, value);
+        }
+    }
 
     public string OverallStatus
     {
@@ -172,8 +188,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 _checkCommand.RaiseCanExecuteChanged();
                 _checkDirectCommand.RaiseCanExecuteChanged();
                 _findStrategyCommand.RaiseCanExecuteChanged();
-                _findDiscordStrategyCommand.RaiseCanExecuteChanged();
-                _findYouTubeStrategyCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -188,8 +202,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public ICommand CheckCommand => _checkCommand;
     public ICommand CheckDirectCommand => _checkDirectCommand;
     public ICommand FindStrategyCommand => _findStrategyCommand;
-    public ICommand FindDiscordStrategyCommand => _findDiscordStrategyCommand;
-    public ICommand FindYouTubeStrategyCommand => _findYouTubeStrategyCommand;
 
     public async Task InitializeAsync()
     {
@@ -294,23 +306,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private Task FindStrategyAsync() => FindStrategyCoreAsync(null, null);
-
-    private Task FindStrategyForResourceAsync(string resourceId, string displayName) =>
-        FindStrategyCoreAsync(resourceId, displayName);
+    private Task FindStrategyAsync() =>
+        FindStrategyCoreAsync(SelectedStrategyTarget.ResourceId, SelectedStrategyTarget.DisplayName);
 
     private async Task FindStrategyCoreAsync(string? resourceId, string? displayName)
     {
         ThrowIfDisposed();
         IsBusy = true;
-        OverallStatus = displayName is null
+        OverallStatus = resourceId is null
             ? "Подбираем рабочую стратегию…"
             : $"Подбираем стратегию для {displayName}…";
         StrategyDiagnostics = "Подбор выполняется; результат ещё не подтверждён.";
         HealthRouteDescription = "Маршрут: локальный ByeDPI SOCKS5 (подбор стратегии)";
-        OverallDetails = displayName is null
-            ? "Проверяем оба сервиса; стратегия принимается, только если оба доступны через SOCKS5."
-            : $"Проверяем только {displayName} через SOCKS5. Это не гарантирует работу другого сервиса или браузера.";
+        OverallDetails = resourceId is null
+            ? "Проверяем весь утверждённый каталог через SOCKS5; все выбранные сервисы должны отвечать."
+            : $"Проверяем {displayName} через SOCKS5. Это не подтверждает доступ к остальным сервисам или браузеру.";
 
         foreach (var resource in _resourceById.Values)
         {
@@ -323,8 +333,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 ? await _dashboardService.FindWorkingStrategyAsync()
                 : await _dashboardService.FindWorkingStrategyForResourceAsync(resourceId);
             ApplyStrategySelectionResult(result);
-            StrategyDiagnostics = (displayName is null ? "Цель: оба сервиса. " : $"Цель: {displayName}. ") +
-                BuildStrategyDiagnosticSummary(result);
+            StrategyDiagnostics = $"Цель: {displayName}. " + BuildStrategyDiagnosticSummary(result);
 
             var health = await _dashboardService.CheckResourcesAsync();
             ApplyHealthResults(health, preserveActionText: true);
@@ -358,7 +367,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (results.Count > 0 && results.All(result => result.State == ResourceHealthState.Healthy))
         {
             OverallStatus = "Доступ в порядке";
-            OverallDetails = "Discord и YouTube отвечают на проверку по выбранному маршруту. Это не гарантирует доступ браузера.";
+            OverallDetails = "Все проверенные сервисы каталога отвечают по выбранному маршруту. Это не гарантирует доступ браузера.";
         }
         else if (results.Any(result => result.State == ResourceHealthState.Unavailable))
         {
@@ -412,7 +421,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     }
 
     // Aggregate-only result: no endpoint, exception strings, paths or process arguments.
-    private static string BuildStrategyDiagnosticSummary(StrategySelectionResult result)
+    private string BuildStrategyDiagnosticSummary(StrategySelectionResult result)
     {
         var evaluations = result.Evaluations;
         if (evaluations.Count == 0)
@@ -426,11 +435,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         var healthy = evaluations.Sum(e => e.ResourceResults.Count(r => r.State == ResourceHealthState.Healthy));
         var degraded = evaluations.Sum(e => e.ResourceResults.Count(r => r.State == ResourceHealthState.Degraded));
         var unavailable = evaluations.Sum(e => e.ResourceResults.Count(r => r.State == ResourceHealthState.Unavailable));
-        var serviceDiagnostics = new[]
-        {
-            SummarizeService(evaluations, "discord", "Discord"),
-            SummarizeService(evaluations, "youtube", "YouTube")
-        };
+        var serviceDiagnostics = _resourceById.Values
+            .Select(resource => SummarizeService(evaluations, resource.Id, resource.DisplayName))
+            .ToArray();
 
         return $"Итог: {result.Status}. Прогонов: {evaluations.Count}; пригодных: {confirmed}; " +
             $"без ответов: {empty}. HTTPS-проверок: {total}; работает: {healthy}; " +

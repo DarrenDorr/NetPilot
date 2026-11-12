@@ -59,8 +59,9 @@ public sealed class NetPilotAlphaDashboardViewModelTests
         Assert.True(viewModel.CheckDirectCommand.CanExecute(null));
         Assert.Contains("SOCKS5", viewModel.HealthRouteDescription);
         Assert.True(viewModel.FindStrategyCommand.CanExecute(null));
-        Assert.True(viewModel.FindDiscordStrategyCommand.CanExecute(null));
-        Assert.True(viewModel.FindYouTubeStrategyCommand.CanExecute(null));
+        Assert.Equal(4, viewModel.StrategyTargets.Count);
+        Assert.Null(viewModel.SelectedStrategyTarget.ResourceId);
+        Assert.Contains(viewModel.StrategyTargets, target => target.ResourceId == "example");
 
         viewModel.IsAdvancedMode = true;
         Assert.True(viewModel.IsAdvancedMode);
@@ -88,19 +89,28 @@ public sealed class NetPilotAlphaDashboardViewModelTests
     [Theory]
     [InlineData("discord")]
     [InlineData("youtube")]
-    public async Task TargetedStrategyCommand_PassesOnlySelectedResource(string resourceId)
+    [InlineData("example")]
+    public async Task TargetedStrategyCommand_UsesSelectedCatalogResource(string resourceId)
     {
         using var dashboard = new FakeDashboardService(true);
         using var viewModel = new MainWindowViewModel(dashboard);
-        var command = resourceId == "discord"
-            ? viewModel.FindDiscordStrategyCommand
-            : viewModel.FindYouTubeStrategyCommand;
-        command.Execute(null);
+        viewModel.SelectedStrategyTarget = viewModel.StrategyTargets.Single(
+            target => target.ResourceId == resourceId);
+        viewModel.FindStrategyCommand.Execute(null);
         for (var i = 0; i < 100 && dashboard.LastRequestedResourceId is null; i++)
         {
             await Task.Delay(10);
         }
         Assert.Equal(resourceId, dashboard.LastRequestedResourceId);
+    }
+
+    [Fact]
+    public void SelectedStrategyTarget_RejectsUnknownObjects()
+    {
+        using var dashboard = new FakeDashboardService(true);
+        using var viewModel = new MainWindowViewModel(dashboard);
+        Assert.Throws<ArgumentException>(() =>
+            viewModel.SelectedStrategyTarget = new StrategyTargetOption("unreviewed", "Custom"));
     }
 
     [Fact]
@@ -120,7 +130,12 @@ public sealed class NetPilotAlphaDashboardViewModelTests
         public int DisposeCalls { get; private set; }
         public string? LastRequestedResourceId { get; private set; }
 
-        public IReadOnlyList<ResourceDefinition> Resources => Array.Empty<ResourceDefinition>();
+        public IReadOnlyList<ResourceDefinition> Resources =>
+        [
+            new("discord", "Discord", [new Uri("https://discord.com/")], []),
+            new("youtube", "YouTube", [new Uri("https://www.youtube.com/generate_204")], []),
+            new("example", "Example", [new Uri("https://example.com/")], [])
+        ];
 
         public Task<IReadOnlyList<ResourceHealth>> CheckResourcesAsync(
             CancellationToken cancellationToken = default)
@@ -134,7 +149,7 @@ public sealed class NetPilotAlphaDashboardViewModelTests
             string resourceId,
             CancellationToken cancellationToken = default)
         {
-            if (resourceId is not ("discord" or "youtube"))
+            if (!Resources.Any(resource => resource.Id == resourceId))
             {
                 throw new ArgumentException("Unknown resource", nameof(resourceId));
             }

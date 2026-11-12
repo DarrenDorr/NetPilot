@@ -69,26 +69,20 @@
                   BorderBrush="#314665"
                   CornerRadius="10" />
 
-          <Button Content="Подобрать: оба сервиса"
+          <TextBlock Text="Цель подбора" Foreground="#A3B3CC" FontSize="12" />
+          <ComboBox ItemsSource="{Binding StrategyTargets}"
+                    SelectedItem="{Binding SelectedStrategyTarget, Mode=TwoWay}"
+                    HorizontalAlignment="Stretch"
+                    MinHeight="38">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:StrategyTargetOption">
+                <TextBlock Text="{Binding DisplayName}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+
+          <Button Content="Подобрать стратегию"
                   Command="{Binding FindStrategyCommand}"
-                  HorizontalAlignment="Stretch"
-                  HorizontalContentAlignment="Left"
-                  Padding="15,12"
-                  Background="#1B2B46"
-                  BorderBrush="#314665"
-                  CornerRadius="10" />
-
-          <Button Content="Подобрать: Discord"
-                  Command="{Binding FindDiscordStrategyCommand}"
-                  HorizontalAlignment="Stretch"
-                  HorizontalContentAlignment="Left"
-                  Padding="15,12"
-                  Background="#1B2B46"
-                  BorderBrush="#314665"
-                  CornerRadius="10" />
-
-          <Button Content="Подобрать: YouTube"
-                  Command="{Binding FindYouTubeStrategyCommand}"
                   HorizontalAlignment="Stretch"
                   HorizontalContentAlignment="Left"
                   Padding="15,12"
