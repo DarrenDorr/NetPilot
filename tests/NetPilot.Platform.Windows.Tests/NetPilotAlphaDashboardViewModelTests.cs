@@ -88,11 +88,12 @@ public sealed class NetPilotAlphaDashboardViewModelTests
             }
         };
 
-        Assert.True(viewModel.IsMenuExpanded);
+        Assert.False(viewModel.IsMenuExpanded);
+        Assert.Equal(76, viewModel.SidebarWidth);
+
+        viewModel.IsMenuExpanded = true;
         Assert.Equal(228, viewModel.SidebarWidth);
-
         viewModel.IsMenuExpanded = false;
-
         Assert.Equal(76, viewModel.SidebarWidth);
         Assert.Contains(nameof(MainWindowViewModel.IsMenuExpanded), changed);
         Assert.Contains(nameof(MainWindowViewModel.SidebarWidth), changed);
