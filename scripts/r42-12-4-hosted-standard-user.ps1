@@ -555,7 +555,7 @@ try {
 function Invoke-BoundedUserExe {
     param(
         [Parameter(Mandatory=$true)]
-        [ValidateSet('INSTALLER','VALIDATOR','UNINSTALLER')]
+        [ValidateSet('CMD_BASELINE','INSTALLER','VALIDATOR','UNINSTALLER')]
         [string]$Stage,
         [Parameter(Mandatory=$true)][string]$FilePath,
         [Parameter(Mandatory=$true)][string]$Arguments,
@@ -571,7 +571,32 @@ function Invoke-BoundedUserExe {
         if (($fileItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
             throw 'Bounded process executable may not be a reparse point.'
         }
+        if ($Stage -ceq 'CMD_BASELINE') {
+            $expectedCmd = Join-Path $env:SystemRoot 'System32\cmd.exe'
+            if ($FilePath -cne $expectedCmd -or
+                $Arguments -cne '/D /Q /C exit /B 0') {
+                throw 'Nested process diagnostic must use the fixed Windows CMD command.'
+            }
+        }
         "$($Stage)_EXECUTABLE_PRESENT=PASS" | Add-Content -LiteralPath $result
+
+        if ($Stage -ceq 'INSTALLER') {
+            # Verify the isolated user can open the exact candidate installer
+            # for read. This tests file access, not executable mapping rights.
+            $reader = [System.IO.File]::Open(
+                $FilePath, [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+            try {
+                if ($reader.ReadByte() -ne 0x4D -or
+                    $reader.ReadByte() -ne 0x5A) {
+                    throw 'Installer executable has an invalid DOS PE header.'
+                }
+            }
+            finally {
+                $reader.Dispose()
+            }
+            'INSTALLER_FILE_READ_MZ=PASS' | Add-Content -LiteralPath $result
+        }
 
         $startInfo = New-Object System.Diagnostics.ProcessStartInfo
         $startInfo.FileName = $FilePath
@@ -612,6 +637,19 @@ function Invoke-BoundedUserExe {
         if ($null -ne $child) { $child.Dispose() }
     }
 }
+
+    # Confirm that this already-verified non-admin PowerShell user token
+    # can start *any* ordinary child via ProcessStartInfo before diagnosing
+    # access to the protected installer. Fixed system CMD, no input or side
+    # effects beyond exit 0; a failure blocks all following runtime stages.
+    $cmdExe = Join-Path $env:SystemRoot 'System32\cmd.exe'
+    $cmdExit = Invoke-BoundedUserExe -Stage CMD_BASELINE -FilePath $cmdExe `
+        -Arguments '/D /Q /C exit /B 0' -TimeoutSeconds 10
+    "CMD_BASELINE_EXIT_CODE=$cmdExit" | Add-Content -LiteralPath $result
+    if ($cmdExit -ne 0) {
+        throw 'Nested standard-user command startup baseline failed.'
+    }
+    'NESTED_STANDARD_USER_CMD=PASS' | Add-Content -LiteralPath $result
 
     $setup = Join-Path $pack 'NetPilot-UserMode-Setup-__VERSION__-x64.exe'
     'INSTALLER_LAUNCH_BEGIN=PASS' | Add-Content -LiteralPath $result
