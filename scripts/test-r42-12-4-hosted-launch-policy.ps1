@@ -74,7 +74,7 @@ $required = @(
     'RUNNER_IDENTITY_MATCH=PASS',
     'RUNNER_ADMIN_ROLE=False',
     'function Invoke-BoundedUserExe',
-    "[ValidateSet('INSTALLER','VALIDATOR','UNINSTALLER')]",
+    "[ValidateSet('CMD_BASELINE','INSTALLER','VALIDATOR','UNINSTALLER')]",
     '$startInfo.UseShellExecute = $false',
     '$startInfo.CreateNoWindow = $true',
     '-not $child.WaitForExit($TimeoutSeconds * 1000)',
@@ -85,6 +85,16 @@ $required = @(
     'FAILURE_HRESULT=0x',
     'WIN32_ERROR=',
     'ReparsePoint',
+    'Invoke-BoundedUserExe -Stage CMD_BASELINE -FilePath $cmdExe',
+    "CMD_BASELINE_EXIT_CODE=$cmdExit",
+    'NESTED_STANDARD_USER_CMD=PASS',
+    'Nested process diagnostic must use the fixed Windows CMD command.',
+    'INSTALLER_FILE_READ_MZ=PASS',
+    '[System.IO.File]::Open(',
+    '[System.IO.FileAccess]::Read',
+    '[System.IO.FileShare]::Read',
+    '0x4D',
+    '0x5A',
     'Invoke-BoundedUserExe -Stage INSTALLER -FilePath $setup',
     'Invoke-BoundedUserExe -Stage VALIDATOR -FilePath $validator',
     'Invoke-BoundedUserExe -Stage UNINSTALLER -FilePath $uninstaller',
@@ -128,9 +138,12 @@ $runnerCode = $source.Substring($runnerBegin, $runnerEnd - $runnerBegin)
 if ($runnerCode.Contains('Start-Process', [System.StringComparison]::Ordinal)) {
     throw 'R42.12.4 protected user runner must launch EXEs directly without Start-Process.'
 }
-if ($runnerCode.IndexOf('RUNNER_IDENTITY_MATCH=PASS', [System.StringComparison]::Ordinal) -ge
-    $runnerCode.IndexOf('Invoke-BoundedUserExe -Stage INSTALLER', [System.StringComparison]::Ordinal)) {
-    throw 'R42.12.4 user-mode installer cannot run before restricted-user identity proof.'
+$identityAt = $runnerCode.IndexOf('RUNNER_IDENTITY_MATCH=PASS', [System.StringComparison]::Ordinal)
+$nestedCmdAt = $runnerCode.IndexOf('Invoke-BoundedUserExe -Stage CMD_BASELINE', [System.StringComparison]::Ordinal)
+$installAt = $runnerCode.IndexOf('Invoke-BoundedUserExe -Stage INSTALLER', [System.StringComparison]::Ordinal)
+if ($identityAt -lt 0 -or $nestedCmdAt -lt 0 -or $installAt -lt 0 -or
+    $identityAt -ge $nestedCmdAt -or $nestedCmdAt -ge $installAt) {
+    throw 'R42.12.4 must prove exact user, pass bounded nested CMD, then launch installer.'
 }
 
 $workflowPath = Join-Path $PSScriptRoot '..\.github\workflows\r42-12-4-no-admin-byedpi-validation.yml'
