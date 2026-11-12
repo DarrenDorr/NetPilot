@@ -547,16 +547,79 @@ try {
     $env:USERPROFILE = $userProfile
     'STANDARD_USER_PROFILE_LOADED=PASS' | Add-Content -LiteralPath $result
 
+
+# Windows PowerShell 5.1 Start-Process can depend on ShellExecute and an
+# interactive desktop. In this LOGON_WITH_PROFILE standard-user harness,
+# run only explicit trusted .exe files directly as the CURRENT low-privilege
+# identity. Never request elevation or pass credentials to a grandchild.
+function Invoke-BoundedUserExe {
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateSet('INSTALLER','VALIDATOR','UNINSTALLER')]
+        [string]$Stage,
+        [Parameter(Mandatory=$true)][string]$FilePath,
+        [Parameter(Mandatory=$true)][string]$Arguments,
+        [Parameter(Mandatory=$true)][ValidateRange(1,300)][int]$TimeoutSeconds
+    )
+    $child = $null
+    try {
+        if (-not [System.IO.Path]::IsPathRooted($FilePath) -or
+            -not (Test-Path -LiteralPath $FilePath -PathType Leaf)) {
+            throw 'Expected bounded process executable is missing.'
+        }
+        $fileItem = Get-Item -LiteralPath $FilePath -Force
+        if (($fileItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'Bounded process executable may not be a reparse point.'
+        }
+        "$($Stage)_EXECUTABLE_PRESENT=PASS" | Add-Content -LiteralPath $result
+
+        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $startInfo.FileName = $FilePath
+        $startInfo.Arguments = $Arguments
+        $startInfo.WorkingDirectory = [System.IO.Path]::GetDirectoryName($FilePath)
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $startInfo.ErrorDialog = $false
+        "$($Stage)_LAUNCH_MODE=DIRECT_NO_SHELL" | Add-Content -LiteralPath $result
+
+        $child = New-Object System.Diagnostics.Process
+        $child.StartInfo = $startInfo
+        if (-not $child.Start()) {
+            throw 'Direct user-mode process creation returned false.'
+        }
+        "$($Stage)_PROCESS_CREATED=PASS" | Add-Content -LiteralPath $result
+        if (-not $child.WaitForExit($TimeoutSeconds * 1000)) {
+            "$($Stage)_TIMEOUT_SECONDS=$TimeoutSeconds" | Add-Content -LiteralPath $result
+            try { $child.Kill() } catch { }
+            try { $null = $child.WaitForExit(5000) } catch { }
+            throw 'Direct user-mode process exceeded bounded timeout.'
+        }
+        return [int]$child.ExitCode
+    }
+    catch {
+        # Preserve only bounded diagnostic stage, type and numeric codes.
+        # Never log user profile paths, command lines or exception messages.
+        $deep = $_.Exception
+        while ($null -ne $deep.InnerException) { $deep = $deep.InnerException }
+        "$($Stage)_FAILURE_TYPE=$($deep.GetType().FullName)" | Add-Content -LiteralPath $result
+        "$($Stage)_FAILURE_HRESULT=0x$($deep.HResult.ToString('X8'))" | Add-Content -LiteralPath $result
+        if ($deep -is [System.ComponentModel.Win32Exception]) {
+            "$($Stage)_WIN32_ERROR=$($deep.NativeErrorCode)" | Add-Content -LiteralPath $result
+        }
+        throw
+    }
+    finally {
+        if ($null -ne $child) { $child.Dispose() }
+    }
+}
+
     $setup = Join-Path $pack 'NetPilot-UserMode-Setup-__VERSION__-x64.exe'
     'INSTALLER_LAUNCH_BEGIN=PASS' | Add-Content -LiteralPath $result
-    $install = Start-Process `
-        -FilePath $setup `
-        -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' `
-        -Wait `
-        -PassThru
-    "INSTALLER_EXIT_CODE=$($install.ExitCode)" | Add-Content -LiteralPath $result
-    if ($install.ExitCode -ne 0) {
-        throw "User-mode installer failed: $($install.ExitCode)"
+    $installExit = Invoke-BoundedUserExe -Stage INSTALLER -FilePath $setup `
+        -Arguments '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-' -TimeoutSeconds 150
+    "INSTALLER_EXIT_CODE=$installExit" | Add-Content -LiteralPath $result
+    if ($installExit -ne 0) {
+        throw 'User-mode installer exited with nonzero code.'
     }
 
     $installRoot = Join-Path $localAppData 'Programs\NetPilot'
@@ -572,14 +635,12 @@ try {
 
     $validator = Join-Path $pack 'NetPilot-ByeDPI-NoAdmin-Validation.exe'
     'VALIDATOR_LAUNCH_BEGIN=PASS' | Add-Content -LiteralPath $result
-    $validation = Start-Process `
-        -FilePath $validator `
-        -ArgumentList '--install-root',$installRoot,'--evidence-dir',$evidence `
-        -Wait `
-        -PassThru
-    "VALIDATOR_EXIT_CODE=$($validation.ExitCode)" | Add-Content -LiteralPath $result
-    if ($validation.ExitCode -ne 0) {
-        throw "No-admin validator failed: $($validation.ExitCode)"
+    $validationExit = Invoke-BoundedUserExe -Stage VALIDATOR -FilePath $validator `
+        -Arguments ('--install-root "{0}" --evidence-dir "{1}"' -f $installRoot, $evidence) `
+        -TimeoutSeconds 300
+    "VALIDATOR_EXIT_CODE=$validationExit" | Add-Content -LiteralPath $result
+    if ($validationExit -ne 0) {
+        throw 'No-admin validator exited with nonzero code.'
     }
 
     'STANDARD_USER_VALIDATION=PASS' | Add-Content -LiteralPath $result
@@ -587,14 +648,11 @@ try {
     $uninstaller = Join-Path $installRoot 'unins000.exe'
     if (Test-Path -LiteralPath $uninstaller -PathType Leaf) {
         'UNINSTALLER_LAUNCH_BEGIN=PASS' | Add-Content -LiteralPath $result
-        $uninstall = Start-Process `
-            -FilePath $uninstaller `
-            -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' `
-            -Wait `
-            -PassThru
-        "UNINSTALLER_EXIT_CODE=$($uninstall.ExitCode)" | Add-Content -LiteralPath $result
-        if ($uninstall.ExitCode -ne 0) {
-            throw "Per-user uninstall failed: $($uninstall.ExitCode)"
+        $uninstallExit = Invoke-BoundedUserExe -Stage UNINSTALLER -FilePath $uninstaller `
+            -Arguments '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -TimeoutSeconds 90
+        "UNINSTALLER_EXIT_CODE=$uninstallExit" | Add-Content -LiteralPath $result
+        if ($uninstallExit -ne 0) {
+            throw 'Per-user uninstaller exited with nonzero code.'
         }
     }
 
