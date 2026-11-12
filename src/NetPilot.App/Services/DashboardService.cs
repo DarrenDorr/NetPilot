@@ -19,6 +19,10 @@ public interface IDashboardService : IDisposable
     Task<StrategySelectionResult> FindWorkingStrategyAsync(
         CancellationToken cancellationToken = default);
 
+    Task<StrategySelectionResult> FindWorkingStrategyForResourceAsync(
+        string resourceId,
+        CancellationToken cancellationToken = default);
+
     Task<StrategyRuntimeState> GetStrategyRuntimeStateAsync(
         CancellationToken cancellationToken = default);
 
@@ -78,6 +82,22 @@ public sealed class DashboardService : IDashboardService
     {
         ThrowIfDisposed();
         return _selectionEngine.EvaluateAndRecoverAsync(Resources, cancellationToken);
+    }
+
+    public Task<StrategySelectionResult> FindWorkingStrategyForResourceAsync(
+        string resourceId,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        // Only canonical built-in services are eligible; no arbitrary endpoints.
+        var target = Resources.SingleOrDefault(resource =>
+            string.Equals(resource.Id, resourceId, StringComparison.Ordinal));
+        if (target is null)
+        {
+            throw new ArgumentException("Неизвестный сервис для подбора стратегии.", nameof(resourceId));
+        }
+
+        return _selectionEngine.EvaluateAndRecoverAsync([target], cancellationToken);
     }
 
     public Task<StrategyRuntimeState> GetStrategyRuntimeStateAsync(
