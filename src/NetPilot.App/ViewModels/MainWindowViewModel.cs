@@ -378,12 +378,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         if (results.Count > 0 && results.All(result => result.State == ResourceHealthState.Healthy))
         {
-            OverallStatus = "Доступ в порядке";
-            OverallDetails = "Все проверенные сервисы каталога отвечают по выбранному маршруту. Это не гарантирует доступ браузера.";
+            OverallStatus = "HTTPS-проверки пройдены";
+            OverallDetails = "Проверенные адреса сервисов ответили по выбранному маршруту. Работа приложений, голосовой связи и другого трафика не подтверждена.";
+        }
+        else if (results.Count == 0)
+        {
+            foreach (var resource in _resourceById.Values)
+            {
+                resource.SetNotVerified();
+            }
+            OverallStatus = "Нет результатов проверки";
+            OverallDetails = "Проверка не вернула ни одного результата; доступность сервисов и приложений не подтверждена.";
         }
         else if (results.Any(result => result.State == ResourceHealthState.Unavailable))
         {
-            OverallStatus = "Есть недоступные сервисы";
+            OverallStatus = "Есть недоступные HTTPS-адреса";
             OverallDetails = "Проверьте указанный маршрут. Для SOCKS5 можно подобрать стратегию; прямой маршрут от этого не изменится.";
         }
         else
