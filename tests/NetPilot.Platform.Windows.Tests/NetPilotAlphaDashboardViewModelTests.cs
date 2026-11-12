@@ -85,6 +85,24 @@ public sealed class NetPilotAlphaDashboardViewModelTests
         Assert.DoesNotContain("private-strategy", viewModel.StrategyDiagnostics);
     }
 
+    [Theory]
+    [InlineData("discord")]
+    [InlineData("youtube")]
+    public async Task TargetedStrategyCommand_PassesOnlySelectedResource(string resourceId)
+    {
+        using var dashboard = new FakeDashboardService(true);
+        using var viewModel = new MainWindowViewModel(dashboard);
+        var command = resourceId == "discord"
+            ? viewModel.FindDiscordStrategyCommand
+            : viewModel.FindYouTubeStrategyCommand;
+        command.Execute(null);
+        for (var i = 0; i < 100 && dashboard.LastRequestedResourceId is null; i++)
+        {
+            await Task.Delay(10);
+        }
+        Assert.Equal(resourceId, dashboard.LastRequestedResourceId);
+    }
+
     [Fact]
     public void Dispose_ClosesUnderlyingDashboardExactlyOnce()
     {
@@ -100,6 +118,7 @@ public sealed class NetPilotAlphaDashboardViewModelTests
     private sealed class FakeDashboardService(bool running) : IDashboardService
     {
         public int DisposeCalls { get; private set; }
+        public string? LastRequestedResourceId { get; private set; }
 
         public IReadOnlyList<ResourceDefinition> Resources => Array.Empty<ResourceDefinition>();
 
@@ -119,6 +138,7 @@ public sealed class NetPilotAlphaDashboardViewModelTests
             {
                 throw new ArgumentException("Unknown resource", nameof(resourceId));
             }
+            LastRequestedResourceId = resourceId;
             return FindWorkingStrategyAsync(cancellationToken);
         }
 
