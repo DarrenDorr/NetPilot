@@ -53,14 +53,14 @@ public sealed class DashboardService : IDashboardService
 
     public Task<IReadOnlyList<ResourceHealth>> CheckResourcesAsync(
         CancellationToken cancellationToken = default)
-        => CheckWithProbeAsync(_byeDpiHealthProbe, cancellationToken);
+        => CheckWithProbeAsync(_byeDpiHealthProbe.CheckAsync, cancellationToken);
 
     public Task<IReadOnlyList<ResourceHealth>> CheckDirectResourcesAsync(
         CancellationToken cancellationToken = default)
-        => CheckWithProbeAsync(_healthChecker, cancellationToken);
+        => CheckWithProbeAsync(_healthChecker.CheckAsync, cancellationToken);
 
     private async Task<IReadOnlyList<ResourceHealth>> CheckWithProbeAsync(
-        IResourceHealthProbe probe,
+        Func<ResourceDefinition, CancellationToken, Task<ResourceHealth>> check,
         CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
@@ -68,7 +68,7 @@ public sealed class DashboardService : IDashboardService
         foreach (var resource in Resources)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            results.Add(await probe.CheckAsync(resource, cancellationToken));
+            results.Add(await check(resource, cancellationToken));
         }
         return results;
     }
