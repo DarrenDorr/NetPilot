@@ -277,6 +277,13 @@
                          Text="{Binding LastAction}"
                          Margin="0,7,0,0" TextWrapping="Wrap" />
             </Grid>
+            <Grid ColumnDefinitions="146,*">
+              <TextBlock Text="SOCKS5 (вручную)" Foreground="#A2B3CB" />
+              <TextBlock Grid.Column="1" Text="{Binding LocalSocks5Address}"
+                         TextWrapping="Wrap" Foreground="#CFDDF1" />
+            </Grid>
+            <TextBlock Text="Для приложений с поддержкой SOCKS5: настраивайте прокси только в самом приложении. NetPilot не перенаправляет весь трафик Windows."
+                       FontSize="11" Foreground="#8497B4" TextWrapping="Wrap" />
             <TextBlock Text="Диагностика подбора стратегий" FontSize="14" FontWeight="SemiBold" />
             <TextBlock Text="{Binding StrategyDiagnostics}" FontSize="12" Foreground="#A2B3CB" TextWrapping="Wrap" />
             <TextBlock Text="Режим эксперта не меняет права доступа и системный прокси."

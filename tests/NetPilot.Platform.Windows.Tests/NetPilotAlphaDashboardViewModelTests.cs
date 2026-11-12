@@ -30,6 +30,9 @@ public sealed class NetPilotAlphaDashboardViewModelTests
             isRunning ? "запущен" : "остановлен",
             viewModel.EngineStatus,
             StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            isRunning ? "127.0.0.1:37801" : "Недоступен — ByeDPI остановлен.",
+            viewModel.LocalSocks5Address);
     }
 
     [Fact]
@@ -177,6 +180,10 @@ public sealed class NetPilotAlphaDashboardViewModelTests
             => Task.FromResult(running
                 ? StrategyRuntimeState.Running("byedpi-windows-recommended")
                 : StrategyRuntimeState.Stopped);
+
+        public Task<string?> GetLocalSocks5AddressAsync(
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<string?>(running ? "127.0.0.1:37801" : null);
 
         public Task StartDefaultStrategyAsync(
             CancellationToken cancellationToken = default)

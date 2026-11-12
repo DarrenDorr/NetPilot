@@ -30,6 +30,13 @@ public interface IStrategyRuntime
             "Этот сетевой runtime не поддерживает безопасную остановку через общий контракт.");
 }
 
+// Optional runtime capability: reports the port of the app-owned loopback SOCKS5
+// listener; it must never represent a public or system proxy endpoint.
+public interface ILocalSocks5EndpointProvider
+{
+    int? LocalSocks5Port { get; }
+}
+
 public interface IResourceHealthProbe
 {
     Task<ResourceHealth> CheckAsync(
