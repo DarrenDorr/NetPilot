@@ -50,7 +50,7 @@ public sealed class ByeDpiUserModeLaunchPolicyTests
         var optionIndex = args.IndexOf(expectedOption);
         Assert.True(optionIndex >= 0);
         Assert.Equal(expectedPosition, args[optionIndex + 1]);
-        Assert.All(args, static arg => Assert.DoesNotContain('\\n', arg));
+        Assert.All(args, static arg => Assert.DoesNotContain((char)10, arg));
         Assert.DoesNotContain("--hosts", args);
         Assert.DoesNotContain("--ipset", args);
         Assert.DoesNotContain("--debug", args);
