@@ -18,6 +18,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly AsyncCommand _checkCommand;
     private readonly AsyncCommand _checkDirectCommand;
     private readonly AsyncCommand _findStrategyCommand;
+    private readonly AsyncCommand _findDiscordStrategyCommand;
+    private readonly AsyncCommand _findYouTubeStrategyCommand;
 
     private string _overallStatus = "Готов к проверке";
     private string _overallDetails = "Запустите ByeDPI для проверки через локальный SOCKS5. Можно отдельно проверить прямое соединение.";
@@ -66,6 +68,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         _findStrategyCommand = new AsyncCommand(
             FindStrategyAsync,
+            () => !IsBusy,
+            HandleUnexpectedError);
+
+        _findDiscordStrategyCommand = new AsyncCommand(
+            () => FindStrategyForResourceAsync("discord", "Discord"),
+            () => !IsBusy,
+            HandleUnexpectedError);
+
+        _findYouTubeStrategyCommand = new AsyncCommand(
+            () => FindStrategyForResourceAsync("youtube", "YouTube"),
             () => !IsBusy,
             HandleUnexpectedError);
     }
@@ -160,6 +172,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 _checkCommand.RaiseCanExecuteChanged();
                 _checkDirectCommand.RaiseCanExecuteChanged();
                 _findStrategyCommand.RaiseCanExecuteChanged();
+                _findDiscordStrategyCommand.RaiseCanExecuteChanged();
+                _findYouTubeStrategyCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -174,6 +188,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public ICommand CheckCommand => _checkCommand;
     public ICommand CheckDirectCommand => _checkDirectCommand;
     public ICommand FindStrategyCommand => _findStrategyCommand;
+    public ICommand FindDiscordStrategyCommand => _findDiscordStrategyCommand;
+    public ICommand FindYouTubeStrategyCommand => _findYouTubeStrategyCommand;
 
     public async Task InitializeAsync()
     {
@@ -278,14 +294,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private async Task FindStrategyAsync()
+    private Task FindStrategyAsync() => FindStrategyCoreAsync(null, null);
+
+    private Task FindStrategyForResourceAsync(string resourceId, string displayName) =>
+        FindStrategyCoreAsync(resourceId, displayName);
+
+    private async Task FindStrategyCoreAsync(string? resourceId, string? displayName)
     {
         ThrowIfDisposed();
         IsBusy = true;
-        OverallStatus = "Подбираем рабочую стратегию…";
+        OverallStatus = displayName is null
+            ? "Подбираем рабочую стратегию…"
+            : $"Подбираем стратегию для {displayName}…";
         StrategyDiagnostics = "Подбор выполняется; результат ещё не подтверждён.";
         HealthRouteDescription = "Маршрут: локальный ByeDPI SOCKS5 (подбор стратегии)";
-        OverallDetails = "NetPilot сначала подтверждает проблему, затем проверяет ограниченное число альтернатив через локальный ByeDPI SOCKS5.";
+        OverallDetails = displayName is null
+            ? "Проверяем оба сервиса; стратегия принимается, только если оба доступны через SOCKS5."
+            : $"Проверяем только {displayName} через SOCKS5. Это не гарантирует работу другого сервиса или браузера.";
 
         foreach (var resource in _resourceById.Values)
         {
@@ -294,9 +319,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            var result = await _dashboardService.FindWorkingStrategyAsync();
+            var result = resourceId is null
+                ? await _dashboardService.FindWorkingStrategyAsync()
+                : await _dashboardService.FindWorkingStrategyForResourceAsync(resourceId);
             ApplyStrategySelectionResult(result);
-            StrategyDiagnostics = BuildStrategyDiagnosticSummary(result);
+            StrategyDiagnostics = (displayName is null ? "Цель: оба сервиса. " : $"Цель: {displayName}. ") +
+                BuildStrategyDiagnosticSummary(result);
 
             var health = await _dashboardService.CheckResourcesAsync();
             ApplyHealthResults(health, preserveActionText: true);

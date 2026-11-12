@@ -69,8 +69,26 @@
                   BorderBrush="#314665"
                   CornerRadius="10" />
 
-          <Button Content="Подобрать стратегию"
+          <Button Content="Подобрать: оба сервиса"
                   Command="{Binding FindStrategyCommand}"
+                  HorizontalAlignment="Stretch"
+                  HorizontalContentAlignment="Left"
+                  Padding="15,12"
+                  Background="#1B2B46"
+                  BorderBrush="#314665"
+                  CornerRadius="10" />
+
+          <Button Content="Подобрать: Discord"
+                  Command="{Binding FindDiscordStrategyCommand}"
+                  HorizontalAlignment="Stretch"
+                  HorizontalContentAlignment="Left"
+                  Padding="15,12"
+                  Background="#1B2B46"
+                  BorderBrush="#314665"
+                  CornerRadius="10" />
+
+          <Button Content="Подобрать: YouTube"
+                  Command="{Binding FindYouTubeStrategyCommand}"
                   HorizontalAlignment="Stretch"
                   HorizontalContentAlignment="Left"
                   Padding="15,12"

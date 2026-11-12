@@ -59,6 +59,8 @@ public sealed class NetPilotAlphaDashboardViewModelTests
         Assert.True(viewModel.CheckDirectCommand.CanExecute(null));
         Assert.Contains("SOCKS5", viewModel.HealthRouteDescription);
         Assert.True(viewModel.FindStrategyCommand.CanExecute(null));
+        Assert.True(viewModel.FindDiscordStrategyCommand.CanExecute(null));
+        Assert.True(viewModel.FindYouTubeStrategyCommand.CanExecute(null));
 
         viewModel.IsAdvancedMode = true;
         Assert.True(viewModel.IsAdvancedMode);
@@ -108,6 +110,17 @@ public sealed class NetPilotAlphaDashboardViewModelTests
         public Task<IReadOnlyList<ResourceHealth>> CheckDirectResourcesAsync(
             CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<ResourceHealth>>(Array.Empty<ResourceHealth>());
+
+        public Task<StrategySelectionResult> FindWorkingStrategyForResourceAsync(
+            string resourceId,
+            CancellationToken cancellationToken = default)
+        {
+            if (resourceId is not ("discord" or "youtube"))
+            {
+                throw new ArgumentException("Unknown resource", nameof(resourceId));
+            }
+            return FindWorkingStrategyAsync(cancellationToken);
+        }
 
         public Task<StrategySelectionResult> FindWorkingStrategyAsync(
             CancellationToken cancellationToken = default)
