@@ -30,7 +30,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private string _engineActionText = "Запустить ByeDPI";
     private IBrush _engineStatusBrush = Brushes.SlateGray;
     private bool _isEngineRunning;
-    private bool _isMenuExpanded = true;
+    private bool _isMenuExpanded;
     private string _lastAction = "Действий ещё не выполнялось.";
     private bool _isBusy;
     private bool _isAdvancedMode;

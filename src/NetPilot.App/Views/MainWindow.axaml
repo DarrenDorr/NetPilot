@@ -8,7 +8,7 @@
         Height="790"
         MinWidth="820"
         MinHeight="640"
-        Background="#0B1220"
+        Background="#090F1D"
         Foreground="#E8EEFA"
         FontFamily="Segoe UI">
   <Grid ColumnDefinitions="Auto,*">
@@ -16,7 +16,7 @@
     <Border Grid.Column="0"
             Width="{Binding SidebarWidth}"
             Padding="16,22"
-            Background="#111C31"
+            Background="#101A2E"
             BorderBrush="#27354C"
             BorderThickness="0,0,1,0">
       <Grid RowDefinitions="Auto,*,Auto">
@@ -95,7 +95,7 @@
           <TextBlock Text="НАСТРОЙКИ" FontSize="11" FontWeight="SemiBold"
                      Foreground="#8498BA" Margin="4,0,0,4" />
           <StackPanel Orientation="Horizontal" Spacing="8">
-            <ToggleSwitch IsChecked="{Binding IsAdvancedMode}"
+            <ToggleSwitch OnContent="" OffContent="" IsChecked="{Binding IsAdvancedMode}"
                           VerticalAlignment="Center"
                           ToolTip.Tip="Показать или скрыть техническую информацию" />
             <TextBlock Text="Режим эксперта"
@@ -119,14 +119,14 @@
     <ScrollViewer Grid.Column="1"
                   VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled">
-      <StackPanel Margin="30,28,30,30"
-                  MaxWidth="920"
+      <StackPanel Margin="24,20,24,24"
+                  MaxWidth="1180"
                   HorizontalAlignment="Stretch"
-                  Spacing="20">
+                  Spacing="15">
         <Grid ColumnDefinitions="*,Auto">
           <StackPanel Spacing="4">
-            <TextBlock Text="Обзор подключения" FontSize="28" FontWeight="SemiBold" />
-            <TextBlock Text="Состояние сети и доступность сервисов"
+            <TextBlock Text="NetPilot" FontSize="27" FontWeight="SemiBold" />
+            <TextBlock Text="Управление соединением и проверенными сервисами"
                        FontSize="13" Foreground="#98ABC7" />
           </StackPanel>
           <Border Grid.Column="1" VerticalAlignment="Center"
@@ -138,30 +138,30 @@
           </Border>
         </Grid>
 
-        <Border Padding="26" CornerRadius="24"
+        <Border Padding="18" CornerRadius="22"
                 Background="#15243E"
                 BorderBrush="#314765"
                 BorderThickness="1">
-          <StackPanel HorizontalAlignment="Stretch" Spacing="14">
-            <TextBlock Text="Управление ByeDPI"
+          <StackPanel HorizontalAlignment="Stretch" Spacing="10">
+            <TextBlock Text="Подключение"
                        FontSize="16" FontWeight="SemiBold"
                        HorizontalAlignment="Center" Foreground="#DCE9FA" />
             <TextBlock Text="Запуск и остановка без повышения прав"
                        FontSize="12"
                        HorizontalAlignment="Center" Foreground="#A5B6CE" />
             <Button Command="{Binding ToggleEngineCommand}"
-                    Width="210" Height="210"
+                    Width="168" Height="168"
                     HorizontalAlignment="Center"
                     Background="#2367C8"
                     BorderBrush="{Binding EngineStatusBrush}"
                     BorderThickness="5"
-                    CornerRadius="105"
+                    CornerRadius="84"
                     Padding="20"
                     ToolTip.Tip="Запустить или остановить локальный движок ByeDPI">
               <TextBlock Text="{Binding EngineActionText}"
                          TextWrapping="Wrap"
                          TextAlignment="Center"
-                         FontSize="22"
+                         FontSize="18"
                          FontWeight="Bold"
                          Foreground="#FFFFFF" />
             </Button>
@@ -178,7 +178,7 @@
                          Foreground="#CFDDF1" />
             </StackPanel>
             <Border Background="#1D314F" CornerRadius="12"
-                    Padding="16,13" Margin="0,10,0,0">
+                    Padding="14,11" Margin="0,4,0,0">
               <StackPanel Spacing="5">
                 <TextBlock Text="{Binding OverallStatus}"
                            FontSize="19" FontWeight="SemiBold"
@@ -194,7 +194,7 @@
         <Grid ColumnDefinitions="*,Auto">
           <TextBlock Text="Сервисы" FontSize="19" FontWeight="SemiBold"
                      VerticalAlignment="Center" />
-          <TextBlock Grid.Column="1" Text="Результат выбранного маршрута"
+          <TextBlock Grid.Column="1" Text="HTTPS-адреса, не состояние приложений"
                      VerticalAlignment="Center" FontSize="11"
                      Foreground="#879BB8" />
         </Grid>
@@ -204,10 +204,15 @@
                    TextWrapping="Wrap" />
 
         <ItemsControl ItemsSource="{Binding Resources}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:ResourceStatusViewModel">
-              <Border Padding="17"
-                      Margin="0,0,0,10"
+              <Border Width="255" MinHeight="80" Padding="13"
+                      Margin="0,0,12,12"
                       CornerRadius="14"
                       Background="#132137"
                       BorderThickness="1"
@@ -250,7 +255,7 @@
                 Background="#14223A" BorderBrush="#2D405C"
                 BorderThickness="1">
           <StackPanel Spacing="7">
-            <TextBlock Text="Последнее событие"
+            <TextBlock Text="Последние события"
                        FontSize="16" FontWeight="SemiBold" />
             <TextBlock Text="{Binding LastAction}"
                        FontSize="13" TextWrapping="Wrap"
