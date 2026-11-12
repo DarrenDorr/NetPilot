@@ -92,6 +92,27 @@ public sealed class HealthCheckSecurityTests
     }
 
     [Fact]
+    public void Reviewed_catalog_has_unique_safe_fixed_https_endpoints_and_explicit_limitations()
+    {
+        var reviewed = BuiltInResourceCatalog.Reviewed;
+        Assert.NotEmpty(reviewed);
+        Assert.Equal(BuiltInResourceCatalog.All.Count, reviewed.Count);
+        Assert.Equal(reviewed.Count, reviewed.Select(entry => entry.Resource.Id)
+            .Distinct(StringComparer.Ordinal).Count());
+
+        foreach (var entry in reviewed)
+        {
+            Assert.Same(entry.Resource, BuiltInResourceCatalog.GetReviewed(entry.Resource.Id).Resource);
+            Assert.Equal(ServiceConnectivity.HttpsOverLocalSocks5ProbeOnly, entry.Connectivity);
+            Assert.NotEmpty(entry.Resource.HealthCheckUris);
+            Assert.All(entry.Resource.HealthCheckUris, PublicEndpointPolicy.ValidateUri);
+        }
+
+        Assert.Throws<ArgumentException>(() => BuiltInResourceCatalog.GetReviewed("not-reviewed"));
+        Assert.Throws<ArgumentException>(() => BuiltInResourceCatalog.GetReviewed("DISCORD"));
+    }
+
+    [Fact]
     public async Task Healthy_response_does_not_read_body_and_reports_healthy()
     {
         var handler = new FakeHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.NoContent));
