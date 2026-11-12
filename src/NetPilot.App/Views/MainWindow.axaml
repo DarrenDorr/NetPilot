@@ -282,6 +282,21 @@
               <TextBlock Grid.Column="1" Text="{Binding LocalSocks5Address}"
                          TextWrapping="Wrap" Foreground="#CFDDF1" />
             </Grid>
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+              <Button Content="Скопировать SOCKS5"
+                      Click="OnCopySocks5AddressClicked"
+                      IsEnabled="{Binding IsEngineRunning}"
+                      Padding="12,7"
+                      Background="#244875"
+                      BorderBrush="#416996"
+                      CornerRadius="8"
+                      ToolTip.Tip="Копирует только локальный адрес работающего ByeDPI; настройки Windows не меняются." />
+              <TextBlock x:Name="CopySocks5Feedback"
+                         VerticalAlignment="Center"
+                         Foreground="#9DB6D4"
+                         FontSize="11"
+                         TextWrapping="Wrap" />
+            </StackPanel>
             <TextBlock Text="Для приложений с поддержкой SOCKS5: настраивайте прокси только в самом приложении. NetPilot не перенаправляет весь трафик Windows."
                        FontSize="11" Foreground="#8497B4" TextWrapping="Wrap" />
             <TextBlock Text="Диагностика подбора стратегий" FontSize="14" FontWeight="SemiBold" />
