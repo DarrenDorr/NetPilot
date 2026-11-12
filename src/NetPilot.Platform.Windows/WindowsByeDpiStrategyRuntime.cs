@@ -7,7 +7,7 @@ using NetPilot.Automation;
 
 namespace NetPilot.Platform.Windows;
 
-public sealed class WindowsByeDpiStrategyRuntime : IStrategyRuntime, IDisposable
+public sealed class WindowsByeDpiStrategyRuntime : IStrategyRuntime, ILocalSocks5EndpointProvider, IDisposable
 {
     private readonly ByeDpiUserModeOptions _options;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -23,6 +23,8 @@ public sealed class WindowsByeDpiStrategyRuntime : IStrategyRuntime, IDisposable
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _options.Validate();
     }
+
+    public int? LocalSocks5Port => ProxyPort;
 
     public int? ProxyPort
     {

@@ -26,6 +26,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private string _healthRouteDescription = "Маршрут: ByeDPI SOCKS5 (127.0.0.1), без системного прокси";
     private string _strategyDiagnostics = "Диагностика подбора появится после проверки стратегии.";
     private string _engineStatus = "Состояние сетевого движка ещё не получено.";
+    private string _localSocks5Address = "Недоступен — ByeDPI ещё не запущен.";
     private string _engineActionText = "Запустить ByeDPI";
     private IBrush _engineStatusBrush = Brushes.SlateGray;
     private bool _isEngineRunning;
@@ -122,6 +123,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         get => _engineStatus;
         private set => SetField(ref _engineStatus, value);
+    }
+
+    public string LocalSocks5Address
+    {
+        get => _localSocks5Address;
+        private set => SetField(ref _localSocks5Address, value);
     }
 
     public string EngineActionText
@@ -505,6 +512,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 ? $"ByeDPI: запущен · стратегия {state.StrategyId}"
                 : "ByeDPI: остановлен";
             EngineActionText = running ? "Остановить ByeDPI" : "Запустить ByeDPI";
+            LocalSocks5Address = running
+                ? await _dashboardService.GetLocalSocks5AddressAsync(cancellationToken)
+                    ?? "Локальный адрес не подтверждён."
+                : "Недоступен — ByeDPI остановлен.";
         }
         catch (Exception exception) when (IsExpectedOperationalException(exception))
         {
@@ -512,6 +523,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             EngineStatusBrush = Brushes.IndianRed;
             EngineStatus = "Проверенный пакет ByeDPI недоступен или ещё не установлен.";
             EngineActionText = "Запустить ByeDPI";
+            LocalSocks5Address = "Недоступен — не удалось подтвердить состояние.";
         }
     }
 

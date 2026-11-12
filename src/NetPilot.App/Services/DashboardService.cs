@@ -26,6 +26,9 @@ public interface IDashboardService : IDisposable
     Task<StrategyRuntimeState> GetStrategyRuntimeStateAsync(
         CancellationToken cancellationToken = default);
 
+    Task<string?> GetLocalSocks5AddressAsync(
+        CancellationToken cancellationToken = default);
+
     Task StartDefaultStrategyAsync(
         CancellationToken cancellationToken = default);
 
@@ -105,6 +108,25 @@ public sealed class DashboardService : IDashboardService
     {
         ThrowIfDisposed();
         return _strategyRuntime.GetStateAsync(cancellationToken);
+    }
+
+    public async Task<string?> GetLocalSocks5AddressAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        var state = await _strategyRuntime.GetStateAsync(cancellationToken);
+        if (!state.IsRunning || string.IsNullOrWhiteSpace(state.StrategyId))
+        {
+            return null;
+        }
+
+        if (_strategyRuntime is not ILocalSocks5EndpointProvider endpoint)
+        {
+            return null;
+        }
+
+        var port = endpoint.LocalSocks5Port;
+        return port is >= 1 and <= 65535 ? $"127.0.0.1:{port.Value}" : null;
     }
 
     public async Task StartDefaultStrategyAsync(
