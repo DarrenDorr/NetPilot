@@ -81,14 +81,14 @@ public sealed class ResourceStatusViewModel : INotifyPropertyChanged
 
             case ResourceHealthState.Degraded:
                 StatusText = "Есть ограничения";
-                DetailsText = latencyText;
+                DetailsText = BuildSafeDiagnostic(health.DiagnosticCode, latencyText);
                 StatusBrush = Brushes.DarkOrange;
                 StatusGlyph = "●";
                 break;
 
             case ResourceHealthState.Unavailable:
                 StatusText = "HTTPS недоступен";
-                DetailsText = string.Empty;
+                DetailsText = BuildSafeDiagnostic(health.DiagnosticCode, string.Empty);
                 StatusBrush = Brushes.IndianRed;
                 StatusGlyph = "●";
                 break;
@@ -105,6 +105,33 @@ public sealed class ResourceStatusViewModel : INotifyPropertyChanged
                 break;
         }
     }
+
+    // Only a fixed allowlist may be rendered; never show arbitrary diagnostic
+    // strings originating from network responses or exception messages.
+    private static string BuildSafeDiagnostic(string? code, string fallback) => code switch
+    {
+        "ByeDpiNotRunning" => "ByeDPI не запущен",
+        "ProxyTimeout" => "Тайм-аут SOCKS5/HTTPS",
+        "ProxyNameResolutionError" => "Ошибка разрешения имени",
+        "ProxyConnectionError" => "Ошибка сетевого соединения",
+        "ProxyTlsError" => "Ошибка защищённого соединения TLS",
+        "ProxyTunnelError" => "Ошибка туннеля прокси",
+        "ProxyHttpProtocolError" => "Ошибка протокола HTTP",
+        "ProxyNetworkError" => "Сетевая ошибка (этап не определён)",
+        "ProxyRedirectRejected" => "Перенаправление отклонено",
+        "EndpointRejected" => "Адрес проверки не разрешён",
+        "NoHealthEndpoints" => "Нет разрешённых адресов проверки",
+        "ProxyHealthCheckFailed" => "Проверка через прокси завершилась ошибкой",
+        "Http401" => "HTTP 401",
+        "Http403" => "HTTP 403",
+        "Http408" => "HTTP 408",
+        "Http429" => "HTTP 429",
+        "Http500" => "HTTP 500",
+        "Http502" => "HTTP 502",
+        "Http503" => "HTTP 503",
+        "Http504" => "HTTP 504",
+        _ => fallback
+    };
 
     public void SetNotVerified()
     {

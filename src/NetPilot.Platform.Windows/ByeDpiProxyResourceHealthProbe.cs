@@ -151,13 +151,29 @@ public sealed class ByeDpiProxyResourceHealthProbe(
         {
             return CreateHealth(resourceId, ResourceHealthState.Unavailable, stopwatch.Elapsed, "EndpointRejected");
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException exception)
         {
-            return CreateHealth(resourceId, ResourceHealthState.Unavailable, stopwatch.Elapsed, "ProxyNetworkError");
+            return CreateHealth(
+                resourceId,
+                ResourceHealthState.Unavailable,
+                stopwatch.Elapsed,
+                ClassifyNetworkError(exception.HttpRequestError));
         }
 
         return CreateHealth(resourceId, ResourceHealthState.Unavailable, stopwatch.Elapsed, "ProxyHealthCheckFailed");
     }
+
+    // Diagnostic codes are bounded constants, never exception messages, stack traces,
+    // requested URLs, IPs or SOCKS5 protocol payloads.
+    public static string ClassifyNetworkError(HttpRequestError error) => error switch
+    {
+        HttpRequestError.NameResolutionError => "ProxyNameResolutionError",
+        HttpRequestError.ConnectionError => "ProxyConnectionError",
+        HttpRequestError.SecureConnectionError => "ProxyTlsError",
+        HttpRequestError.ProxyTunnelError => "ProxyTunnelError",
+        HttpRequestError.HttpProtocolError => "ProxyHttpProtocolError",
+        _ => "ProxyNetworkError"
+    };
 
     private static bool IsCanonicalBuiltInResource(ResourceDefinition resource)
     {
