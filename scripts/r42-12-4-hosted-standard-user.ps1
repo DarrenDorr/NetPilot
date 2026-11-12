@@ -481,18 +481,19 @@ try {
         Copy-Item -LiteralPath $_.FullName -Destination $publicPack -Recurse -Force
     }
 
-    & icacls.exe `
-        $publicPack `
-        /inheritance:r `
-        /grant:r `
-        "*${createdUserSid}:(OI)(CI)RX" `
-        '*S-1-5-18:(OI)(CI)F' `
-        '*S-1-5-32-544:(OI)(CI)F' `
-        /T `
-        /C | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Could not apply read-only pack ACL for the exact standard-user SID.'
+    # Never treat a recursive icacls /C result as proof of file-level RX:
+    # each copied EXE must get an explicit, independently verified exact-SID
+    # DACL. The helper refuses unknown allow/deny entries and any write grant.
+    $packAclHelper = Join-Path $PSScriptRoot 'r42-12-4-apply-pack-acl.ps1'
+    if (-not (Test-Path -LiteralPath $packAclHelper -PathType Leaf)) {
+        throw 'Protected pack ACL helper is missing.'
     }
+    if (((Get-Item -LiteralPath $packAclHelper -Force).Attributes -band
+            [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'Protected pack ACL helper cannot be a reparse point.'
+    }
+    & $packAclHelper -PackRoot $publicPack -StandardUserSid $createdUserSid | Out-Null
+    'PACK_FILE_LEVEL_ACL_VERIFIED=PASS' | Add-Content (Join-Path $HostedEvidenceDir 'boundary.txt')
 
     & icacls.exe `
         $publicEvidence `

@@ -23,6 +23,9 @@ $required = @(
     'icacls.exe $runnerScript /inheritance:r /grant:r',
     '"*${createdUserSid}:RX"',
     'HOSTED_RUNNER_SCRIPT_ACL=EXACT_TEST_USER_RX',
+    'r42-12-4-apply-pack-acl.ps1',
+    '-PackRoot $publicPack -StandardUserSid $createdUserSid',
+    'PACK_FILE_LEVEL_ACL_VERIFIED=PASS',
     'LOGON_WITH_PROFILE',
     'RUNNER_STARTED=True',
     'INSTALLER_LAUNCH_BEGIN=PASS',
@@ -144,6 +147,48 @@ $installAt = $runnerCode.IndexOf('Invoke-BoundedUserExe -Stage INSTALLER', [Syst
 if ($identityAt -lt 0 -or $nestedCmdAt -lt 0 -or $installAt -lt 0 -or
     $identityAt -ge $nestedCmdAt -or $nestedCmdAt -ge $installAt) {
     throw 'R42.12.4 must prove exact user, pass bounded nested CMD, then launch installer.'
+}
+
+# The ACL helper and its independent canary are mandatory on Windows.
+# Do not revert to one recursive icacls /T /C success marker.
+$aclHelperPath = Join-Path $PSScriptRoot 'r42-12-4-apply-pack-acl.ps1'
+$aclCanaryPath = Join-Path $PSScriptRoot 'test-r42-12-4-pack-acl.ps1'
+foreach ($aclScript in @($aclHelperPath, $aclCanaryPath)) {
+    if (-not (Test-Path -LiteralPath $aclScript -PathType Leaf)) {
+        throw 'R42.12.4 per-file ACL safety check script missing.'
+    }
+    $aclTokens = $null
+    $aclErrors = $null
+    [System.Management.Automation.Language.Parser]::ParseFile(
+        $aclScript, [ref]$aclTokens, [ref]$aclErrors) | Out-Null
+    if (@($aclErrors).Count -ne 0) {
+        throw 'R42.12.4 per-file ACL safety check script has invalid syntax.'
+    }
+}
+$aclText = Get-Content -LiteralPath $aclHelperPath -Raw -Encoding utf8
+foreach ($requiredAcl in @(
+    'Get-ChildItem -LiteralPath $PackRoot -Recurse -Force',
+    'ReparsePoint',
+    'if ($entry.PSIsContainer)',
+    '$testPrincipal + '':RX''',
+    '$testPrincipal + '':(OI)(CI)RX''',
+    'icacls.exe $entry.FullName /inheritance:r /grant:r',
+    'Get-Acl -LiteralPath $entry.FullName',
+    'AreAccessRulesProtected',
+    'GetAccessRules(',
+    'AccessControlType',
+    'ReadAndExecute',
+    'ChangePermissions',
+    'TakeOwnership',
+    'R42_12_4_PACK_FILE_LEVEL_ACL_VERIFIED=PASS'
+)) {
+    if (-not $aclText.Contains($requiredAcl, [System.StringComparison]::Ordinal)) {
+        throw 'R42.12.4 strict per-file ACL check is missing required code.'
+    }
+}
+if ($source.Contains('$publicPack', [System.StringComparison]::Ordinal) -and
+    $source.Contains('PACK_FILE_LEVEL_ACL_VERIFIED=PASS', [System.StringComparison]::Ordinal) -eq $false) {
+    throw 'R42.12.4 cannot claim pack ACL RX without per-file proof.'
 }
 
 $workflowPath = Join-Path $PSScriptRoot '..\.github\workflows\r42-12-4-no-admin-byedpi-validation.yml'
