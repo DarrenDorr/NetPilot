@@ -20,7 +20,24 @@ public static class ByeDpiUserModeLaunchPolicy
             new StrategyDescriptor(
                 "byedpi-auto-tlsrec",
                 "ByeDPI · auto + TLS record"),
-            ["--disorder", "1", "--auto=torst", "--tlsrec", "1+s"])
+            ["--disorder", "1", "--auto=torst", "--tlsrec", "1+s"]),
+        // Small experimental catalog for Windows Alpha, not provider-wide guarantees.
+        // Reviewed ByeDPI 0.17.3 options only. No user-supplied argv or drivers.
+        new(
+            new StrategyDescriptor(
+                "byedpi-disorder-only",
+                "ByeDPI · simple disorder (trial)"),
+            ["--disorder", "1"]),
+        new(
+            new StrategyDescriptor(
+                "byedpi-oob-sni",
+                "ByeDPI · SNI out-of-band (trial)"),
+            ["--oob", "1+s"]),
+        new(
+            new StrategyDescriptor(
+                "byedpi-tls-split",
+                "ByeDPI · TLS split (trial)"),
+            ["--split", "1", "--tlsrec", "1+s"])
     ];
 
     public static IReadOnlyList<StrategyDescriptor> Strategies { get; } =
