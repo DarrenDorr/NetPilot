@@ -119,7 +119,7 @@ if ($source -match '(?m)^\s*\$nativeChild\s*=\s*\[NetPilotStandardUserTokenLaunc
 
 # The restricted-user script must not depend on Windows shell
 # execution to launch the headless installer/validator/uninstaller.
-$runnerBegin = $source.IndexOf("$runnerTemplate = @'", [System.StringComparison]::Ordinal)
+$runnerBegin = $source.IndexOf(('$runnerTemplate = @' + "'"), [System.StringComparison]::Ordinal)
 $runnerEnd = $source.IndexOf("`n'@", $runnerBegin + 1, [System.StringComparison]::Ordinal)
 if ($runnerBegin -lt 0 -or $runnerEnd -le $runnerBegin) {
     throw 'R42.12.4 protected user runner script template missing.'
