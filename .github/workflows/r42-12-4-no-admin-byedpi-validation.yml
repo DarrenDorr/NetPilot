@@ -179,9 +179,12 @@ jobs:
           Copy-Item -LiteralPath $setupSource -Destination (Join-Path $pack "NetPilot-UserMode-Setup-$env:TEST_VERSION-x64.exe")
           Copy-Item -LiteralPath 'build\no-admin-validator\NetPilot.ByeDpiUserModeValidation.exe' -Destination (Join-Path $pack 'NetPilot-ByeDPI-NoAdmin-Validation.exe')
           Copy-Item -LiteralPath 'docs\R42.12.4-NO-ADMIN-BYEDPI.md' -Destination (Join-Path $pack 'README.md')
+          Copy-Item -LiteralPath 'docs\WINDOWS-ALPHA-GUI-SMOKE.md' -Destination (Join-Path $pack 'WINDOWS-ALPHA-GUI-SMOKE.md')
+          Copy-Item -LiteralPath 'scripts\r42-12-4-verify-physical-pack.ps1' -Destination (Join-Path $pack 'verify-physical-pack.ps1')
 
           $setup = Get-Item -LiteralPath (Join-Path $pack "NetPilot-UserMode-Setup-$env:TEST_VERSION-x64.exe")
           $validator = Get-Item -LiteralPath (Join-Path $pack 'NetPilot-ByeDPI-NoAdmin-Validation.exe')
+          $gui = Get-Item -LiteralPath 'artifacts\publish\app-user-mode-win-x64\NetPilot.exe' -ErrorAction Stop
           $head = (git rev-parse HEAD).Trim()
           [ordered]@{
             schema = 1
@@ -193,6 +196,7 @@ jobs:
             release_published = $false
             production_admission = 'BLOCK'
             hosted_validation = 'NOT_YET_PROVEN'
+            hosted_run_id = [long]0
             candidate = [ordered]@{
               version = '0.17.3'
               size = [long]$env:BYEDPI_WINDOWS_SIZE
@@ -209,6 +213,12 @@ jobs:
               name = $validator.Name
               size = $validator.Length
               sha256 = (Get-FileHash -LiteralPath $validator.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              execution_level = 'asInvoker'
+            }
+            gui = [ordered]@{
+              name = 'NetPilot.exe'
+              size = $gui.Length
+              sha256 = (Get-FileHash -LiteralPath $gui.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
               execution_level = 'asInvoker'
             }
           } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $pack 'package-manifest.json') -Encoding utf8NoBOM
@@ -257,8 +267,28 @@ jobs:
             'RESULT=R42_12_4_HOSTED_STANDARD_USER_FAIL_BLOCK' | Add-Content hosted-evidence\boundary.txt
           }
 
+      - name: Finalize physical-PC pack only after hosted standard-user PASS
+        id: finalize_pc_pack
+        if: ${{ steps.assemble_pack.outcome == 'success' && steps.hosted_validation.outcome == 'success' && steps.recheck_draft.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifestPath = 'pack\package-manifest.json'
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding utf8 | ConvertFrom-Json
+          if ($manifest.production_admission -cne 'BLOCK' -or
+              $manifest.release_published -ne $false -or
+              $manifest.netpilot_commit -cne $env:GITHUB_SHA -or
+              $manifest.hosted_validation -cne 'NOT_YET_PROVEN' -or
+              [long]$manifest.hosted_run_id -ne 0) {
+            throw 'Pack cannot be stamped without original blocked draft state and exact checked-out SHA.'
+          }
+          $manifest.hosted_validation = 'PASS_BLOCK'
+          $manifest.hosted_run_id = [long]$env:GITHUB_RUN_ID
+          $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding utf8NoBOM
+          'PHYSICAL_PC_PACK_HOSTED_PASS_ONLY=PASS_BLOCK' | Add-Content hosted-evidence\boundary.txt
+
       - name: Upload one-day no-admin physical-PC validation pack
-        if: ${{ always() && steps.assemble_pack.outcome == 'success' && steps.recheck_draft.outcome == 'success' }}
+        if: ${{ always() && steps.assemble_pack.outcome == 'success' && steps.hosted_validation.outcome == 'success' && steps.recheck_draft.outcome == 'success' && steps.finalize_pc_pack.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: netpilot-r42-12-4-no-admin-pc-validation-pack

@@ -196,6 +196,62 @@ $workflow = Get-Content -LiteralPath $workflowPath -Raw -Encoding utf8
 if (-not $workflow.Contains("'PRODUCTION_ADMISSION=BLOCK'", [System.StringComparison]::Ordinal)) {
     throw 'R42.12.4 production admission gate is missing.'
 }
+
+# The physical-PC artifact is a *validated-only* short-lived package.
+# An unsuccessful hosted test must never advertise an installable alpha.
+foreach ($requiredDelivery in @(
+    "hosted_validation = 'NOT_YET_PROVEN'",
+    'hosted_run_id = [long]0',
+    'gui = [ordered]@{',
+    "name = 'NetPilot.exe'",
+    "Copy-Item -LiteralPath 'docs\WINDOWS-ALPHA-GUI-SMOKE.md'",
+    "Copy-Item -LiteralPath 'scripts\r42-12-4-verify-physical-pack.ps1'",
+    'id: finalize_pc_pack',
+    "steps.hosted_validation.outcome == 'success'",
+    "steps.recheck_draft.outcome == 'success'",
+    "steps.finalize_pc_pack.outcome == 'success'",
+    "$manifest.hosted_validation = 'PASS_BLOCK'",
+    'PHYSICAL_PC_PACK_HOSTED_PASS_ONLY=PASS_BLOCK',
+    'retention-days: 1'
+)) {
+    if (-not $workflow.Contains($requiredDelivery, [System.StringComparison]::Ordinal)) {
+        throw 'R42.12.4 physical pack must be emitted only after full hosted PASS.'
+    }
+}
+$verifyPackPath = Join-Path $PSScriptRoot 'r42-12-4-verify-physical-pack.ps1'
+if (-not (Test-Path -LiteralPath $verifyPackPath -PathType Leaf)) {
+    throw 'R42.12.4 physical pack verification script missing.'
+}
+$verifyPackTokens = $null
+$verifyPackErrors = $null
+[System.Management.Automation.Language.Parser]::ParseFile(
+    $verifyPackPath, [ref]$verifyPackTokens, [ref]$verifyPackErrors) | Out-Null
+if (@($verifyPackErrors).Count -ne 0) {
+    throw 'R42.12.4 physical pack verification PowerShell syntax is invalid.'
+}
+$verifyText = Get-Content -LiteralPath $verifyPackPath -Raw -Encoding utf8
+foreach ($requiredVerifier in @(
+    "hosted_validation -cne 'PASS_BLOCK'",
+    "production_admission -cne 'BLOCK'",
+    'draft_release_id -ne 431054375',
+    'manifest.netpilot_commit',
+    'manifest.hosted_run_id',
+    'manifest.installer.sha256',
+    'manifest.validator.sha256',
+    'manifest.gui.sha256',
+    'Get-FileHash -LiteralPath $FilePath -Algorithm SHA256',
+    'WindowsBuiltInRole',
+    'ReparsePoint',
+    'R42_12_4_PACK_CHECK=PASS'
+)) {
+    if (-not $verifyText.Contains($requiredVerifier, [System.StringComparison]::Ordinal)) {
+        throw 'R42.12.4 physical pack verifier is missing a fail-closed requirement.'
+    }
+}
+if ($verifyText -match 'Start-Process|Process\.Start|Invoke-WebRequest|Invoke-RestMethod|ExecutionPolicy\s+Bypass|Start-Job|runas') {
+    throw 'R42.12.4 physical pack verifier must be read-only and offline.'
+}
+
 $preflight = Join-Path $PSScriptRoot 'r42-12-4-hosted-preflight.ps1'
 if (-not (Test-Path -LiteralPath $preflight -PathType Leaf)) {
     throw 'R42.12.4 hosted preflight script is missing.'
