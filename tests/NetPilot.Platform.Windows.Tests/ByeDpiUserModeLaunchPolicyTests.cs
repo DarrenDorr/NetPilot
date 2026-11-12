@@ -8,6 +8,9 @@ public sealed class ByeDpiUserModeLaunchPolicyTests
     [Theory]
     [InlineData("byedpi-windows-recommended")]
     [InlineData("byedpi-auto-tlsrec")]
+    [InlineData("byedpi-disorder-only")]
+    [InlineData("byedpi-oob-sni")]
+    [InlineData("byedpi-tls-split")]
     public void BuildArguments_AlwaysUsesLoopbackSocksWithoutPrivilegedModes(string strategyId)
     {
         var arguments = ByeDpiUserModeLaunchPolicy.BuildArguments(strategyId, 32123, 64).ToArray();
@@ -22,6 +25,35 @@ public sealed class ByeDpiUserModeLaunchPolicyTests
         Assert.DoesNotContain("--daemon", arguments);
         Assert.DoesNotContain("runas", arguments, StringComparer.OrdinalIgnoreCase);
         Assert.DoesNotContain("service", arguments, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void StrategyCatalog_ContainsOnlyFiveDistinctReviewedProfiles()
+    {
+        var profiles = ByeDpiUserModeLaunchPolicy.Strategies;
+        Assert.Equal(5, profiles.Count);
+        Assert.Equal(5, profiles.Select(static strategy => strategy.Id)
+            .Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal("byedpi-windows-recommended", profiles[0].Id);
+    }
+
+    [Theory]
+    [InlineData("byedpi-disorder-only", "--disorder", "1")]
+    [InlineData("byedpi-oob-sni", "--oob", "1+s")]
+    [InlineData("byedpi-tls-split", "--split", "1")]
+    public void ExperimentalProfiles_UseReviewedFixedArgumentTokens(
+        string strategyId,
+        string expectedOption,
+        string expectedPosition)
+    {
+        var args = ByeDpiUserModeLaunchPolicy.BuildArguments(strategyId, 32123, 64).ToArray();
+        var optionIndex = args.IndexOf(expectedOption);
+        Assert.True(optionIndex >= 0);
+        Assert.Equal(expectedPosition, args[optionIndex + 1]);
+        Assert.All(args, static arg => Assert.DoesNotContain((char)10, arg));
+        Assert.DoesNotContain("--hosts", args);
+        Assert.DoesNotContain("--ipset", args);
+        Assert.DoesNotContain("--debug", args);
     }
 
     [Fact]
