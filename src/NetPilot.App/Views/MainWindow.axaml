@@ -51,8 +51,17 @@
           <TextBlock Text="ДЕЙСТВИЯ" FontSize="11" FontWeight="SemiBold"
                      Foreground="#8498BA" Margin="4,0,0,4" />
 
-          <Button Content="Проверить сервисы"
+          <Button Content="Проверить через ByeDPI"
                   Command="{Binding CheckCommand}"
+                  HorizontalAlignment="Stretch"
+                  HorizontalContentAlignment="Left"
+                  Padding="15,12"
+                  Background="#1B2B46"
+                  BorderBrush="#314665"
+                  CornerRadius="10" />
+
+          <Button Content="Прямое подключение"
+                  Command="{Binding CheckDirectCommand}"
                   HorizontalAlignment="Stretch"
                   HorizontalContentAlignment="Left"
                   Padding="15,12"
@@ -173,10 +182,14 @@
         <Grid ColumnDefinitions="*,Auto">
           <TextBlock Text="Сервисы" FontSize="19" FontWeight="SemiBold"
                      VerticalAlignment="Center" />
-          <TextBlock Grid.Column="1" Text="Состояние после проверки"
+          <TextBlock Grid.Column="1" Text="Результат выбранного маршрута"
                      VerticalAlignment="Center" FontSize="11"
                      Foreground="#879BB8" />
         </Grid>
+
+        <TextBlock Text="{Binding HealthRouteDescription}"
+                   Foreground="#98ABC7" FontSize="12"
+                   TextWrapping="Wrap" />
 
         <ItemsControl ItemsSource="{Binding Resources}">
           <ItemsControl.ItemTemplate>

@@ -8,7 +8,12 @@ public interface IDashboardService : IDisposable
 {
     IReadOnlyList<ResourceDefinition> Resources { get; }
 
+    // Health through the app-owned ByeDPI SOCKS5 endpoint; never the system route.
     Task<IReadOnlyList<ResourceHealth>> CheckResourcesAsync(
+        CancellationToken cancellationToken = default);
+
+    // Explicit direct-network baseline, not an implicit fallback for ByeDPI checks.
+    Task<IReadOnlyList<ResourceHealth>> CheckDirectResourcesAsync(
         CancellationToken cancellationToken = default);
 
     Task<StrategySelectionResult> FindWorkingStrategyAsync(
@@ -27,34 +32,44 @@ public interface IDashboardService : IDisposable
 public sealed class DashboardService : IDashboardService
 {
     private readonly PublicHttpsHealthChecker _healthChecker;
+    private readonly IResourceHealthProbe _byeDpiHealthProbe;
     private readonly IStrategyRuntime _strategyRuntime;
     private readonly StrategySelectionEngine _selectionEngine;
     private bool _disposed;
 
     public DashboardService(
         PublicHttpsHealthChecker healthChecker,
+        IResourceHealthProbe byeDpiHealthProbe,
         IStrategyRuntime strategyRuntime,
         StrategySelectionEngine selectionEngine)
     {
         _healthChecker = healthChecker ?? throw new ArgumentNullException(nameof(healthChecker));
+        _byeDpiHealthProbe = byeDpiHealthProbe ?? throw new ArgumentNullException(nameof(byeDpiHealthProbe));
         _strategyRuntime = strategyRuntime ?? throw new ArgumentNullException(nameof(strategyRuntime));
         _selectionEngine = selectionEngine ?? throw new ArgumentNullException(nameof(selectionEngine));
     }
 
     public IReadOnlyList<ResourceDefinition> Resources => BuiltInResourceCatalog.All;
 
-    public async Task<IReadOnlyList<ResourceHealth>> CheckResourcesAsync(
+    public Task<IReadOnlyList<ResourceHealth>> CheckResourcesAsync(
         CancellationToken cancellationToken = default)
+        => CheckWithProbeAsync(_byeDpiHealthProbe.CheckAsync, cancellationToken);
+
+    public Task<IReadOnlyList<ResourceHealth>> CheckDirectResourcesAsync(
+        CancellationToken cancellationToken = default)
+        => CheckWithProbeAsync(_healthChecker.CheckAsync, cancellationToken);
+
+    private async Task<IReadOnlyList<ResourceHealth>> CheckWithProbeAsync(
+        Func<ResourceDefinition, CancellationToken, Task<ResourceHealth>> check,
+        CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
-
         var results = new List<ResourceHealth>(Resources.Count);
         foreach (var resource in Resources)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            results.Add(await _healthChecker.CheckAsync(resource, cancellationToken));
+            results.Add(await check(resource, cancellationToken));
         }
-
         return results;
     }
 
