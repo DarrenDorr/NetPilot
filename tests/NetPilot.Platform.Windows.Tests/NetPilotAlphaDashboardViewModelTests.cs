@@ -56,6 +56,8 @@ public sealed class NetPilotAlphaDashboardViewModelTests
         Assert.Contains(nameof(MainWindowViewModel.SidebarWidth), changed);
         Assert.True(viewModel.ToggleEngineCommand.CanExecute(null));
         Assert.True(viewModel.CheckCommand.CanExecute(null));
+        Assert.True(viewModel.CheckDirectCommand.CanExecute(null));
+        Assert.Contains("SOCKS5", viewModel.HealthRouteDescription);
         Assert.True(viewModel.FindStrategyCommand.CanExecute(null));
 
         viewModel.IsAdvancedMode = true;
@@ -81,6 +83,10 @@ public sealed class NetPilotAlphaDashboardViewModelTests
         public IReadOnlyList<ResourceDefinition> Resources => Array.Empty<ResourceDefinition>();
 
         public Task<IReadOnlyList<ResourceHealth>> CheckResourcesAsync(
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<ResourceHealth>>(Array.Empty<ResourceHealth>());
+
+        public Task<IReadOnlyList<ResourceHealth>> CheckDirectResourcesAsync(
             CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<ResourceHealth>>(Array.Empty<ResourceHealth>());
 

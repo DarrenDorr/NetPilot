@@ -135,6 +135,7 @@ internal static class Program
         var selectionEngine = new StrategySelectionEngine(strategyRuntime, healthProbe);
         var dashboardService = new DashboardService(
             healthChecker,
+            healthProbe,
             strategyRuntime,
             selectionEngine);
 

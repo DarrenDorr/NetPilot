@@ -16,10 +16,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly Dictionary<string, ResourceStatusViewModel> _resourceById;
     private readonly AsyncCommand _toggleEngineCommand;
     private readonly AsyncCommand _checkCommand;
+    private readonly AsyncCommand _checkDirectCommand;
     private readonly AsyncCommand _findStrategyCommand;
 
     private string _overallStatus = "Готов к проверке";
-    private string _overallDetails = "Проверьте доступность сервисов одной кнопкой.";
+    private string _overallDetails = "Запустите ByeDPI для проверки через локальный SOCKS5. Можно отдельно проверить прямое соединение.";
+    private string _healthRouteDescription = "Маршрут: ByeDPI SOCKS5 (127.0.0.1), без системного прокси";
     private string _engineStatus = "Состояние сетевого движка ещё не получено.";
     private string _engineActionText = "Запустить ByeDPI";
     private IBrush _engineStatusBrush = Brushes.SlateGray;
@@ -53,6 +55,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         _checkCommand = new AsyncCommand(
             CheckNowAsync,
+            () => !IsBusy,
+            HandleUnexpectedError);
+
+        _checkDirectCommand = new AsyncCommand(
+            CheckDirectNowAsync,
             () => !IsBusy,
             HandleUnexpectedError);
 
@@ -92,6 +99,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         get => _engineActionText;
         private set => SetField(ref _engineActionText, value);
+    }
+
+    public string HealthRouteDescription
+    {
+        get => _healthRouteDescription;
+        private set => SetField(ref _healthRouteDescription, value);
     }
 
     public string LastAction
@@ -138,6 +151,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             {
                 _toggleEngineCommand.RaiseCanExecuteChanged();
                 _checkCommand.RaiseCanExecuteChanged();
+                _checkDirectCommand.RaiseCanExecuteChanged();
                 _findStrategyCommand.RaiseCanExecuteChanged();
             }
         }
@@ -151,6 +165,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public ICommand ToggleEngineCommand => _toggleEngineCommand;
     public ICommand CheckCommand => _checkCommand;
+    public ICommand CheckDirectCommand => _checkDirectCommand;
     public ICommand FindStrategyCommand => _findStrategyCommand;
 
     public async Task InitializeAsync()
@@ -212,12 +227,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private async Task CheckNowAsync()
+    private Task CheckNowAsync() => CheckHealthAsync(useDirect: false);
+
+    private Task CheckDirectNowAsync() => CheckHealthAsync(useDirect: true);
+
+    private async Task CheckHealthAsync(bool useDirect)
     {
         ThrowIfDisposed();
         IsBusy = true;
         OverallStatus = "Проверяем доступность…";
-        OverallDetails = "NetPilot проверяет только публичные HTTPS-адреса без авторизации и cookie.";
+        HealthRouteDescription = useDirect
+            ? "Маршрут: прямое HTTPS-подключение Windows (без ByeDPI)"
+            : "Маршрут: локальный ByeDPI SOCKS5 (без системного прокси)";
+        OverallDetails = useDirect
+            ? "Прямая проверка HTTPS без ByeDPI, авторизации и cookie."
+            : "Проверка HTTPS только через локальный SOCKS5 ByeDPI; это не проверка трафика браузера.";
 
         foreach (var resource in _resourceById.Values)
         {
@@ -226,10 +250,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            var results = await _dashboardService.CheckResourcesAsync();
+            var results = useDirect
+                ? await _dashboardService.CheckDirectResourcesAsync()
+                : await _dashboardService.CheckResourcesAsync();
             ApplyHealthResults(results);
             await RefreshEngineStatusAsync(CancellationToken.None);
-            LastAction = "Проверка доступности завершена.";
+            LastAction = useDirect
+                ? "Прямая HTTPS-проверка завершена (ByeDPI не использовался)."
+                : "Проверка через ByeDPI SOCKS5 завершена (браузер отдельно не проверялся).";
         }
         catch (Exception exception) when (IsExpectedOperationalException(exception))
         {
@@ -248,6 +276,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ThrowIfDisposed();
         IsBusy = true;
         OverallStatus = "Подбираем рабочую стратегию…";
+        HealthRouteDescription = "Маршрут: локальный ByeDPI SOCKS5 (подбор стратегии)";
         OverallDetails = "NetPilot сначала подтверждает проблему, затем проверяет ограниченное число альтернатив через локальный ByeDPI SOCKS5.";
 
         foreach (var resource in _resourceById.Values)
@@ -291,12 +320,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (results.Count > 0 && results.All(result => result.State == ResourceHealthState.Healthy))
         {
             OverallStatus = "Доступ в порядке";
-            OverallDetails = "Discord и YouTube отвечают на проверку NetPilot.";
+            OverallDetails = "Discord и YouTube отвечают на проверку по выбранному маршруту. Это не гарантирует доступ браузера.";
         }
         else if (results.Any(result => result.State == ResourceHealthState.Unavailable))
         {
             OverallStatus = "Есть недоступные сервисы";
-            OverallDetails = "Можно запустить ByeDPI, подобрать стратегию или повторить проверку позже.";
+            OverallDetails = "Проверьте указанный маршрут. Для SOCKS5 можно подобрать стратегию; прямой маршрут от этого не изменится.";
         }
         else
         {
