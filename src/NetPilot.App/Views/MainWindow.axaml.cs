@@ -41,7 +41,23 @@ public sealed partial class MainWindow : Window
         }
 
         // Fail closed: never copy unconfirmed status strings or arbitrary endpoints.
-        var address = viewModel.LocalSocks5Address;
+        string? address;
+        try
+        {
+            address = await viewModel.GetConfirmedLocalSocks5AddressAsync();
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            CopySocks5Feedback.Text = "Не удалось повторно подтвердить локальный адрес.";
+            return;
+        }
+
+        if (address is null)
+        {
+            CopySocks5Feedback.Text = "ByeDPI остановлен или локальный адрес устарел.";
+            return;
+        }
+
         const string prefix = "127.0.0.1:";
         if (!address.StartsWith(prefix, StringComparison.Ordinal)
             || !int.TryParse(address.AsSpan(prefix.Length), out var port)
