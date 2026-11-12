@@ -86,7 +86,7 @@ $required = @(
     'WIN32_ERROR=',
     'ReparsePoint',
     'Invoke-BoundedUserExe -Stage CMD_BASELINE -FilePath $cmdExe',
-    "CMD_BASELINE_EXIT_CODE=$cmdExit",
+    'CMD_BASELINE_EXIT_CODE=$cmdExit',
     'NESTED_STANDARD_USER_CMD=PASS',
     'Nested process diagnostic must use the fixed Windows CMD command.',
     'INSTALLER_FILE_READ_MZ=PASS',
