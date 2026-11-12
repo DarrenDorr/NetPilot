@@ -398,10 +398,64 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         var healthy = evaluations.Sum(e => e.ResourceResults.Count(r => r.State == ResourceHealthState.Healthy));
         var degraded = evaluations.Sum(e => e.ResourceResults.Count(r => r.State == ResourceHealthState.Degraded));
         var unavailable = evaluations.Sum(e => e.ResourceResults.Count(r => r.State == ResourceHealthState.Unavailable));
+        var serviceDiagnostics = new[]
+        {
+            SummarizeService(evaluations, "discord", "Discord"),
+            SummarizeService(evaluations, "youtube", "YouTube")
+        };
+
         return $"Итог: {result.Status}. Прогонов: {evaluations.Count}; пригодных: {confirmed}; " +
             $"без ответов: {empty}. HTTPS-проверок: {total}; работает: {healthy}; " +
             $"ограничения: {degraded}; недоступно: {unavailable}. " +
-            "Успех одного сервиса не означает, что стратегия работает для всех.";
+            string.Join(" ", serviceDiagnostics) +
+            " Результаты относятся к проверенным стратегиям, а не обязательно к текущей.";
+    }
+
+    private static string SummarizeService(
+        IReadOnlyList<StrategyEvaluation> evaluations,
+        string resourceId,
+        string displayName)
+    {
+        var results = evaluations.SelectMany(e => e.ResourceResults)
+            .Where(r => string.Equals(r.ResourceId, resourceId, StringComparison.Ordinal))
+            .ToArray();
+        if (results.Length == 0)
+        {
+            return $"{displayName}: нет результатов.";
+        }
+
+        var ok = results.Count(r => r.State == ResourceHealthState.Healthy);
+        var degraded = results.Count(r => r.State == ResourceHealthState.Degraded);
+        var failed = results.Count(r => r.State == ResourceHealthState.Unavailable);
+        // Fixed allowlist: no arbitrary endpoint URLs or exception messages in the UI.
+        var reasons = results.Select(r => r.DiagnosticCode)
+            .Select(static code => code switch
+            {
+                "ByeDpiNotRunning" => "ByeDpiNotRunning",
+                "ProxyTimeout" => "ProxyTimeout",
+                "ProxyNetworkError" => "ProxyNetworkError",
+                "ProxyRedirectRejected" => "ProxyRedirectRejected",
+                "EndpointRejected" => "EndpointRejected",
+                "NoHealthEndpoints" => "NoHealthEndpoints",
+                "ProxyHealthCheckFailed" => "ProxyHealthCheckFailed",
+                "Http401" => "Http401",
+                "Http403" => "Http403",
+                "Http408" => "Http408",
+                "Http429" => "Http429",
+                "Http500" => "Http500",
+                "Http502" => "Http502",
+                "Http503" => "Http503",
+                "Http504" => "Http504",
+                null => null,
+                _ => "OtherHttpOrNetwork"
+            })
+            .Where(static code => code is not null)
+            .Distinct(StringComparer.Ordinal)
+            .Take(4)
+            .ToArray();
+        return $"{displayName}: OK {ok}, ограничения {degraded}, ошибки {failed}" +
+            (reasons.Length == 0 ? "." : $"; коды: {string.Join(", ", reasons)}.");
+
     }
 
     private async Task RefreshEngineStatusAsync(CancellationToken cancellationToken)
