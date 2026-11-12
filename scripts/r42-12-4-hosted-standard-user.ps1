@@ -548,7 +548,7 @@ try {
     'STANDARD_USER_PROFILE_LOADED=PASS' | Add-Content -LiteralPath $result
 
 
-# Windows PowerShell 5.1 Start-Process can depend on ShellExecute and an
+# Windows PowerShell's process-start cmdlet can depend on ShellExecute and an
 # interactive desktop. In this LOGON_WITH_PROFILE standard-user harness,
 # run only explicit trusted .exe files directly as the CURRENT low-privilege
 # identity. Never request elevation or pass credentials to a grandchild.
