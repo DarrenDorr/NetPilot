@@ -73,6 +73,24 @@ $required = @(
     'PREFLIGHT_EVIDENCE_WRITE=PASS',
     'RUNNER_IDENTITY_MATCH=PASS',
     'RUNNER_ADMIN_ROLE=False',
+    'function Invoke-BoundedUserExe',
+    "[ValidateSet('INSTALLER','VALIDATOR','UNINSTALLER')]",
+    '$startInfo.UseShellExecute = $false',
+    '$startInfo.CreateNoWindow = $true',
+    '-not $child.WaitForExit($TimeoutSeconds * 1000)',
+    '$child.Kill()',
+    'ProcessStartInfo',
+    'EXECUTABLE_PRESENT=PASS',
+    'LAUNCH_MODE=DIRECT_NO_SHELL',
+    'FAILURE_HRESULT=0x',
+    'WIN32_ERROR=',
+    'ReparsePoint',
+    'Invoke-BoundedUserExe -Stage INSTALLER -FilePath $setup',
+    'Invoke-BoundedUserExe -Stage VALIDATOR -FilePath $validator',
+    'Invoke-BoundedUserExe -Stage UNINSTALLER -FilePath $uninstaller',
+    'INSTALLER_EXIT_CODE=',
+    'VALIDATOR_EXIT_CODE=',
+    'UNINSTALLER_EXIT_CODE=',
     'STANDARD_USER_VALIDATION=PASS',
     'RESULT=R42_12_4_NO_ADMIN_BYEDPI_PASS_BLOCK'
 )
@@ -97,6 +115,22 @@ if ($source -match '(?m)^\s*\$encodedRunner\s*=' -or
 if ($source -match '(?m)^\s*\$nativeChild\s*=\s*\[NetPilotStandardUserTokenLauncher\]::Start\(' -or
     $source -match '(?m)^\s*\$preflightChild\s*=\s*\[NetPilotStandardUserTokenLauncher\]::Start\(') {
     throw 'R42.12.4 primary hosted runner and preflight must use credential-based launch.'
+}
+
+# The restricted-user script must not depend on Windows shell
+# execution to launch the headless installer/validator/uninstaller.
+$runnerBegin = $source.IndexOf("$runnerTemplate = @'", [System.StringComparison]::Ordinal)
+$runnerEnd = $source.IndexOf("`n'@", $runnerBegin + 1, [System.StringComparison]::Ordinal)
+if ($runnerBegin -lt 0 -or $runnerEnd -le $runnerBegin) {
+    throw 'R42.12.4 protected user runner script template missing.'
+}
+$runnerCode = $source.Substring($runnerBegin, $runnerEnd - $runnerBegin)
+if ($runnerCode.Contains('Start-Process', [System.StringComparison]::Ordinal)) {
+    throw 'R42.12.4 protected user runner must launch EXEs directly without Start-Process.'
+}
+if ($runnerCode.IndexOf('RUNNER_IDENTITY_MATCH=PASS', [System.StringComparison]::Ordinal) -ge
+    $runnerCode.IndexOf('Invoke-BoundedUserExe -Stage INSTALLER', [System.StringComparison]::Ordinal)) {
+    throw 'R42.12.4 user-mode installer cannot run before restricted-user identity proof.'
 }
 
 $workflowPath = Join-Path $PSScriptRoot '..\.github\workflows\r42-12-4-no-admin-byedpi-validation.yml'
