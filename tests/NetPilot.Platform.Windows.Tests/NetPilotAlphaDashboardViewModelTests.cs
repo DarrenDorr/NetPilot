@@ -78,6 +78,8 @@ public sealed class NetPilotAlphaDashboardViewModelTests
         Assert.Contains("Прогонов: 2", viewModel.StrategyDiagnostics);
         Assert.Contains("работает: 1", viewModel.StrategyDiagnostics);
         Assert.Contains("недоступно: 1", viewModel.StrategyDiagnostics);
+        Assert.Contains("Discord: OK 1", viewModel.StrategyDiagnostics);
+        Assert.Contains("YouTube: OK 0", viewModel.StrategyDiagnostics);
         Assert.DoesNotContain("private-strategy", viewModel.StrategyDiagnostics);
     }
 
