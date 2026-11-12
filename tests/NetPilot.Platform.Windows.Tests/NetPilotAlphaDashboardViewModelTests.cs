@@ -60,6 +60,36 @@ public sealed class NetPilotAlphaDashboardViewModelTests
     }
 
     [Fact]
+    public async Task RuntimeStart_DiscardsPreviousDirectRouteResults()
+    {
+        using var dashboard = new FakeDashboardService(false);
+        using var viewModel = new MainWindowViewModel(dashboard);
+        await viewModel.InitializeAsync();
+        dashboard.DirectResults =
+        [
+            new ResourceHealth("discord", ResourceHealthState.Unavailable, DateTimeOffset.UtcNow),
+            new ResourceHealth("youtube", ResourceHealthState.Unavailable, DateTimeOffset.UtcNow)
+        ];
+        viewModel.CheckDirectCommand.Execute(null);
+        for (var i = 0; i < 100 && (viewModel.IsBusy || !viewModel.HealthRouteDescription.Contains("прямое", StringComparison.Ordinal)); i++)
+        {
+            await Task.Delay(10);
+        }
+        Assert.Contains("прямое", viewModel.HealthRouteDescription);
+        Assert.Equal("HTTPS недоступен", viewModel.Resources[0].StatusText);
+
+        viewModel.ToggleEngineCommand.Execute(null);
+        for (var i = 0; i < 100 && (!dashboard.Running || viewModel.IsBusy); i++)
+        {
+            await Task.Delay(10);
+        }
+        Assert.True(viewModel.IsEngineRunning);
+        Assert.Contains("SOCKS5", viewModel.HealthRouteDescription);
+        Assert.All(viewModel.Resources, resource => Assert.Equal("Не проверено", resource.StatusText));
+        Assert.Contains("требуется новая HTTPS-проверка", viewModel.HealthRouteDescription);
+    }
+
+    [Fact]
     public async Task EmptyHealthCheck_ReportsNotVerifiedInsteadOfSuccessOrDegraded()
     {
         using var dashboard = new FakeDashboardService(false);
@@ -175,6 +205,7 @@ public sealed class NetPilotAlphaDashboardViewModelTests
     private sealed class FakeDashboardService(bool running) : IDashboardService
     {
         public bool Running { get; set; } = running;
+        public IReadOnlyList<ResourceHealth> DirectResults { get; set; } = Array.Empty<ResourceHealth>();
         public int DisposeCalls { get; private set; }
         public string? LastRequestedResourceId { get; private set; }
 
@@ -191,7 +222,7 @@ public sealed class NetPilotAlphaDashboardViewModelTests
 
         public Task<IReadOnlyList<ResourceHealth>> CheckDirectResourcesAsync(
             CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<ResourceHealth>>(Array.Empty<ResourceHealth>());
+            => Task.FromResult(DirectResults);
 
         public Task<StrategySelectionResult> FindWorkingStrategyForResourceAsync(
             string resourceId,
@@ -232,11 +263,17 @@ public sealed class NetPilotAlphaDashboardViewModelTests
 
         public Task StartDefaultStrategyAsync(
             CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
+        {
+            Running = true;
+            return Task.CompletedTask;
+        }
 
         public Task StopStrategyRuntimeAsync(
             CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
+        {
+            Running = false;
+            return Task.CompletedTask;
+        }
 
         public void Dispose() => DisposeCalls++;
     }

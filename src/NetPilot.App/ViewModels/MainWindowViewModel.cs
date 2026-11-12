@@ -260,6 +260,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             }
 
             await RefreshEngineStatusAsync(CancellationToken.None);
+            // Previous health results might belong to the direct route or a
+            // different SOCKS5 listener/strategy. Invalidate instead of
+            // presenting stale red/green cards as current.
+            foreach (var resource in _resourceById.Values)
+            {
+                resource.SetNotVerified();
+            }
+
+            HealthRouteDescription = "Маршрут: локальный ByeDPI SOCKS5 — требуется новая HTTPS-проверка";
+            OverallDetails = IsEngineRunning
+                ? "ByeDPI запущен. Нажмите «Проверить через ByeDPI»: прежние прямые HTTPS-результаты сброшены. Это не проверка приложений."
+                : "ByeDPI остановлен. Предыдущие результаты более не относятся к текущему состоянию.";
         }
         catch (Exception exception) when (IsExpectedOperationalException(exception))
         {
