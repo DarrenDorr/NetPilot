@@ -52,12 +52,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             resource => new StrategyTargetOption(resource.Id, resource.DisplayName))).ToArray();
         _selectedStrategyTarget = StrategyTargets[0];
 
-        Telegram = new ResourceStatusViewModel("telegram", "Telegram");
-        Telegram.SetNotAvailableYet("Поддержка Telegram будет добавлена отдельным движком.");
-        Resources.Add(Telegram);
-
         _resourceById = Resources
-            .Where(resource => !string.Equals(resource.Id, "telegram", StringComparison.Ordinal))
             .ToDictionary(resource => resource.Id, StringComparer.Ordinal);
 
         _toggleEngineCommand = new AsyncCommand(
@@ -87,7 +82,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public string Subtitle => "Менеджер сетевого доступа";
 
     public ObservableCollection<ResourceStatusViewModel> Resources { get; }
-    public ResourceStatusViewModel Telegram { get; }
 
     // Generated from the same approved catalog used by the health checker.
     // A future reviewed service appears here without hard-coded service buttons.

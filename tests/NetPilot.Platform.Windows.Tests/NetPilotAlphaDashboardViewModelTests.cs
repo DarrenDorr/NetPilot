@@ -63,6 +63,10 @@ public sealed class NetPilotAlphaDashboardViewModelTests
         Assert.Contains("SOCKS5", viewModel.HealthRouteDescription);
         Assert.True(viewModel.FindStrategyCommand.CanExecute(null));
         Assert.Equal(4, viewModel.StrategyTargets.Count);
+        Assert.Equal(3, viewModel.Resources.Count);
+        Assert.Equal(
+            dashboard.Resources.Select(resource => resource.Id),
+            viewModel.Resources.Select(resource => resource.Id));
         Assert.Null(viewModel.SelectedStrategyTarget.ResourceId);
         Assert.Contains(viewModel.StrategyTargets, target => target.ResourceId == "example");
 
