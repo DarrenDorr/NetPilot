@@ -7,6 +7,7 @@ public sealed class ByeDpiUserModeLaunchPolicyTests
 {
     [Theory]
     [InlineData("byedpi-windows-recommended")]
+    [InlineData("byedpi-diagnostic-pass-through")]
     [InlineData("byedpi-auto-tlsrec")]
     [InlineData("byedpi-disorder-only")]
     [InlineData("byedpi-oob-sni")]
@@ -28,13 +29,30 @@ public sealed class ByeDpiUserModeLaunchPolicyTests
     }
 
     [Fact]
-    public void StrategyCatalog_ContainsOnlyFiveDistinctReviewedProfiles()
+    public void StrategyCatalog_ContainsSixDistinctReviewedProfilesIncludingDiagnosticBaseline()
     {
         var profiles = ByeDpiUserModeLaunchPolicy.Strategies;
-        Assert.Equal(5, profiles.Count);
-        Assert.Equal(5, profiles.Select(static strategy => strategy.Id)
+        Assert.Equal(6, profiles.Count);
+        Assert.Equal(6, profiles.Select(static strategy => strategy.Id)
             .Distinct(StringComparer.Ordinal).Count());
         Assert.Equal("byedpi-windows-recommended", profiles[0].Id);
+        Assert.Equal("byedpi-diagnostic-pass-through", profiles[1].Id);
+    }
+
+    [Fact]
+    public void DiagnosticBaseline_ContainsNoBypassOrTlsManipulationTokens()
+    {
+        var arguments = ByeDpiUserModeLaunchPolicy
+            .BuildArguments("byedpi-diagnostic-pass-through", 32123, 64).ToArray();
+
+        Assert.Equal(
+            new[] { "-i", "127.0.0.1", "-p", "32123", "-U", "-c", "64", "-x", "0" },
+            arguments);
+        Assert.DoesNotContain("--fake", arguments);
+        Assert.DoesNotContain("--disorder", arguments);
+        Assert.DoesNotContain("--tlsrec", arguments);
+        Assert.DoesNotContain("--split", arguments);
+        Assert.DoesNotContain("--oob", arguments);
     }
 
     [Theory]
