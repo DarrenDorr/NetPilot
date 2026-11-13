@@ -20,6 +20,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly AsyncCommand _checkCommand;
     private readonly AsyncCommand _checkDirectCommand;
     private readonly AsyncCommand _findStrategyCommand;
+    private readonly AsyncCommand _activateDiagnosticCommand;
+    private readonly AsyncCommand _restoreRecommendedCommand;
 
     private string _overallStatus = "Готов к проверке";
     private string _overallDetails = "Запустите ByeDPI для проверки через локальный SOCKS5. Можно отдельно проверить прямое соединение.";
@@ -73,6 +75,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _findStrategyCommand = new AsyncCommand(
             FindStrategyAsync,
             () => !IsBusy,
+            HandleUnexpectedError);
+
+        _activateDiagnosticCommand = new AsyncCommand(
+            () => SetFixedProfileAsync(useDiagnostic: true),
+            () => !IsBusy && IsAdvancedMode && IsEngineRunning,
+            HandleUnexpectedError);
+        _restoreRecommendedCommand = new AsyncCommand(
+            () => SetFixedProfileAsync(useDiagnostic: false),
+            () => !IsBusy && IsAdvancedMode && IsEngineRunning,
             HandleUnexpectedError);
     }
 
@@ -155,7 +166,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public bool IsEngineRunning
     {
         get => _isEngineRunning;
-        private set => SetField(ref _isEngineRunning, value);
+        private set
+        {
+            if (SetField(ref _isEngineRunning, value))
+            {
+                _activateDiagnosticCommand.RaiseCanExecuteChanged();
+                _restoreRecommendedCommand.RaiseCanExecuteChanged();
+            }
+        }
     }
 
     public IBrush EngineStatusBrush
@@ -189,6 +207,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 _checkCommand.RaiseCanExecuteChanged();
                 _checkDirectCommand.RaiseCanExecuteChanged();
                 _findStrategyCommand.RaiseCanExecuteChanged();
+                _activateDiagnosticCommand.RaiseCanExecuteChanged();
+                _restoreRecommendedCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -196,13 +216,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public bool IsAdvancedMode
     {
         get => _isAdvancedMode;
-        set => SetField(ref _isAdvancedMode, value);
+        set
+        {
+            if (SetField(ref _isAdvancedMode, value))
+            {
+                _activateDiagnosticCommand.RaiseCanExecuteChanged();
+                _restoreRecommendedCommand.RaiseCanExecuteChanged();
+            }
+        }
     }
 
     public ICommand ToggleEngineCommand => _toggleEngineCommand;
     public ICommand CheckCommand => _checkCommand;
     public ICommand CheckDirectCommand => _checkDirectCommand;
     public ICommand FindStrategyCommand => _findStrategyCommand;
+    public ICommand ActivateDiagnosticCommand => _activateDiagnosticCommand;
+    public ICommand RestoreRecommendedCommand => _restoreRecommendedCommand;
 
     public async Task InitializeAsync()
     {
@@ -279,6 +308,69 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             OverallDetails = GetUserMessage(exception);
             LastAction = "NetPilot завершил операцию fail-closed.";
             await RefreshEngineStatusAsync(CancellationToken.None);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task SetFixedProfileAsync(bool useDiagnostic)
+    {
+        ThrowIfDisposed();
+        if (!IsAdvancedMode)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var state = await _dashboardService.GetStrategyRuntimeStateAsync();
+            if (!state.IsRunning)
+            {
+                OverallStatus = "ByeDPI не запущен";
+                OverallDetails = "Для проверки профиля сначала запустите движок.";
+                return;
+            }
+
+            if (useDiagnostic)
+            {
+                await _dashboardService.ActivateDiagnosticBaselineAsync();
+            }
+            else
+            {
+                await _dashboardService.RestoreRecommendedStrategyAsync();
+            }
+
+            await RefreshEngineStatusAsync(CancellationToken.None);
+            foreach (var resource in _resourceById.Values)
+            {
+                resource.SetNotVerified();
+            }
+
+            HealthRouteDescription = "Маршрут: локальный ByeDPI SOCKS5 — после смены профиля требуется новая проверка";
+            StrategyDiagnostics = "Профиль переключён вручную. Предыдущий автоматический подбор не относится к текущему состоянию.";
+            OverallStatus = useDiagnostic
+                ? "Диагностический профиль включён"
+                : "Рекомендуемая стратегия восстановлена";
+            OverallDetails = useDiagnostic
+                ? "ByeDPI работает без преобразований TLS. Используйте актуальный SOCKS5-порт для проверки контрольного HTTPS."
+                : "Возвращён проверенный профиль по умолчанию. Старые сетевые результаты сброшены.";
+            LastAction = useDiagnostic
+                ? "Включён нейтральный SOCKS5 для ручной диагностики; это не обход DPI."
+                : "Восстановлена стандартная стратегия ByeDPI.";
+        }
+        catch (Exception exception) when (IsExpectedOperationalException(exception))
+        {
+            await RefreshEngineStatusAsync(CancellationToken.None);
+            foreach (var resource in _resourceById.Values)
+            {
+                resource.SetNotVerified();
+            }
+            OverallStatus = "Не удалось переключить профиль";
+            OverallDetails = GetUserMessage(exception);
+            LastAction = "Переключение не подтверждено; проверьте состояние движка и текущий порт.";
         }
         finally
         {
