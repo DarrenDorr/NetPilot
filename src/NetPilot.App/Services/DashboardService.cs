@@ -32,6 +32,13 @@ public interface IDashboardService : IDisposable
     Task StartDefaultStrategyAsync(
         CancellationToken cancellationToken = default);
 
+    // Fixed, reviewed, expert-only diagnosis. Never accepts user-supplied argv.
+    Task ActivateDiagnosticBaselineAsync(
+        CancellationToken cancellationToken = default);
+
+    Task RestoreRecommendedStrategyAsync(
+        CancellationToken cancellationToken = default);
+
     Task StopStrategyRuntimeAsync(
         CancellationToken cancellationToken = default);
 }
@@ -154,6 +161,47 @@ public sealed class DashboardService : IDashboardService
             throw new StrategyRuntimeException(
                 "StartStateMismatch",
                 "Сетевой движок не подтвердил безопасный запуск выбранной стратегии.");
+        }
+    }
+
+    public Task ActivateDiagnosticBaselineAsync(
+        CancellationToken cancellationToken = default)
+        => ActivateFixedRunningProfileAsync("byedpi-diagnostic-pass-through", cancellationToken);
+
+    public Task RestoreRecommendedStrategyAsync(
+        CancellationToken cancellationToken = default)
+        => ActivateFixedRunningProfileAsync("byedpi-windows-recommended", cancellationToken);
+
+    private async Task ActivateFixedRunningProfileAsync(
+        string strategyId,
+        CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+
+        var state = await _strategyRuntime.GetStateAsync(cancellationToken);
+        if (!state.IsRunning)
+        {
+            throw new StrategyRuntimeException(
+                "DiagnosticEngineNotRunning",
+                "Сначала запустите ByeDPI. Автоматического запуска нет.");
+        }
+
+        var allowed = await _strategyRuntime.ListStrategiesAsync(cancellationToken);
+        if (!allowed.Any(strategy => string.Equals(strategy.Id, strategyId, StringComparison.Ordinal)))
+        {
+            throw new StrategyRuntimeException(
+                "DiagnosticProfileMissing",
+                "Запрошенный диагностический профиль отсутствует в проверенном каталоге.");
+        }
+
+        await _strategyRuntime.ActivateAsync(strategyId, cancellationToken);
+        var confirmed = await _strategyRuntime.GetStateAsync(cancellationToken);
+        if (!confirmed.IsRunning
+            || !string.Equals(confirmed.StrategyId, strategyId, StringComparison.Ordinal))
+        {
+            throw new StrategyRuntimeException(
+                "DiagnosticStateMismatch",
+                "ByeDPI не подтвердил переключение на выбранный профиль.");
         }
     }
 
