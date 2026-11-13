@@ -16,6 +16,14 @@ public static class ByeDpiUserModeLaunchPolicy
                 "byedpi-windows-recommended",
                 "ByeDPI · Windows recommended"),
             ["--disorder", "1", "--fake", "-1"]),
+        // Diagnostic control: no desynchronization or TLS record changes.
+        // It isolates baseline SOCKS forwarding from active DPI-bypass profiles.
+        // Not a bypass recommendation and cannot establish app connectivity.
+        new(
+            new StrategyDescriptor(
+                "byedpi-diagnostic-pass-through",
+                "ByeDPI · diagnostic passthrough (no DPI transforms)"),
+            []),
         new(
             new StrategyDescriptor(
                 "byedpi-auto-tlsrec",
