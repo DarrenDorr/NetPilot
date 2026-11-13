@@ -205,6 +205,35 @@ public sealed class NetPilotAlphaDashboardViewModelTests
     }
 
     [Fact]
+    public async Task ExpertDiagnosticSwitch_RequiresExpertAndResetsStaleHealth()
+    {
+        using var dashboard = new FakeDashboardService(true);
+        using var viewModel = new MainWindowViewModel(dashboard);
+        await viewModel.InitializeAsync();
+
+        Assert.False(viewModel.ActivateDiagnosticCommand.CanExecute(null));
+        viewModel.IsAdvancedMode = true;
+        Assert.True(viewModel.ActivateDiagnosticCommand.CanExecute(null));
+        viewModel.ActivateDiagnosticCommand.Execute(null);
+
+        for (var i = 0; i < 100 && dashboard.ActiveStrategyId != "byedpi-diagnostic-pass-through"; i++)
+        {
+            await Task.Delay(10);
+        }
+        Assert.Equal("byedpi-diagnostic-pass-through", dashboard.ActiveStrategyId);
+        Assert.Contains("diagnostic-pass-through", viewModel.EngineStatus);
+        Assert.All(viewModel.Resources, resource => Assert.Equal("Не проверено", resource.StatusText));
+
+        viewModel.RestoreRecommendedCommand.Execute(null);
+        for (var i = 0; i < 100 && dashboard.ActiveStrategyId != "byedpi-windows-recommended"; i++)
+        {
+            await Task.Delay(10);
+        }
+        Assert.Equal("byedpi-windows-recommended", dashboard.ActiveStrategyId);
+        Assert.Contains("Рекомендуемая", viewModel.OverallStatus);
+    }
+
+    [Fact]
     public void SelectedStrategyTarget_RejectsUnknownObjects()
     {
         using var dashboard = new FakeDashboardService(true);
@@ -228,6 +257,7 @@ public sealed class NetPilotAlphaDashboardViewModelTests
     private sealed class FakeDashboardService(bool running) : IDashboardService
     {
         public bool Running { get; set; } = running;
+        public string ActiveStrategyId { get; private set; } = "byedpi-windows-recommended";
         public IReadOnlyList<ResourceHealth> DirectResults { get; set; } = Array.Empty<ResourceHealth>();
         public int DisposeCalls { get; private set; }
         public string? LastRequestedResourceId { get; private set; }
@@ -277,7 +307,7 @@ public sealed class NetPilotAlphaDashboardViewModelTests
         public Task<StrategyRuntimeState> GetStrategyRuntimeStateAsync(
             CancellationToken cancellationToken = default)
             => Task.FromResult(Running
-                ? StrategyRuntimeState.Running("byedpi-windows-recommended")
+                ? StrategyRuntimeState.Running(ActiveStrategyId)
                 : StrategyRuntimeState.Stopped);
 
         public Task<string?> GetLocalSocks5AddressAsync(
@@ -288,6 +318,20 @@ public sealed class NetPilotAlphaDashboardViewModelTests
             CancellationToken cancellationToken = default)
         {
             Running = true;
+            return Task.CompletedTask;
+        }
+
+        public Task ActivateDiagnosticBaselineAsync(
+            CancellationToken cancellationToken = default)
+        {
+            ActiveStrategyId = "byedpi-diagnostic-pass-through";
+            return Task.CompletedTask;
+        }
+
+        public Task RestoreRecommendedStrategyAsync(
+            CancellationToken cancellationToken = default)
+        {
+            ActiveStrategyId = "byedpi-windows-recommended";
             return Task.CompletedTask;
         }
 
