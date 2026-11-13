@@ -1,3 +1,4 @@
+using System.Net;
 using NetPilot.Core.Models;
 using NetPilot.Health;
 using NetPilot.Platform.Windows;
@@ -6,6 +7,18 @@ namespace NetPilot.Platform.Windows.Tests;
 
 public sealed class ByeDpiProxyResourceHealthProbeTests
 {
+    [Theory]
+    [InlineData(HttpRequestError.NameResolutionError, "ProxyNameResolutionError")]
+    [InlineData(HttpRequestError.ConnectionError, "ProxyConnectionError")]
+    [InlineData(HttpRequestError.SecureConnectionError, "ProxyTlsError")]
+    [InlineData(HttpRequestError.ProxyTunnelError, "ProxyTunnelError")]
+    [InlineData(HttpRequestError.HttpProtocolError, "ProxyHttpProtocolError")]
+    [InlineData(HttpRequestError.Unknown, "ProxyNetworkError")]
+    public void Classification_UsesOnlyBoundedCodes(HttpRequestError error, string expected)
+    {
+        Assert.Equal(expected, ByeDpiProxyResourceHealthProbe.ClassifyNetworkError(error));
+    }
+
     [Fact]
     public async Task CanonicalBuiltInResource_WhenRuntimeStopped_FailsOnlyAsNotRunning()
     {

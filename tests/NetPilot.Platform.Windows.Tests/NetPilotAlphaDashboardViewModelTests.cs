@@ -50,6 +50,29 @@ public sealed class NetPilotAlphaDashboardViewModelTests
         Assert.DoesNotContain("37801", viewModel.LocalSocks5Address);
     }
 
+    [Theory]
+    [InlineData("ProxyTlsError", "TLS")]
+    [InlineData("ProxyNameResolutionError", "имени")]
+    [InlineData("ProxyConnectionError", "соединения")]
+    [InlineData("ProxyTimeout", "Тайм-аут")]
+    public void FailedHealthProbe_ShowsOnlyBoundedFailureReason(string code, string expected)
+    {
+        var card = new ResourceStatusViewModel("example", "Example");
+        card.Apply(new ResourceHealth("example", ResourceHealthState.Unavailable, DateTimeOffset.UtcNow, null, code));
+        Assert.Contains(expected, card.DetailsText);
+        Assert.Equal("HTTPS недоступен", card.StatusText);
+    }
+
+    [Fact]
+    public void UnreviewedHealthDiagnosticCode_IsNeverDisplayed()
+    {
+        const string secret = "SENSITIVE_ENDPOINT_AND_USER_TOKEN";
+        var card = new ResourceStatusViewModel("example", "Example");
+        card.Apply(new ResourceHealth("example", ResourceHealthState.Unavailable, DateTimeOffset.UtcNow, null, secret));
+        Assert.DoesNotContain(secret, card.DetailsText);
+        Assert.Equal(string.Empty, card.DetailsText);
+    }
+
     [Fact]
     public void HealthyHealthProbe_IsNotDescribedAsApplicationWorking()
     {
