@@ -8,6 +8,11 @@ on:
   schedule:
     - cron: '17 3 * * 1'
 
+concurrency:
+  # Cancel superseded PR runs; never cancel a running main/scheduled security check.
+  group: netpilot-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   security-events: write
   packages: read
